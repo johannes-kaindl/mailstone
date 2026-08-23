@@ -30,5 +30,20 @@ secrets.json
 # --- Build und Werkzeug-Reste ----------------------------------------------
 node_modules/
 main.js
+data.json
 *.log
 .DS_Store
+.claude/
+.remember/
+.gui-smoke.mjs
+.shots.mjs
+
+# SDD-/Skill-Arbeitsverzeichnisse (git-ignoriert, Scratch)
+.superpowers/
+
+# Ausnahme: synthetische Test-Fixtures (tests/fixtures/eml/README.md erklaert die Regel)
+!tests/fixtures/
+!tests/fixtures/eml/
+!tests/fixtures/eml/*.eml
+!tests/fixtures/golden/
+!tests/fixtures/golden/*.eml

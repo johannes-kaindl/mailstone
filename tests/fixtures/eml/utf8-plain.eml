@@ -1,0 +1,11 @@
+From: Erika Beispiel <erika@example.org>
+To: Max Muster <max@example.net>
+Cc: team@example.com
+Subject: Hallo Welt
+Date: Tue, 19 Aug 2026 14:32:00 +0200
+Message-ID: <utf8-plain-001@mail.example.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Schöne Grüße aus München — ß und €.

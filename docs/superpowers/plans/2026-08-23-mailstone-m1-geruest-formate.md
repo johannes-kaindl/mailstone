@@ -1187,7 +1187,7 @@ function vars(mail: ParsedMail): Record<string, string> {
 export function mailFilename(p: MailProfile, mail: ParsedMail): string {
   const v = vars(mail);
   const tpl = v.time ? p.filename : p.filename.replace(/\{time\}[-_ ]?/g, "");
-  return buildFilename(tpl, v, { fallback: `${v.date}-mail` });
+  return buildFilename(tpl, v, { fallbacks: ["{date}-mail"], lastResort: "mail" });
 }
 export function mailFolder(p: MailProfile, mail: ParsedMail): string {
   const y = vars(mail).year;
@@ -1195,7 +1195,7 @@ export function mailFolder(p: MailProfile, mail: ParsedMail): string {
 }
 export function emlFolder(p: MailProfile, mail: ParsedMail): string { return `${mailFolder(p, mail)}/${p.emlSubfolder}`; }
 ```
-`buildFilename`-Signatur vor dem Schreiben in `src/vendor/code-kit/filename-template.ts:137` nachlesen (Template, Variablen, Optionen mit `fallback`); falls die Optionen anders heißen, anpassen — der Test „leerer Betreff → `2026-08-19-1432-mail`" ist der Vertrag.
+`buildFilename(template, vars, opts)` — Optionen heißen laut `src/vendor/code-kit/filename-template.ts` (`FilenameOptions`) `fallbacks?: readonly string[]` und `lastResort?: string` (kein `fallback`). Also: `buildFilename(tpl, v, { fallbacks: ["{date}-mail"], lastResort: "mail" })`. Der Test „leerer Betreff → `2026-08-19-1432-mail`" ist der Vertrag (greift schon über `slug || "mail"` in `vars`).
 
 - [ ] **Step 4: Run** → PASS. `check:pure` → grün.
 - [ ] **Step 5: Commit** `git add src/core/mirror/profile.ts src/core/render tests/core && git commit -m "feat(render): Mapping-Profil, abgeleitetes Frontmatter, Dateiname/Ablage"`
@@ -1348,8 +1348,9 @@ export function newNote(derived: Record<string, FmVal>, onCreate: Record<string,
 
 export function mergeNote(input: MergeInput): MergeResult {
   const parsed = parseFrontmatter(input.existing);
-  // parseFrontmatter liefert { data, order, body } — Signatur in src/vendor/kit/frontmatter.ts:96 pruefen
-  if (!parsed) return { ok: false, code: "frontmatter-unparseable" };
+  // parseFrontmatter liefert immer { data, order, body } (ohne Block: data {} / order [] / body = text);
+  // "frontmatter-unparseable" greift, wenn der Text zwar mit "---" beginnt, aber kein schliessendes "---" hat.
+  if (input.existing.startsWith("---") && parsed.order.length === 0 && parsed.body === input.existing) return { ok: false, code: "frontmatter-unparseable" };
   const { before, block, after } = splitBody(parsed.body);
   if (block === null) return { ok: false, code: "fences-missing" };
   if (input.expectedZoneHash !== null && zoneHash(block) !== input.expectedZoneHash) return { ok: false, code: "zone-edited" };
@@ -1361,7 +1362,7 @@ export function mergeNote(input: MergeInput): MergeResult {
   return { ok: true, content, changed: content !== input.existing, zoneHash: zoneHash(input.block) };
 }
 ```
-`parseFrontmatter`-Rückgabeform in `src/vendor/kit/frontmatter.ts:16` (`ParsedFrontmatter`) nachlesen und die Feldnamen (`data`, `order`, `body`/`content`) exakt übernehmen; der Idempotenz-Test erzwingt, dass `serializeFrontmatter(parse(x))` für die eigene Ausgabe stabil ist — falls das Kit beim Serialisieren anders quotet als `newNote`, `newNote` auf denselben Serialisierer umstellen (tut es bereits über `fmBlock`).
+`ParsedFrontmatter` ist `{ data: Record<string, FmValue>; order: string[]; body: string }` mit `FmValue = string | number | string[]` (Booleans werden deshalb als `"true"`/`"false"`-Strings geschrieben — `toFm`); der Idempotenz-Test erzwingt, dass `serializeFrontmatter(parse(x))` für die eigene Ausgabe stabil ist — falls das Kit beim Serialisieren anders quotet als `newNote`, `newNote` auf denselben Serialisierer umstellen (tut es bereits über `fmBlock`).
 
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit** `git add src/core/merge tests/core/merge && git commit -m "feat(merge): Fences, Zone-Hash, Merge-Regeln (melden statt ueberschreiben)"`
@@ -1657,7 +1658,7 @@ export function loadSettings(raw: unknown): MailstoneSettings {
 ### Task 9: `core/mirror/plan.ts` + `obsidian/vault-notes.ts` — NotePlan und PlanExecutor
 
 **Files:**
-- Create: `src/core/mirror/plan.ts`, `src/obsidian/vault-notes.ts`
+- Create: `src/core/mirror/plan.ts`, `src/obsidian/vault-notes.ts`, `tests/helpers/memory-vault.ts`
 - Test: `tests/core/mirror/plan.test.ts`, `tests/obsidian/vault-notes.test.ts`
 
 **Interfaces:**
@@ -1729,8 +1730,7 @@ describe("planMailNote", () => {
 // tests/obsidian/vault-notes.test.ts
 import { describe, it, expect } from "vitest";
 import { vaultPlanExecutor, findMailNotes } from "../../src/obsidian/vault-notes";
-// Den Obsidian-Mock aus tests/vendor/kit/obsidian-mock.ts nutzen: dort gibt es eine App-Fabrik (Name in der Datei nachlesen, z. B. `makeApp()`/`createMockApp()`) mit vault.create/createBinary/modify/read und metadataCache.getFileCache.
-import { makeApp } from "../__mocks__/obsidian";
+import { makeApp } from "../helpers/memory-vault";
 
 describe("vaultPlanExecutor", () => {
   it("create legt .md und .eml an und merkt den Zone-Hash", async () => {
@@ -1759,7 +1759,7 @@ describe("vaultPlanExecutor", () => {
   });
 });
 ```
-Vor dem Schreiben `tests/vendor/kit/obsidian-mock.ts` lesen: Name der App-Fabrik, ob `vault.createBinary`, `vault.adapter.exists/read`, `fileManager.processFrontMatter` und ein aus dem Inhalt gefüllter `metadataCache.getFileCache(file).frontmatter` existieren. Fehlt `createBinary` oder `processFrontMatter`, in `tests/__mocks__/obsidian.ts` minimal ergänzen (Override-Muster wie bei `getFrontMatterInfo` dort) — **nicht** im vendorten Mock.
+**`tests/helpers/memory-vault.ts` (neu, Ruling aus dem Pre-Flight):** Der vendorte Kit-Mock (`makeFakeApp()` in `tests/vendor/kit/obsidian-mock.ts`) ist ein Spy-Stub ohne Dateibaum (`create` liefert ein leeres `TFile`, `adapter.exists` ist immer true, `getFileCache` null). Für diese Tests braucht es einen **In-Memory-Vault**: `export function makeApp(): App & { __files: Map<string, { content: string | ArrayBuffer; file: TFile }> }` — baut auf `makeFakeApp()` auf (nicht ersetzen, ergänzen) und verdrahtet per `mockImplementation`: `vault.create(path, content)` (legt `new TFile(path)` an, wirft bei Duplikat), `vault.createBinary(path, ab)`, `vault.createFolder(path)` (merkt Ordner), `vault.modify(file, content)`, `vault.read(file)`/`cachedRead`, `vault.readBinary(file)`, `vault.getFiles()` (alle TFile, `extension` aus dem Pfad), `vault.getMarkdownFiles()`, `vault.getAbstractFileByPath(path)`, `vault.adapter.exists(path)` (Datei **oder** Ordner), `vault.adapter.read(path)`, `metadataCache.getFileCache(file)` → `{ frontmatter }` geparst mit `parseFrontmatter` aus `src/vendor/kit/frontmatter.ts` (Werte: String/Number/String[]), `fileManager.processFrontMatter(file, fn)` → parst, ruft `fn(fm)`, serialisiert mit `serializeFrontmatter` zurück (Reihenfolge erhalten, neue Keys hinten). `TFile` aus dem Kit-Mock hat `path`, `basename`, `extension` — prüfen, ob der Konstruktor `extension` aus dem Pfad ableitet; sonst im Helper setzen. Der Helper wird auch von Task 10 benutzt.
 
 - [ ] **Step 2: Run** → FAIL.
 - [ ] **Step 3: Implementierung**
@@ -1886,7 +1886,7 @@ export function findMailNotes(app: App, idField: string): Map<string, TFile> {
 import { describe, it, expect } from "vitest";
 import { importEmlFolder } from "../../src/obsidian/import-eml";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
-import { makeApp } from "../__mocks__/obsidian";
+import { makeApp } from "../helpers/memory-vault";
 import { loadFixture } from "../helpers/fixtures";
 
 describe("importEmlFolder", () => {

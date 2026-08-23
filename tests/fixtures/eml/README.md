@@ -1,0 +1,1 @@
+Ausschließlich SYNTHETISCHE Mails. Keine echte Mail, kein echter Header (Message-ID, Received), keine reale Adresse — nur example.org/.net/.com. Fehlerfälle aus dem Betrieb werden NACHGEBAUT, nie kopiert. Diese Datei ist die einzige .eml-Ausnahme der .gitignore.
