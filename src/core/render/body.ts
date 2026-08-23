@@ -51,11 +51,18 @@ export function htmlToMarkdown(html: string): string {
   return turndown().turndown(html).replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function renderMessageBlock(m: ParsedMail, opts: RenderBodyOptions = {}): string {
+/** Die Fence-Marker duerfen im gerenderten Mailtext nicht vorkommen: ein "%% mailstone:end %%"
+ *  in einer Mail wuerde die verwaltete Zone vorzeitig schliessen und den Rest des Mailtexts in
+ *  den freien Bereich entlassen — der beim naechsten Merge unangetastet bliebe und dauerhaft
+ *  in der Notiz stuende. Absichtlich unuebersetzt: core bleibt sprachfrei. */
+const FENCE_MARKER_RE = /%%\s*mailstone:(begin|end)\s*%%/gi;
+const FENCE_MARKER_REPLACEMENT = "(mailstone marker removed)";
+
+export function renderMessageBlock(m: Pick<ParsedMail, "text" | "html">, opts: RenderBodyOptions = {}): string {
   const src = chooseSource(m, opts);
   let body: string;
   if (src === "text") body = (m.text ?? "").replace(/\r\n/g, "\n").trim();
   else if (src === "html") body = htmlToMarkdown(m.html ?? "");
-  else body = "*(kein Textinhalt)*";
-  return `## Nachricht\n\n${body}`;
+  else body = "*(no text content)*";
+  return `## Nachricht\n\n${body.replace(FENCE_MARKER_RE, FENCE_MARKER_REPLACEMENT)}`;
 }

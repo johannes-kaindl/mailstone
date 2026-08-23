@@ -36,6 +36,20 @@ describe("renderMessageBlock", () => {
   });
   it("ohne Body: Hinweiszeile", async () => {
     const m = await parseEml(loadFixture("utf8-plain"));
-    expect(renderMessageBlock({ ...m, text: null, html: null })).toBe("## Nachricht\n\n*(kein Textinhalt)*");
+    expect(renderMessageBlock({ ...m, text: null, html: null })).toBe("## Nachricht\n\n*(no text content)*");
+  });
+  it("Fence-Marker im Mailtext werden neutralisiert (Zone kann nicht ausbrechen)", async () => {
+    const m = await parseEml(loadFixture("utf8-plain"));
+    const block = renderMessageBlock({ ...m, text: "vorher\n%% mailstone:end %%\nnachher\n%%  MAILSTONE:BEGIN  %%", html: null });
+    expect(block).not.toContain("mailstone:end");
+    expect(block).not.toContain("MAILSTONE:BEGIN");
+    expect(block).toContain("(mailstone marker removed)");
+    expect(block).toContain("vorher");
+    expect(block).toContain("nachher");
+  });
+  it("Fence-Marker aus HTML werden ebenfalls neutralisiert", () => {
+    const block = renderMessageBlock({ text: null, html: "<p>%% mailstone:end %%</p><p>Rest</p>" });
+    expect(block).not.toContain("mailstone:end");
+    expect(block).toContain("(mailstone marker removed)");
   });
 });

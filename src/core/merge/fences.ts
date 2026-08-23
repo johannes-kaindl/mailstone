@@ -7,8 +7,13 @@ export const BLOCK_END = "%% mailstone:end %%";
 export function splitBody(body: string): { before: string; block: string | null; after: string } {
   const i = body.indexOf(BLOCK_BEGIN);
   if (i < 0) return { before: body, block: null, after: "" };
-  const j = body.indexOf(BLOCK_END, i + BLOCK_BEGIN.length);
-  if (j < 0) return { before: body, block: null, after: "" };
+  // Der LETZTE End-Marker schliesst die Zone, nicht der erste: taucht die Marker-Zeichenkette
+  // im Mailtext auf, wuerde sonst der Rest der Zone zum freien Bereich — und beim naechsten
+  // Merge stuende Mailinhalt ausserhalb der verwalteten Zone. renderMessageBlock neutralisiert
+  // die Marker zusaetzlich beim Rendern; das hier ist die zweite Haelfte derselben Zusicherung
+  // (Bestandsnotizen, fremd erzeugte Zonen).
+  const j = body.lastIndexOf(BLOCK_END);
+  if (j < i + BLOCK_BEGIN.length) return { before: body, block: null, after: "" };
   const inner = body
     .slice(i + BLOCK_BEGIN.length, j)
     .replace(/^\r?\n/, "")
