@@ -20,11 +20,13 @@ export async function importEmlFolder(deps: ImportDeps, folder: string): Promise
       const mail = await parseEml(eml);
       const ex = index.get(mail.id);
       const existing = ex instanceof TFile ? { path: ex.path, content: await app.vault.read(ex), zoneHash: deps.hashes.get(mail.id) } : null;
-      const plan = planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null });
-      if (plan.kind === "create") taken.add(plan.path);
+      // Der Import ist der ausdrueckliche Wunsch des Nutzers — hier darf eine bestehende
+      // Notiz aktualisiert werden (der Sync in M3 uebergibt allowUpdate: false).
+      const plan = planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, allowUpdate: true, linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null });
+      if (plan.kind === "create") { taken.add(plan.path); taken.add(plan.emlPath); }
       plans.push(plan);
     } catch (e) { errors.push({ path: f.path, message: e instanceof Error ? e.message : String(e) }); }
   }
   const r = await vaultPlanExecutor(app, deps.hashes).execute(plans);
-  return { ...r, errors };
+  return { created: r.created, updated: r.updated, skipped: r.skipped, errors: [...errors, ...r.errors.map((x) => ({ path: x.plan.path, message: x.message }))] };
 }

@@ -9,13 +9,20 @@ describe("importEmlFolder", () => {
     const app = makeApp();
     for (const f of ["utf8-plain", "thread-reply"]) await app.vault.createBinary(`Import/${f}.eml`, loadFixture(f).buffer);
     const hashes = new Map<string, string>();
-    const deps = { app, profile: defaultMailProfile(), hashes: { get: (k: string) => hashes.get(k) ?? null, set: (k: string, v: string) => { hashes.set(k, v); } }, now: () => new Date("2026-08-23T13:00:00Z") };
+    // Die beiden Laeufe stehen bewusst auf VERSCHIEDENEN Uhrzeiten: mit eingefrorener Zeit
+    // waere die Idempotenz ein Testartefakt (mail_synced wuerde im Betrieb jeden Lauf
+    // veraendern und damit jedes Mal einen Schreibvorgang ausloesen).
+    let jetzt = new Date("2026-08-23T13:00:00Z");
+    const deps = { app, profile: defaultMailProfile(), hashes: { get: (k: string) => hashes.get(k) ?? null, set: (k: string, v: string) => { hashes.set(k, v); } }, now: () => jetzt };
     const r1 = await importEmlFolder(deps, "Import");
     expect(r1.created).toBe(2); expect(r1.errors).toEqual([]);
     expect(await app.vault.adapter.exists("Mail/2026/2026-08-19-1432-hallo-welt.md")).toBe(true);
     expect(await app.vault.adapter.exists("Mail/2026/_eml/2026-08-19-1432-hallo-welt.eml")).toBe(true);
+    const nachLauf1 = await app.vault.adapter.read("Mail/2026/2026-08-19-1432-hallo-welt.md");
+    jetzt = new Date("2026-08-23T17:45:00Z");
     const r2 = await importEmlFolder(deps, "Import");
     expect(r2.created).toBe(0); expect(r2.skipped.every((p) => p.kind === "skip" && p.reason === "unchanged")).toBe(true);
+    expect(await app.vault.adapter.read("Mail/2026/2026-08-19-1432-hallo-welt.md")).toBe(nachLauf1);
   });
   it("kaputte Datei landet in errors, Rest wird importiert", async () => {
     const app = makeApp();

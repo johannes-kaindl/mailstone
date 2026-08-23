@@ -26,17 +26,24 @@ export default class MailstonePlugin extends Plugin {
       callback: async () => {
         const folder = await new FolderPromptModal(this.app, t("import.prompt.folder")).prompt();
         if (!folder) return;
-        const r = await importEmlFolder(
-          {
-            app: this.app,
-            profile: this.settings.profile,
-            hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
-            now: () => new Date(),
-          },
-          folder,
-        );
-        await this.saveSettings();
-        notify.info("import.done", r.created, r.updated, r.skipped.length, r.errors.length);
+        // finally: die Zone-Hashes der bereits geschriebenen Notizen muessen auch dann
+        // persistiert werden, wenn der Lauf unterwegs wirft — sonst gilt beim naechsten Lauf
+        // jede davon als fremd editiert (zone-edited) und wird nie wieder aktualisiert.
+        try {
+          const r = await importEmlFolder(
+            {
+              app: this.app,
+              profile: this.settings.profile,
+              hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
+              now: () => new Date(),
+            },
+            folder,
+          );
+          notify.info("import.done", r.created, r.updated, r.skipped.length, r.errors.length);
+          if (r.errors.length > 0) notify.error("import.errors", r.errors.length);
+        } finally {
+          await this.saveSettings();
+        }
       },
     });
   }
