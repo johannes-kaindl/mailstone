@@ -40,6 +40,8 @@ main.js
 !tests/fixtures/
 !tests/fixtures/eml/
 !tests/fixtures/eml/*.eml
+!tests/fixtures/golden/
+!tests/fixtures/golden/*.eml
 # Build/Werkzeug-Reste
 node_modules/
 main.js

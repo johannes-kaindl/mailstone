@@ -3,16 +3,20 @@ import type { MailAddress } from "./types";
 
 export function normalizeMessageId(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const m = /<([^<>]*)>/.exec(raw);
-  const v = (m ? m[1]! : raw).trim();
-  return v.length > 0 ? v : null;
+  const m = /<([^<>\s]*)>/.exec(raw);
+  if (m) { const v = m[1]!.trim(); return v.length > 0 ? v : null; }
+  // Kein Match (z. B. Whitespace innerhalb der Klammern): Fallback ist raw.trim(), aber der
+  // darf selbst keinen Whitespace oder Klammern enthalten — sonst waere er als Header-Wert
+  // (z. B. Message-ID/In-Reply-To) eine Injection-Flaeche.
+  const v = raw.trim();
+  return v.length > 0 && !/[\s<>]/.test(v) ? v : null;
 }
 
 export function splitReferences(raw: string | null | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
-  for (const m of raw.matchAll(/<([^<>]*)>/g)) {
-    const id = m[1]!;
+  for (const m of raw.matchAll(/<([^<>\s]*)>/g)) {
+    const id = m[1]!.trim();
     if (id && !out.includes(id)) out.push(id);
   }
   return out;

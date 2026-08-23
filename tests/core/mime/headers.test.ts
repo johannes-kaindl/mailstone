@@ -10,12 +10,18 @@ describe("normalizeMessageId", () => {
     expect(normalizeMessageId(undefined)).toBeNull();
     expect(normalizeMessageId("<>")).toBeNull();
   });
+  it("lehnt Header-Injection ab (kein Match, Fallback verwirft Whitespace/Klammern)", () => {
+    expect(normalizeMessageId("<a@x\r\nBcc: evil@example.org>")).toBeNull();
+  });
 });
 describe("splitReferences", () => {
   it("extrahiert alle IDs in Reihenfolge ohne Duplikate", () => {
     expect(splitReferences("<a@x> <b@x>\r\n <a@x>")).toEqual(["a@x", "b@x"]);
   });
   it("leer → []", () => { expect(splitReferences(null)).toEqual([]); });
+  it("gefaltete Header funktionieren weiterhin", () => {
+    expect(splitReferences("<a@x>\r\n <b@x>")).toEqual(["a@x", "b@x"]);
+  });
 });
 describe("formatAddress", () => {
   it("mit Name", () => { expect(formatAddress({ name: "Erika Beispiel", address: "e@example.org" })).toBe("Erika Beispiel <e@example.org>"); });

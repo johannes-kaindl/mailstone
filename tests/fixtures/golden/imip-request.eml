@@ -1,0 +1,40 @@
+From: Max Muster <mail@example.net>
+To: gast@example.org
+Subject: Einladung: Planung, 2026-09-01
+Date: Sun, 23 Aug 2026 15:00:00 +0200
+Message-ID: <test-0001@example.net>
+MIME-Version: 1.0
+X-Mailer: mailstone (Obsidian)
+Content-Type: multipart/mixed; boundary="=_mailstone_ba6a34d3ea4b367b6776b58e"
+
+--=_mailstone_ba6a34d3ea4b367b6776b58e
+Content-Type: multipart/alternative; boundary="=_mailstone_74f448f8b9dce868f7ccfdb2"
+
+--=_mailstone_74f448f8b9dce868f7ccfdb2
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Du bist eingeladen.
+Ort: B=C3=BCro.
+--=_mailstone_74f448f8b9dce868f7ccfdb2
+Content-Type: text/calendar; method=REQUEST; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+BEGIN:VCALENDAR
+VERSION:2.0
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:ev-1
+SUMMARY:Planung
+END:VEVENT
+END:VCALENDAR
+
+--=_mailstone_74f448f8b9dce868f7ccfdb2--
+--=_mailstone_ba6a34d3ea4b367b6776b58e
+Content-Type: application/ics; name="invite.ics"
+Content-Disposition: attachment; filename="invite.ics"
+Content-Transfer-Encoding: base64
+
+QkVHSU46VkNBTEVOREFSDQpWRVJTSU9OOjIuMA0KTUVUSE9EOlJFUVVFU1QNCkJFR0lOOlZFVkVO
+VA0KVUlEOmV2LTENClNVTU1BUlk6UGxhbnVuZw0KRU5EOlZFVkVOVA0KRU5EOlZDQUxFTkRBUg0K
+--=_mailstone_ba6a34d3ea4b367b6776b58e--
