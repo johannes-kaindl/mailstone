@@ -129,7 +129,7 @@ describe("createCalendarNotesBridge", () => {
   });
 
   it("tryRegister() registriert den Transport und ist idempotent", () => {
-    const registerMailTransport = vi.fn();
+    const registerMailTransport = vi.fn().mockReturnValue({ ok: true });
     const unregisterMailTransport = vi.fn();
     const app = makeApp({ version: 1, registerMailTransport, unregisterMailTransport });
     const bridge = createCalendarNotesBridge(app, transport);
@@ -151,7 +151,7 @@ describe("createCalendarNotesBridge", () => {
   });
 
   it("unregister() nach Entladen des Nachbarn wirft nicht und setzt registered zurueck", () => {
-    const registerMailTransport = vi.fn();
+    const registerMailTransport = vi.fn().mockReturnValue({ ok: true });
     const unregisterMailTransport = vi.fn();
     const app: { plugins: { plugins: Record<string, { api?: unknown }> } } = {
       plugins: { plugins: { "calendar-notes": { api: { version: 1, registerMailTransport, unregisterMailTransport } } } },
@@ -168,7 +168,7 @@ describe("createCalendarNotesBridge", () => {
   });
 
   it("unregister() ruft unregisterMailTransport wenn der Nachbar noch da ist", () => {
-    const registerMailTransport = vi.fn();
+    const registerMailTransport = vi.fn().mockReturnValue({ ok: true });
     const unregisterMailTransport = vi.fn();
     const app = makeApp({ version: 1, registerMailTransport, unregisterMailTransport });
     const bridge = createCalendarNotesBridge(app, transport);
@@ -176,5 +176,61 @@ describe("createCalendarNotesBridge", () => {
     bridge.unregister();
     expect(unregisterMailTransport).toHaveBeenCalledWith("mailstone");
     expect(bridge.registered).toBe(false);
+  });
+
+  it("tryRegister() liefert false, wenn der Nachbar mit { error } ablehnt (invalid-mail-transport)", () => {
+    const registerMailTransport = vi.fn().mockReturnValue({ error: "invalid-mail-transport" });
+    const unregisterMailTransport = vi.fn();
+    const app = makeApp({ version: 1, registerMailTransport, unregisterMailTransport });
+    const bridge = createCalendarNotesBridge(app, transport);
+
+    expect(bridge.tryRegister()).toBe(false);
+    expect(bridge.registered).toBe(false);
+
+    // Ablehnung ist kein Dauerzustand — ein erneuter Versuch bleibt moeglich (z. B. nachdem der
+    // Nachbar den Grund der Ablehnung behoben hat).
+    registerMailTransport.mockReturnValue({ ok: true });
+    expect(bridge.tryRegister()).toBe(true);
+    expect(bridge.registered).toBe(true);
+  });
+
+  it("tryRegister() faengt eine werfende registerMailTransport ab und crasht nicht", () => {
+    const registerMailTransport = vi.fn().mockImplementation(() => {
+      throw new Error("Nachbar kaputt");
+    });
+    const unregisterMailTransport = vi.fn();
+    const app = makeApp({ version: 1, registerMailTransport, unregisterMailTransport });
+    const bridge = createCalendarNotesBridge(app, transport);
+
+    expect(() => bridge.tryRegister()).not.toThrow();
+    expect(bridge.tryRegister()).toBe(false);
+    expect(bridge.registered).toBe(false);
+  });
+
+  it("registered wird false, wenn ein Nachbar-Reload das api-Objekt durch eine neue Instanz ersetzt", () => {
+    const firstRegister = vi.fn().mockReturnValue({ ok: true });
+    const firstUnregister = vi.fn();
+    const app: { plugins: { plugins: Record<string, { api?: unknown }> } } = {
+      plugins: {
+        plugins: { "calendar-notes": { api: { version: 1, registerMailTransport: firstRegister, unregisterMailTransport: firstUnregister } } },
+      },
+    };
+    const bridge = createCalendarNotesBridge(app as unknown as import("obsidian").App, transport);
+
+    expect(bridge.tryRegister()).toBe(true);
+    expect(bridge.registered).toBe(true);
+
+    // Der Nachbar laedt neu: gleiche Form, aber eine frische Objekt-Instanz — als haette er ein
+    // Reload durchlaufen, ohne dass mailstone unregister() aufgerufen bekommen hat.
+    const secondRegister = vi.fn().mockReturnValue({ ok: true });
+    const secondUnregister = vi.fn();
+    app.plugins.plugins["calendar-notes"] = {
+      api: { version: 1, registerMailTransport: secondRegister, unregisterMailTransport: secondUnregister },
+    };
+
+    expect(bridge.registered).toBe(false);
+    expect(bridge.tryRegister()).toBe(true);
+    expect(secondRegister).toHaveBeenCalledTimes(1);
+    expect(bridge.registered).toBe(true);
   });
 });

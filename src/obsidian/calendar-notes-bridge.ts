@@ -6,11 +6,15 @@ import type { App } from "obsidian";
 import type { Account } from "../core/settings";
 import type { SendService } from "../core/send/service";
 import { imipToOutgoing, transportAccounts } from "../core/send/imip";
-import type { CalendarNotesApiSubset, ImipMessage, MailTransport } from "../core/api/calendar-notes-transport";
+import {
+  CALENDAR_NOTES_API_VERSION,
+  type CalendarNotesApiSubset,
+  type ImipMessage,
+  type MailTransport,
+} from "../core/api/calendar-notes-transport";
 
 const PLUGIN_ID = "calendar-notes";
 const TRANSPORT_ID = "mailstone";
-const SUPPORTED_API_VERSION = 1;
 
 /** `app.plugins` ist nicht Teil der offiziellen Obsidian-Typen — lokal nachgebildet, nur so
  *  weit wie hier gebraucht. */
@@ -22,7 +26,7 @@ function isCalendarNotesApi(v: unknown): v is CalendarNotesApiSubset {
   if (v === null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   return (
-    o.version === SUPPORTED_API_VERSION &&
+    o.version === CALENDAR_NOTES_API_VERSION &&
     typeof o.registerMailTransport === "function" &&
     typeof o.unregisterMailTransport === "function"
   );
@@ -72,28 +76,56 @@ export interface CalendarNotesBridge {
  * `tryRegister()` ist idempotent (mehrfacher Aufruf registriert nicht doppelt), `unregister()`
  * liest die API erneut frisch — der Nachbar kann inzwischen entladen worden sein, dann ist es
  * ein No-op statt einer Ausnahme.
+ *
+ * Der Nachbar ist fremder Code an einer nicht-oeffentlichen Grenze (app.plugins.plugins) — zwei
+ * Haertungen dagegen: (1) `registerMailTransport` kann ablehnen ({ error: ... }) oder werfen;
+ * beides darf nicht aus onload() propagieren, also try/catch UND Form-Pruefung des Ergebnisses
+ * statt Erfolg blind anzunehmen. (2) Ein Plugin-Reload des Nachbarn ersetzt dessen `api`-Objekt
+ * durch eine neue Instanz, ohne dass mailstone das mitbekommt — `lastApi` haelt die Identitaet
+ * fest, gegen die zuletzt registriert wurde; weicht ein frischer Read davon ab, gilt das als
+ * unregistriert (die alte Registrierung lebt nur noch im entladenen Nachbarn, nicht mehr hier).
  */
 export function createCalendarNotesBridge(app: App, transport: MailTransport): CalendarNotesBridge {
   let registered = false;
+  let lastApi: unknown = null;
+
+  function isStillRegistered(): boolean {
+    if (!registered) return false;
+    if (readCalendarNotesApi(app) !== lastApi) {
+      registered = false;
+      lastApi = null;
+      return false;
+    }
+    return true;
+  }
 
   return {
     tryRegister() {
-      if (registered) return true;
+      if (isStillRegistered()) return true;
       const api = readCalendarNotesApi(app);
       if (!api) return false;
-      api.registerMailTransport(transport);
-      registered = true;
-      return true;
+      try {
+        const result = api.registerMailTransport(transport);
+        if (typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === true) {
+          registered = true;
+          lastApi = api;
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
     },
     unregister() {
       if (!registered) return;
       const api = readCalendarNotesApi(app);
       registered = false;
+      lastApi = null;
       if (!api) return;
       api.unregisterMailTransport(transport.id);
     },
     get registered() {
-      return registered;
+      return isStillRegistered();
     },
   };
 }
