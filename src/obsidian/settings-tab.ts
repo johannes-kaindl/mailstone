@@ -111,11 +111,17 @@ export class MailstoneSettingTab extends PluginSettingTab {
   // (kollisionssicher, "-2" bei Kollision) wird schon hier vergeben, DAMIT das im Modal via
   // SecretComponent gesetzte Passwort (secretId = secretIdFor(id)) beim Save nicht verwaist —
   // erst der Array-Push selbst (und damit das Sichtbarwerden des Kontos) wartet auf Save.
+  //
+  // Die id wird bewusst NICHT aus dem lokalisierten Button-Text ("Add account"/"Konto
+  // hinzufuegen") geslugt (Review-Fund) — zwei neu angelegte Konten haetten sonst denselben
+  // Slug-Stamm und kollidierten deterministisch ueber "-2", "-3", … statt sich am tatsaechlichen
+  // Label zu orientieren. "account" ist der Fallback-Slug fuer ein leeres Label (s.
+  // slugifyAccountId) — das Label selbst bleibt leer, das Modal zeigt nur den Platzhalter; Zeilen
+  // in der Liste fallen bei leerem Label auf die id zurueck (s. accountsGroup()).
   private addAccount(): void {
-    const label = t("settings.accounts.add");
-    const id = uniqueAccountId(label, this.host.settings.accounts.map((a) => a.id));
+    const id = uniqueAccountId("", this.host.settings.accounts.map((a) => a.id));
     const draft = newAccount(id);
-    draft.label = label;
+    draft.label = "";
     new AccountModal(this.app, draft, { secrets: this.host.secrets, transport: () => this.host.transport() }, (saved) => {
       this.host.settings.accounts = [...this.host.settings.accounts, saved];
       void this.host.saveSettings();

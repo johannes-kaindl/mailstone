@@ -49,6 +49,29 @@ export function newAccount(id: string): Account {
     identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" }, sync: { enabled: true, intervalMin: 5 } };
 }
 
+const IMAP_TLS_VALUES = ["implicit", "starttls"] as const;
+const SMTP_TLS_VALUES = ["implicit", "starttls", "none"] as const;
+
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && Number.isInteger(v) && v > 0;
+}
+
+/** Narrowt ein rohes verschachteltes host/port/tls-Objekt gegen Defaults — jedes Feld einzeln:
+ *  ein unbrauchbarer Wert (falscher Typ, Tippfehler wie "starttls " mit Leerzeichen, "465" als
+ *  String statt Number) faellt auf den jeweiligen Default zurueck statt die ganze Reparatur mit
+ *  einem generischen Spread durchzuwinken. */
+function repairHostPortTls<T extends string>(
+  base: { host: string; port: number; tls: T },
+  raw: Record<string, unknown>,
+  tlsValues: readonly T[],
+): { host: string; port: number; tls: T } {
+  return {
+    host: typeof raw.host === "string" ? raw.host : base.host,
+    port: isPositiveInt(raw.port) ? raw.port : base.port,
+    tls: typeof raw.tls === "string" && (tlsValues as readonly string[]).includes(raw.tls) ? (raw.tls as T) : base.tls,
+  };
+}
+
 function repairAccount(raw: unknown): Account {
   const r = isObj(raw) ? raw : {};
   const id = typeof r.id === "string" ? r.id : "account";
@@ -56,8 +79,8 @@ function repairAccount(raw: unknown): Account {
   return {
     ...base,
     label: typeof r.label === "string" ? r.label : base.label,
-    imap: { ...base.imap, ...(isObj(r.imap) ? r.imap : {}) },
-    smtp: { ...base.smtp, ...(isObj(r.smtp) ? r.smtp : {}) },
+    imap: repairHostPortTls(base.imap, isObj(r.imap) ? r.imap : {}, IMAP_TLS_VALUES),
+    smtp: repairHostPortTls(base.smtp, isObj(r.smtp) ? r.smtp : {}, SMTP_TLS_VALUES),
     username: typeof r.username === "string" ? r.username : base.username,
     secretId: typeof r.secretId === "string" ? r.secretId : base.secretId,
     identities: Array.isArray(r.identities) ? r.identities.filter((i): i is Identity => isObj(i) && typeof i.id === "string" && typeof i.address === "string" && typeof i.name === "string") : base.identities,

@@ -43,6 +43,19 @@ describe("settings", () => {
     expect(slugifyAccountId("  ")).toBe("account");
     expect(slugifyAccountId("!!!")).toBe("account");
   });
+  it("loadSettings faellt bei ungueltigem tls (Tippfehler/Leerzeichen) auf den Default zurueck", () => {
+    const s = loadSettings({ accounts: [{ id: "a", imap: { tls: "starttls " } }] });
+    expect(s.accounts[0]?.imap.tls).toBe("implicit");
+  });
+  it("loadSettings faellt bei port als String auf den Default zurueck", () => {
+    const s = loadSettings({ accounts: [{ id: "a", smtp: { port: "465" } }] });
+    expect(s.accounts[0]?.smtp.port).toBe(465);
+  });
+  it("loadSettings uebernimmt gueltiges tls/port unveraendert", () => {
+    const s = loadSettings({ accounts: [{ id: "a", imap: { tls: "starttls", port: 143 } }] });
+    expect(s.accounts[0]?.imap.tls).toBe("starttls");
+    expect(s.accounts[0]?.imap.port).toBe(143);
+  });
   it("uniqueAccountId haengt bei Kollision -2, -3, … an", () => {
     expect(uniqueAccountId("Privat", [])).toBe("privat");
     expect(uniqueAccountId("Privat", ["privat"])).toBe("privat-2");

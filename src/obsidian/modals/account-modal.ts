@@ -189,6 +189,13 @@ export class AccountModal extends Modal {
       new Notice(t("settings.account.test.noSecret"));
       return;
     }
+    // Symmetrisch zu core/send/service.ts: smtp.tls==="none" (nur ueber data.json erreichbar,
+    // die UI bietet den Wert nie an) darf nur gegen Loopback verbinden — sonst gar nicht erst
+    // versuchen, bevor irgendein Transport/Connect gebaut wird.
+    if (this.draft.smtp.tls === "none" && !isLoopback(this.draft.smtp.host)) {
+      new Notice(t("error.send.tls-required"));
+      return;
+    }
     const opts: SmtpProbeOptions = {
       host: this.draft.smtp.host,
       port: this.draft.smtp.port,
