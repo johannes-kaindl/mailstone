@@ -33,10 +33,35 @@ function utf8ToBase64(s: string): string {
   return btoa(bin);
 }
 
+// RFC 2047 begrenzt ein einzelnes encoded-word auf 75 Zeichen. Budget fuer die base64-Nutzlast:
+// 75 - laenge("=?UTF-8?B??=") = 63 base64-Zeichen -> 47 Rohbytes -> auf ein Vielfaches von 3
+// abgerundet = 45 Bytes pro Chunk (glatt ohne Padding, damit Chunk-Groessen vorhersehbar bleiben).
+const ENCODED_WORD_CHUNK_BYTES = 45;
+
 export function encodeHeaderWord(value: string): string {
   let ascii = true;
   for (const ch of value) if (ch.charCodeAt(0) > 0x7e || ch.charCodeAt(0) < 0x20) { ascii = false; break; }
-  return ascii ? value : `=?UTF-8?B?${utf8ToBase64(value)}?=`;
+  if (ascii) return value;
+  // Auf Codepunkt-Grenzen splitten (kein Zerreissen eines UTF-8-Mehrbyte-Zeichens mitten in
+  // seinen Bytes): Chunks sammeln Codepunkte, bis die waere-base64-Laenge das Budget ueberschreitet.
+  const codePoints = Array.from(value);
+  const chunks: string[] = [];
+  let current = "";
+  let currentBytes = 0;
+  for (const cp of codePoints) {
+    const byteLen = new TextEncoder().encode(cp).length;
+    if (current && currentBytes + byteLen > ENCODED_WORD_CHUNK_BYTES) {
+      chunks.push(current);
+      current = "";
+      currentBytes = 0;
+    }
+    current += cp;
+    currentBytes += byteLen;
+  }
+  if (current) chunks.push(current);
+  // Fortsetzung ueber "?= =?UTF-8?B?": benachbarte encoded-words werden durch ein Leerzeichen
+  // getrennt (RFC 2047: Whitespace zwischen encoded-words wird beim Decodieren nicht angezeigt).
+  return chunks.map((c) => `=?UTF-8?B?${utf8ToBase64(c)}?=`).join(" ");
 }
 
 export function foldHeader(name: string, value: string): string {
@@ -44,7 +69,11 @@ export function foldHeader(name: string, value: string): string {
   const lines: string[] = [];
   let cur = `${name}:`;
   for (const w of words) {
-    if ((cur + " " + w).length > 76 && cur !== `${name}:`) { lines.push(cur); cur = ` ${w}`; }
+    // Anders als sonst wird hier NICHT verlangt, dass cur bereits ueber die Initialform
+    // hinausgewachsen ist: ein einzelnes ueberlanges erstes Wort (z. B. ein 72-Zeichen
+    // encoded-word) muss auch dann auf eine eigene Zeile fallen, wenn es das erste Wort ist —
+    // sonst waere "Name: " + 72 Zeichen laenger als die 78-Zeichen-Zeilenobergrenze.
+    if ((cur + " " + w).length > 76) { lines.push(cur); cur = ` ${w}`; }
     else cur += ` ${w}`;
   }
   lines.push(cur);

@@ -30,6 +30,30 @@ describe("formatAddress", () => {
 describe("encodeHeaderWord", () => {
   it("ASCII bleibt", () => { expect(encodeHeaderWord("Hello")).toBe("Hello"); });
   it("Nicht-ASCII wird B-kodiert (UTF-8)", () => { expect(encodeHeaderWord("Grüße")).toBe("=?UTF-8?B?R3LDvMOfZQ==?="); });
+  it("langer Umlaut-Betreff: jedes encoded-word bleibt <= 75 Zeichen, Fortsetzung per '?= ='", () => {
+    const value = "Ümlaut-Betreff äöüßÄÖÜ ".repeat(5).slice(0, 100);
+    const out = encodeHeaderWord(value);
+    const words = out.split(" ");
+    for (const w of words) {
+      expect(w.startsWith("=?UTF-8?B?")).toBe(true);
+      expect(w.endsWith("?=")).toBe(true);
+      expect(w.length).toBeLessThanOrEqual(75);
+    }
+    // roundtrip: alle B-Payloads dekodieren und zusammenfuegen ergibt wieder den Originalwert
+    const decoded = words
+      .map((w) => {
+        const m = /^=\?UTF-8\?B\?([^?]*)\?=$/.exec(w);
+        if (!m) throw new Error(`unerwartetes encoded-word: ${w}`);
+        return atob(m[1] as string);
+      })
+      .join("");
+    const bytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
+    expect(new TextDecoder().decode(bytes)).toBe(value);
+  });
+  it("langer ASCII-Betreff bleibt unveraendert (kein encoded-word, foldHeader uebernimmt)", () => {
+    const value = Array.from({ length: 20 }, (_, i) => `word${i}`).join(" ");
+    expect(encodeHeaderWord(value)).toBe(value);
+  });
 });
 describe("foldHeader", () => {
   it("kurz: eine Zeile", () => { expect(foldHeader("Subject", "Hi")).toBe("Subject: Hi"); });

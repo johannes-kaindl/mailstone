@@ -1,10 +1,13 @@
 import { mergeSettings } from "../vendor/code-kit/settings";
 import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
+import type { TlsMode } from "./net/types";
 
 export interface Identity { id: string; address: string; name: string }
 export interface Account {
   id: string; label: string;
-  imap: { host: string; port: number; tls: "implicit" | "starttls" }; smtp: { host: string; port: number; tls: "implicit" | "starttls" };
+  // smtp.tls erlaubt zusaetzlich "none": die Settings-UI bietet es nie an, aber data.json kann es
+  // fuer einen lokalen Fake-SMTP-Server (127.0.0.1) tragen — siehe core/send/service.ts isLoopback.
+  imap: { host: string; port: number; tls: "implicit" | "starttls" }; smtp: { host: string; port: number; tls: TlsMode };
   username: string; secretId: string; identities: Identity[]; defaultIdentityId: string;
   folders: { inbox: string; allowlist: string; archive: string; sent?: string }; sync: { enabled: boolean; intervalMin: number };
 }
@@ -15,9 +18,58 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 export function secretIdFor(accountId: string): string { return `mailstone-${accountId}`; }
+
+const SLUG_TRANSLIT: Record<string, string> = { ä: "ae", ö: "oe", ü: "ue", ß: "ss", Ä: "ae", Ö: "oe", Ü: "ue" };
+
+/** Slug aus einem Konto-Label fuer die Konto-`id` (und damit `secretId`) — a-z0-9 mit Bindestrichen,
+ *  Umlaute transliteriert statt weggeworfen. Leer/nur-Sonderzeichen faellt auf "account" zurueck. */
+export function slugifyAccountId(label: string): string {
+  const s = label
+    .trim()
+    .replace(/[äöüßÄÖÜ]/g, (c) => SLUG_TRANSLIT[c] ?? c)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "account";
+}
+
+/** Haengt bei Kollision `-2`, `-3`, … an (kein Zaehler-Suffix bei der ersten Vergabe). */
+export function uniqueAccountId(label: string, existingIds: readonly string[]): string {
+  const base = slugifyAccountId(label);
+  if (!existingIds.includes(base)) return base;
+  let n = 2;
+  while (existingIds.includes(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
 export function newAccount(id: string): Account {
   return { id, label: id, imap: { host: "", port: 993, tls: "implicit" }, smtp: { host: "", port: 465, tls: "implicit" }, username: "", secretId: secretIdFor(id),
     identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" }, sync: { enabled: true, intervalMin: 5 } };
+}
+
+const IMAP_TLS_VALUES = ["implicit", "starttls"] as const;
+const SMTP_TLS_VALUES = ["implicit", "starttls", "none"] as const;
+
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && Number.isInteger(v) && v > 0;
+}
+
+/** Narrowt ein rohes verschachteltes host/port/tls-Objekt gegen Defaults — jedes Feld einzeln:
+ *  ein unbrauchbarer Wert (falscher Typ, Tippfehler wie "starttls " mit Leerzeichen, "465" als
+ *  String statt Number) faellt auf den jeweiligen Default zurueck statt die ganze Reparatur mit
+ *  einem generischen Spread durchzuwinken. */
+function repairHostPortTls<T extends string>(
+  base: { host: string; port: number; tls: T },
+  raw: Record<string, unknown>,
+  tlsValues: readonly T[],
+): { host: string; port: number; tls: T } {
+  return {
+    host: typeof raw.host === "string" ? raw.host : base.host,
+    port: isPositiveInt(raw.port) ? raw.port : base.port,
+    tls: typeof raw.tls === "string" && (tlsValues as readonly string[]).includes(raw.tls) ? (raw.tls as T) : base.tls,
+  };
 }
 
 function repairAccount(raw: unknown): Account {
@@ -27,8 +79,8 @@ function repairAccount(raw: unknown): Account {
   return {
     ...base,
     label: typeof r.label === "string" ? r.label : base.label,
-    imap: { ...base.imap, ...(isObj(r.imap) ? r.imap : {}) },
-    smtp: { ...base.smtp, ...(isObj(r.smtp) ? r.smtp : {}) },
+    imap: repairHostPortTls(base.imap, isObj(r.imap) ? r.imap : {}, IMAP_TLS_VALUES),
+    smtp: repairHostPortTls(base.smtp, isObj(r.smtp) ? r.smtp : {}, SMTP_TLS_VALUES),
     username: typeof r.username === "string" ? r.username : base.username,
     secretId: typeof r.secretId === "string" ? r.secretId : base.secretId,
     identities: Array.isArray(r.identities) ? r.identities.filter((i): i is Identity => isObj(i) && typeof i.id === "string" && typeof i.address === "string" && typeof i.name === "string") : base.identities,
