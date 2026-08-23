@@ -23,15 +23,4 @@ export default [
       },
     },
   },
-  {
-    // STORE-SCHULD: settings-tab/prefer-setting-definitions — MailstoneSettingTab (M1) baut
-    // Ordner/Jahr-Unterordner/Dateiname/Sprache noch imperativ in display() auf. Die
-    // deklarative getSettingDefinitions()-API (Konten, Secrets, Sync-Intervalle) kommt in M2,
-    // wenn Konten-Settings dazukommen — dann wird der ganze Tab auf einmal umgestellt statt
-    // zwei Bauarten nebeneinander zu pflegen.
-    files: ["src/obsidian/settings-tab.ts"],
-    rules: {
-      "obsidianmd/settings-tab/prefer-setting-definitions": "off",
-    },
-  },
 ];
