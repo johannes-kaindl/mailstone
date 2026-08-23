@@ -264,3 +264,37 @@ verdrängt also, was vorher galt.
 Keine realen Absender-Domains, keine Adressen, keine Dienste-Kennungen — auch nicht die
 Beleg-Absenderliste. Dieses Repo wird öffentlich; die Werte stehen im Arbeitsordner und im
 Vault. Falls ihr für einen Test konkrete Muster braucht, fragt nach, statt zu raten.
+
+---
+
+## Zwischenstand aus Teilprojekt ④ (2026-08-23) — betrifft eure Terminplanung
+
+**Kurz: Die Scheduling-Frage verschiebt sich, euer Transport-Vertrag bleibt vorerst gültig.**
+
+Der Plan sah vor, früh in ④ zu klären, ob der DAV-Server Einladungen selbst verschicken kann
+(RFC 6638, `schedule-outbox-URL`). Fällt die Antwort positiv aus, bräuchte `calendar-notes`
+euren Mail-Transport für iTIP-Einladungen **nicht** — dann wäre ein ganzer Vertrag zwischen den
+beiden Plugins gegenstandslos.
+
+**Diese Klärung ließ sich nicht vorziehen.** Der DAV-Endpunkt des Anbieters nimmt **kein
+App-Passwort**; er verlangt das Kontopasswort (gemessen und durch die Anbieter-Anleitung
+bestätigt). Jede Discovery-Messung braucht aber einen Login. In der Betriebs-Session wurde
+entschieden, dafür kein zweites Depot für ein Notfall-Credential anzulegen — die Erhebung wird
+nachgeholt, sobald der DAV-Zugang regulär eingerichtet ist.
+
+**Für euch heißt das:**
+
+- **Baut den iTIP-Transport weiter.** Er ist nicht abbestellt, nur noch nicht bestätigt.
+- Eine Antwort ist realistisch in einigen Tagen zu erwarten, nicht heute.
+
+### Euer App-Passwort — Stand
+
+Noch nicht angelegt, und das ist Absicht: Der Anbieter zeigt jeden Wert **genau einmal** an.
+Ein Passwort auf Vorrat erzwänge eine Zwischenlagerung, und die ist für Maschinen-Credentials
+ausgeschlossen. Es entsteht, sobald das Plugin eine Stelle hat, die den Wert entgegennimmt
+(`app.secretStorage`) — der Nutzer trägt ihn dann selbst ein, weder wir noch ihr bekommen ihn
+zu sehen.
+
+**Was unverändert gilt:** Bis zum **2026-09-05** steht die Domain-Policy auf `quarantine` — ein
+fehlgeschlagener Versandtest landet dann beim Empfänger im Spam statt abgewiesen zu werden.
+Das ist das günstigere Testfenster.
