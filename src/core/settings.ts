@@ -1,10 +1,13 @@
 import { mergeSettings } from "../vendor/code-kit/settings";
 import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
+import type { TlsMode } from "./net/types";
 
 export interface Identity { id: string; address: string; name: string }
 export interface Account {
   id: string; label: string;
-  imap: { host: string; port: number; tls: "implicit" | "starttls" }; smtp: { host: string; port: number; tls: "implicit" | "starttls" };
+  // smtp.tls erlaubt zusaetzlich "none": die Settings-UI bietet es nie an, aber data.json kann es
+  // fuer einen lokalen Fake-SMTP-Server (127.0.0.1) tragen — siehe core/send/service.ts isLoopback.
+  imap: { host: string; port: number; tls: "implicit" | "starttls" }; smtp: { host: string; port: number; tls: TlsMode };
   username: string; secretId: string; identities: Identity[]; defaultIdentityId: string;
   folders: { inbox: string; allowlist: string; archive: string; sent?: string }; sync: { enabled: boolean; intervalMin: number };
 }

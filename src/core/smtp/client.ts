@@ -1,7 +1,7 @@
 // SMTP-Client als Zustandsautomat ueber SocketTransport (RFC 5321): Greeting -> EHLO -> optional
 // STARTTLS -> AUTH PLAIN -> MAIL FROM -> RCPT TO (je Empfaenger) -> DATA -> QUIT. Kein Node-/
 // Obsidian-Import hier (siehe scripts/check-pure.mjs) — der Transport ist die einzige Aussenwelt.
-import type { NetErrorCode, SocketTransport } from "../net/types";
+import type { NetErrorCode, SocketTransport, TlsMode } from "../net/types";
 import { NetError } from "../net/types";
 import { dotStuff } from "./dotstuff";
 
@@ -10,7 +10,11 @@ export type SmtpErrorCode = "tls-required" | "auth" | "sender-rejected" | "recip
 export interface SmtpSendOptions {
   host: string;
   port: number;
-  tls: "implicit" | "starttls";
+  /** "none" ist nur fuer lokale Fake-Server (127.0.0.1) gedacht — der Aufrufer (SendService)
+   *  muss das per Loopback-Pruefung erzwungen haben, dieser Client verlangt trotzdem weiterhin
+   *  ein "secure" Transport (siehe unten), ausser fuer STARTTLS-Upgrade gibt es hier keine
+   *  Sonderbehandlung von "none". */
+  tls: TlsMode;
   username: string;
   password: string;
   /** Envelope-Absender (MAIL FROM). */
