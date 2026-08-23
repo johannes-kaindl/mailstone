@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { FakeSocketTransport } from "../../helpers/fake-socket";
-import { smtpSend } from "../../../src/core/smtp/client";
-import type { SmtpSendOptions } from "../../../src/core/smtp/client";
+import { smtpSend, smtpProbe } from "../../../src/core/smtp/client";
+import type { SmtpProbeOptions, SmtpSendOptions } from "../../../src/core/smtp/client";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -164,5 +164,73 @@ describe("smtpSend", () => {
     const t = new FakeSocketTransport(["220 smtp.example.net ESMTP"], []);
     const result = await smtpSend(t, baseOpts());
     expect(result).toEqual({ ok: false, code: "closed", detail: expect.any(String) });
+  });
+});
+
+const baseProbeOpts = (overrides: Partial<SmtpProbeOptions> = {}): SmtpProbeOptions => ({
+  host: "smtp.example.net",
+  port: 587,
+  tls: "implicit",
+  username: "user",
+  password: "pass",
+  ...overrides,
+});
+
+describe("smtpProbe", () => {
+  it("Happy-Path: EHLO -> AUTH -> QUIT, liefert die EHLO-Capabilities, faehrt nie MAIL FROM", async () => {
+    const t = new FakeSocketTransport(
+      ["220 smtp.example.net ESMTP"],
+      [
+        { expect: /^EHLO /, send: ["250-smtp.example.net", "250-STARTTLS", "250 AUTH PLAIN LOGIN"] },
+        { expect: "AUTH PLAIN AHVzZXIAcGFzcw==", send: ["235 2.7.0 ok"] },
+        { expect: "QUIT", send: ["221 bye"] },
+      ],
+    );
+    const result = await smtpProbe(t, baseProbeOpts());
+    expect(result).toEqual({ ok: true, capabilities: ["250-smtp.example.net", "250-STARTTLS", "250 AUTH PLAIN LOGIN"] });
+    expect(t.written.some((l) => l.startsWith("MAIL FROM"))).toBe(false);
+    expect(t.closed).toBe(true);
+  });
+
+  it("STARTTLS-Pfad: upgraded vor AUTH, Capabilities kommen aus dem zweiten EHLO", async () => {
+    const t = new FakeSocketTransport(
+      ["220 smtp.example.net ESMTP"],
+      [
+        { expect: /^EHLO /, send: ["250-smtp.example.net", "250 STARTTLS"] },
+        { expect: "STARTTLS", send: ["220 ready"], upgrade: true },
+        { expect: /^EHLO /, send: ["250-smtp.example.net", "250 AUTH PLAIN LOGIN"] },
+        { expect: "AUTH PLAIN AHVzZXIAcGFzcw==", send: ["235 2.7.0 ok"] },
+        { expect: "QUIT", send: ["221 bye"] },
+      ],
+    );
+    const result = await smtpProbe(t, baseProbeOpts({ tls: "starttls" }));
+    expect(result).toEqual({ ok: true, capabilities: ["250-smtp.example.net", "250 AUTH PLAIN LOGIN"] });
+    expect(t.connectCalls[0]?.tls).toBe("starttls");
+  });
+
+  it("auth: 535-Antwort auf AUTH PLAIN liefert code:'auth', kein QUIT im Dialog", async () => {
+    const t = new FakeSocketTransport(
+      ["220 smtp.example.net ESMTP"],
+      [
+        { expect: /^EHLO /, send: ["250-smtp.example.net", "250 AUTH PLAIN"] },
+        { expect: "AUTH PLAIN AHVzZXIAcGFzcw==", send: ["535 5.7.8 bad credentials"] },
+      ],
+    );
+    const result = await smtpProbe(t, baseProbeOpts());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("auth");
+      expect(result.detail).toContain("535");
+    }
+    expect(t.written.some((l) => l === "QUIT")).toBe(false);
+  });
+
+  it("tls-required: STARTTLS angefordert, aber Server bietet die Capability nicht", async () => {
+    const t = new FakeSocketTransport(
+      ["220 smtp.example.net ESMTP"],
+      [{ expect: /^EHLO /, send: ["250 smtp.example.net"] }],
+    );
+    const result = await smtpProbe(t, baseProbeOpts({ tls: "starttls" }));
+    expect(result).toEqual({ ok: false, code: "tls-required", detail: expect.any(String) });
   });
 });

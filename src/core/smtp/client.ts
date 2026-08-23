@@ -28,6 +28,11 @@ export interface SmtpSendOptions {
 
 export type SmtpSendResult = { ok: true; response: string; rejected?: string[] } | { ok: false; code: SmtpErrorCode; detail: string; rejected?: string[] };
 
+/** Optionen fuer smtpProbe: dieselbe Verbindungs-/Auth-Konfiguration wie smtpSend, ohne
+ *  Absender/Empfaenger/Nachricht — die Probe faehrt nur bis AUTH, nie MAIL FROM. */
+export type SmtpProbeOptions = Omit<SmtpSendOptions, "from" | "recipients" | "message">;
+export type SmtpProbeResult = { ok: true; capabilities: string[] } | { ok: false; code: SmtpErrorCode; detail: string };
+
 const DEFAULT_TIMEOUT_MS = 30000;
 
 interface SmtpResponse {
@@ -79,7 +84,10 @@ export async function smtpSend(transport: SocketTransport, opts: SmtpSendOptions
   }
 }
 
-async function runDialog(transport: SocketTransport, opts: SmtpSendOptions): Promise<SmtpSendResult> {
+/** Gemeinsamer Dialog-Anfang von smtpSend und smtpProbe: Connect -> Greeting -> EHLO ->
+ *  optional STARTTLS-Upgrade (mit erneutem EHLO) -> AUTH PLAIN. Liefert bei Erfolg die
+ *  EHLO-Capability-Zeilen NACH einem etwaigen Upgrade (bzw. die initialen bei implicit TLS). */
+async function connectEhloAuth(transport: SocketTransport, opts: SmtpProbeOptions): Promise<{ capabilities: string[] } | { result: SmtpSendResult }> {
   const log = opts.log;
   await transport.connect({
     host: opts.host,
@@ -89,34 +97,42 @@ async function runDialog(transport: SocketTransport, opts: SmtpSendOptions): Pro
   });
 
   const greeting = await readResponse(transport, log);
-  if ("protocolError" in greeting) return fail("protocol", greeting.protocolError);
-  if (greeting.code !== 220) return fail("protocol", `Greeting nicht 220: ${greeting.lines.join(" | ")}`);
+  if ("protocolError" in greeting) return { result: fail("protocol", greeting.protocolError) };
+  if (greeting.code !== 220) return { result: fail("protocol", `Greeting nicht 220: ${greeting.lines.join(" | ")}`) };
 
   let capabilities = await ehlo(transport, log);
-  if ("result" in capabilities) return capabilities.result;
+  if ("result" in capabilities) return capabilities;
 
   if (opts.tls === "starttls") {
     if (!capabilities.lines.some((l) => /^250[ -]STARTTLS/i.test(l))) {
-      return fail("tls-required", "Server bietet STARTTLS nicht an");
+      return { result: fail("tls-required", "Server bietet STARTTLS nicht an") };
     }
     await send(transport, "STARTTLS", log);
     const starttlsResponse = await readResponse(transport, log);
-    if ("protocolError" in starttlsResponse) return fail("protocol", starttlsResponse.protocolError);
-    if (starttlsResponse.code !== 220) return fail("tls-required", `STARTTLS abgelehnt: ${starttlsResponse.lines.join(" | ")}`);
+    if ("protocolError" in starttlsResponse) return { result: fail("protocol", starttlsResponse.protocolError) };
+    if (starttlsResponse.code !== 220) return { result: fail("tls-required", `STARTTLS abgelehnt: ${starttlsResponse.lines.join(" | ")}`) };
     await transport.upgradeTls();
     capabilities = await ehlo(transport, log);
-    if ("result" in capabilities) return capabilities.result;
+    if ("result" in capabilities) return capabilities;
   }
 
   if (!transport.secure) {
-    return fail("tls-required", "keine Klartext-Authentifizierung ohne TLS");
+    return { result: fail("tls-required", "keine Klartext-Authentifizierung ohne TLS") };
   }
 
   const authToken = base64Utf8(`\0${opts.username}\0${opts.password}`);
   await send(transport, `AUTH PLAIN ${authToken}`, log, "AUTH PLAIN ****");
   const authResponse = await readResponse(transport, log);
-  if ("protocolError" in authResponse) return fail("protocol", authResponse.protocolError);
-  if (authResponse.code !== 235) return fail("auth", authResponse.lines.join(" | "));
+  if ("protocolError" in authResponse) return { result: fail("protocol", authResponse.protocolError) };
+  if (authResponse.code !== 235) return { result: fail("auth", authResponse.lines.join(" | ")) };
+
+  return { capabilities: capabilities.lines };
+}
+
+async function runDialog(transport: SocketTransport, opts: SmtpSendOptions): Promise<SmtpSendResult> {
+  const log = opts.log;
+  const dial = await connectEhloAuth(transport, opts);
+  if ("result" in dial) return dial.result;
 
   await send(transport, `MAIL FROM:<${opts.from}>`, log);
   const mailResponse = await readResponse(transport, log);
@@ -157,6 +173,28 @@ async function runDialog(transport: SocketTransport, opts: SmtpSendOptions): Pro
 
   const response = finalResponse.lines[finalResponse.lines.length - 1] ?? "";
   return rejected.length > 0 ? { ok: true, response, rejected } : { ok: true, response };
+}
+
+/** Verbindungstest fuer die Settings-UI ("Test SMTP connection"): faehrt denselben Dialog wie
+ *  smtpSend bis AUTH, aber nie MAIL FROM/RCPT/DATA — kein Envelope, keine Nachricht. Bei Erfolg
+ *  QUIT statt weiterzureden; `capabilities` sind die EHLO-Zeilen NACH einem etwaigen
+ *  STARTTLS-Upgrade (bzw. die initialen bei implicit TLS). */
+export async function smtpProbe(transport: SocketTransport, opts: SmtpProbeOptions): Promise<SmtpProbeResult> {
+  try {
+    const dial = await connectEhloAuth(transport, opts);
+    // connectEhloAuth liefert "result" ausschliesslich ueber fail() (immer ok:false) — der
+    // Erfolgsfall traegt hier stattdessen "capabilities".
+    if ("result" in dial && !dial.result.ok) return { ok: false, code: dial.result.code, detail: dial.result.detail };
+    if ("result" in dial) return { ok: false, code: "protocol", detail: "unerwarteter Dialog-Zustand" };
+    await send(transport, "QUIT", opts.log);
+    await readResponse(transport, opts.log).catch(() => undefined);
+    return { ok: true, capabilities: dial.capabilities };
+  } catch (e) {
+    if (e instanceof NetError) return { ok: false, code: e.code, detail: e.message };
+    throw e;
+  } finally {
+    if (!transport.closed) await transport.close().catch(() => undefined);
+  }
 }
 
 async function ehlo(t: SocketTransport, log?: (line: string) => void): Promise<SmtpResponse | { result: SmtpSendResult }> {

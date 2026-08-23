@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_SETTINGS, loadSettings, newAccount, secretIdFor } from "../../src/core/settings";
+import { DEFAULT_SETTINGS, loadSettings, newAccount, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
 
 describe("settings", () => {
   it("Defaults", () => {
@@ -37,5 +37,15 @@ describe("settings", () => {
     const s = loadSettings({ accounts: [{ id: "a", identities: [{ id: "m", address: "mail@example.net", name: "M" }, "junk"] }] });
     expect(s.accounts[0]?.identities).toHaveLength(1);
     expect(s.accounts[0]?.identities[0]).toEqual({ id: "m", address: "mail@example.net", name: "M" });
+  });
+  it("slugifyAccountId transliteriert Umlaute und faellt auf 'account' zurueck", () => {
+    expect(slugifyAccountId("Büro Mail")).toBe("buero-mail");
+    expect(slugifyAccountId("  ")).toBe("account");
+    expect(slugifyAccountId("!!!")).toBe("account");
+  });
+  it("uniqueAccountId haengt bei Kollision -2, -3, … an", () => {
+    expect(uniqueAccountId("Privat", [])).toBe("privat");
+    expect(uniqueAccountId("Privat", ["privat"])).toBe("privat-2");
+    expect(uniqueAccountId("Privat", ["privat", "privat-2"])).toBe("privat-3");
   });
 });

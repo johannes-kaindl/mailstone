@@ -18,6 +18,32 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 export function secretIdFor(accountId: string): string { return `mailstone-${accountId}`; }
+
+const SLUG_TRANSLIT: Record<string, string> = { ä: "ae", ö: "oe", ü: "ue", ß: "ss", Ä: "ae", Ö: "oe", Ü: "ue" };
+
+/** Slug aus einem Konto-Label fuer die Konto-`id` (und damit `secretId`) — a-z0-9 mit Bindestrichen,
+ *  Umlaute transliteriert statt weggeworfen. Leer/nur-Sonderzeichen faellt auf "account" zurueck. */
+export function slugifyAccountId(label: string): string {
+  const s = label
+    .trim()
+    .replace(/[äöüßÄÖÜ]/g, (c) => SLUG_TRANSLIT[c] ?? c)
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "account";
+}
+
+/** Haengt bei Kollision `-2`, `-3`, … an (kein Zaehler-Suffix bei der ersten Vergabe). */
+export function uniqueAccountId(label: string, existingIds: readonly string[]): string {
+  const base = slugifyAccountId(label);
+  if (!existingIds.includes(base)) return base;
+  let n = 2;
+  while (existingIds.includes(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
 export function newAccount(id: string): Account {
   return { id, label: id, imap: { host: "", port: 993, tls: "implicit" }, smtp: { host: "", port: 465, tls: "implicit" }, username: "", secretId: secretIdFor(id),
     identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" }, sync: { enabled: true, intervalMin: 5 } };

@@ -6,6 +6,8 @@ import { MailstoneSettingTab } from "./obsidian/settings-tab";
 import { importEmlFolder } from "./obsidian/import-eml";
 import { noticeNotifier } from "./obsidian/notifier";
 import { FolderPromptModal } from "./obsidian/modals/folder-prompt";
+import { obsidianSecretStore } from "./obsidian/secrets";
+import { nodeSocketTransport } from "./obsidian/tls-transport";
 
 interface PersistedState { settings: MailstoneSettings; zoneHashes: Record<string, string> }
 
@@ -18,7 +20,16 @@ export default class MailstonePlugin extends Plugin {
     this.settings = loadSettings(raw?.settings ?? raw);
     this.zoneHashes = raw?.zoneHashes ?? {};
     initI18n(this.settings.language === "auto" ? getLanguage() : this.settings.language);
-    this.addSettingTab(new MailstoneSettingTab(this.app, this));
+    // Objektreferenz statt Kopie: this.settings wird nach dieser Stelle im onload() nicht mehr
+    // neu zugewiesen (nur Felder darin mutiert), der Tab sieht also stets den aktuellen Stand.
+    this.addSettingTab(
+      new MailstoneSettingTab(this.app, this, {
+        settings: this.settings,
+        saveSettings: () => this.saveSettings(),
+        secrets: obsidianSecretStore(this.app),
+        transport: () => nodeSocketTransport(),
+      }),
+    );
     const notify = noticeNotifier();
     this.addCommand({
       id: "import-eml-folder",
