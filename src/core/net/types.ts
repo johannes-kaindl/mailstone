@@ -10,6 +10,9 @@ export interface ConnectOptions {
   tls: TlsMode;
   timeoutMs: number;
   servername?: string;
+  /** Zusätzliche Vertrauensanker NUR für Tests/lokale Fake-Server; die Zertifikatsprüfung selbst
+   *  bleibt immer aktiv — es gibt bewusst keine Option, sie abzuschalten. */
+  extraCa?: string;
 }
 
 export type NetErrorCode = "connect" | "tls" | "timeout" | "closed" | "protocol";

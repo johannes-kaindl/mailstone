@@ -1,5 +1,10 @@
 import { describe, it, expect, afterEach } from "vitest";
 import * as net from "node:net";
+import * as tls from "node:tls";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadNodeNet, nodeSocketTransport } from "../../src/obsidian/tls-transport";
 import { Platform } from "../vendor/kit/obsidian-mock";
 
@@ -99,4 +104,149 @@ describe("nodeSocketTransport", () => {
     await expect(transport.readLine()).rejects.toMatchObject({ code: "timeout" });
     await transport.close();
   });
+});
+
+describe("upgradeTls", () => {
+  /**
+   * Erzeugt ein Wegwerf-selbstsigniertes Zertifikat fuer CN=localhost via openssl (vorhanden auf
+   * macOS/Ubuntu-Runnern). Kein Skip-Pfad bei fehlendem openssl (Workspace-Lesson: ein
+   * ueberspringbarer Check braucht einen begruendeten Skip-Pfad — hier gibt es keinen Grund dafuer,
+   * also harter Fehlschlag mit klarer Fehlermeldung statt stillem Skip).
+   */
+  function makeSelfSignedCert(): { dir: string; key: string; cert: string } {
+    const dir = mkdtempSync(join(tmpdir(), "mailstone-tls-"));
+    const keyPath = join(dir, "key.pem");
+    const certPath = join(dir, "cert.pem");
+    try {
+      execFileSync(
+        "openssl",
+        [
+          "req",
+          "-x509",
+          "-newkey",
+          "rsa:2048",
+          "-nodes",
+          "-keyout",
+          keyPath,
+          "-out",
+          certPath,
+          "-days",
+          "2",
+          "-subj",
+          "/CN=localhost",
+        ],
+        { stdio: "pipe" },
+      );
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === "ENOENT") {
+        throw new Error(
+          "openssl nicht gefunden — der STARTTLS-Handshake-Test braucht openssl, um zur Testzeit ein " +
+            "Wegwerf-Zertifikat zu erzeugen (auf macOS/Ubuntu-Runnern vorhanden). Bitte openssl installieren.",
+        );
+      }
+      throw err;
+    }
+    return { dir, key: readFileSync(keyPath, "utf8"), cert: readFileSync(certPath, "utf8") };
+  }
+
+  /**
+   * Plaintext-Server, der nach "STARTTLS\r\n" den rohen Socket in ein server-seitiges TLSSocket
+   * einwickelt (isServer:true) und danach "220 secure\r\n" ueber TLS sendet. `sockets` sammelt
+   * alle roh/TLS-Sockets fuer den Aufraeum-Schritt, damit `server.close()` nicht auf offene
+   * Verbindungen wartet (siehe Lesson aus dem vorherigen Fix-Round: server.close() haengt, wenn
+   * eine akzeptierte Verbindung nie geschlossen wird).
+   */
+  function startStarttlsServer(
+    key: string,
+    cert: string,
+    sockets: Set<net.Socket | tls.TLSSocket>,
+  ): Promise<{ server: net.Server; port: number }> {
+    return new Promise((resolve, reject) => {
+      const server = net.createServer((socket) => {
+        sockets.add(socket);
+        socket.on("close", () => sockets.delete(socket));
+        socket.write("220 plain\r\n");
+        let plain = "";
+        const onData = (chunk: Buffer): void => {
+          plain += chunk.toString("utf8");
+          if (!plain.includes("STARTTLS\r\n")) return;
+          socket.removeListener("data", onData);
+          socket.write("220 go\r\n");
+          const secureSocket = new tls.TLSSocket(socket, { isServer: true, key, cert });
+          sockets.add(secureSocket);
+          secureSocket.on("close", () => sockets.delete(secureSocket));
+          // Im Negativfall verweigert der Client das Zertifikat und bricht den Handshake ab —
+          // das server-seitige TLSSocket meldet das als "error"; erwartet, nicht weiter behandeln.
+          secureSocket.on("error", () => {});
+          secureSocket.on("secure", () => {
+            secureSocket.write("220 secure\r\n");
+          });
+        };
+        socket.on("data", onData);
+      });
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address();
+        if (addr === null || typeof addr === "string") {
+          reject(new Error("unexpected server address"));
+          return;
+        }
+        resolve({ server, port: addr.port });
+      });
+    });
+  }
+
+  it(
+    "STARTTLS-Handshake gegen lokalen TLS-Server — mit extraCa vertraut, ohne nicht (Zertifikatsprüfung bleibt aktiv)",
+    async () => {
+      const { dir, key, cert } = makeSelfSignedCert();
+      const sockets = new Set<net.Socket | tls.TLSSocket>();
+      let server: net.Server | null = null;
+      try {
+        const started = await startStarttlsServer(key, cert, sockets);
+        server = started.server;
+        const port = started.port;
+
+        // Positiv: extraCa gesetzt → Zertifikat wird als vertrauenswuerdig akzeptiert.
+        const trusting = nodeSocketTransport();
+        await trusting.connect({
+          host: "127.0.0.1",
+          port,
+          tls: "starttls",
+          timeoutMs: 2000,
+          servername: "localhost",
+          extraCa: cert,
+        });
+        expect(await trusting.readLine()).toBe("220 plain");
+        await trusting.write("STARTTLS\r\n");
+        expect(await trusting.readLine()).toBe("220 go");
+        await trusting.upgradeTls();
+        expect(trusting.secure).toBe(true);
+        expect(await trusting.readLine()).toBe("220 secure");
+        await trusting.close();
+
+        // Negativ: kein extraCa → selbstsigniertes Zertifikat ist nicht vertrauenswuerdig,
+        // upgradeTls() muss ablehnen. Beweist, dass die Zertifikatsprüfung aktiv bleibt.
+        const distrusting = nodeSocketTransport();
+        await distrusting.connect({
+          host: "127.0.0.1",
+          port,
+          tls: "starttls",
+          timeoutMs: 2000,
+          servername: "localhost",
+        });
+        expect(await distrusting.readLine()).toBe("220 plain");
+        await distrusting.write("STARTTLS\r\n");
+        expect(await distrusting.readLine()).toBe("220 go");
+        await expect(distrusting.upgradeTls()).rejects.toMatchObject({ code: "tls" });
+        await distrusting.close().catch(() => {});
+      } finally {
+        for (const s of sockets) s.destroy();
+        if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    10000,
+  );
 });

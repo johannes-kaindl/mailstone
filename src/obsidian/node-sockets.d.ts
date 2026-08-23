@@ -4,7 +4,11 @@
 // (kein Top-Level-import/export) — nur so deklariert `declare module "node:tls"` ein neues
 // Ambient-Modul statt eine (fehlschlagende) Augmentation eines bereits aufgeloesten Moduls zu
 // versuchen (TS2664). Ausschliesslich das hier tatsaechlich verwendete `connect(...)` ist getypt.
-interface AmbientNodeSocketLike {
+//
+// `NodeSocketLike` ist bewusst ein globaler Ambient-Typ (kein Export noetig/moeglich aus einer
+// Nicht-Modul-Datei) — tls-transport.ts referenziert ihn direkt, statt eine zweite, identische
+// Interface-Definition zu pflegen (Review-Fund: Duplikat vermeiden).
+interface NodeSocketLike {
   on(event: "data", listener: (chunk: Uint8Array) => void): void;
   on(event: "end" | "close", listener: () => void): void;
   on(event: "error", listener: (err: Error) => void): void;
@@ -17,12 +21,12 @@ interface AmbientNodeSocketLike {
 declare module "node:tls" {
   function connect(
     opts:
-      | { host: string; port: number; servername: string }
-      | { socket: AmbientNodeSocketLike; servername: string },
+      | { host: string; port: number; servername: string; ca?: string[] }
+      | { socket: NodeSocketLike; servername: string; ca?: string[] },
     cb: () => void,
-  ): AmbientNodeSocketLike;
+  ): NodeSocketLike;
 }
 
 declare module "node:net" {
-  function connect(opts: { host: string; port: number }, cb: () => void): AmbientNodeSocketLike;
+  function connect(opts: { host: string; port: number }, cb: () => void): NodeSocketLike;
 }

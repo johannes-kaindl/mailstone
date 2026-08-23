@@ -12,16 +12,12 @@
 import { Platform } from "obsidian";
 import { NetError, type ConnectOptions, type SocketTransport } from "../core/net/types";
 
-/** Minimaler Ausschnitt der node:net/node:tls-Socket-API, den dieser Adapter braucht. */
-interface NodeSocketLike {
-  on(event: "data", listener: (chunk: Uint8Array) => void): void;
-  on(event: "end" | "close", listener: () => void): void;
-  on(event: "error", listener: (err: Error) => void): void;
-  once(event: "error", listener: (err: Error) => void): void;
-  removeAllListeners(event: "data"): void;
-  write(data: Uint8Array | string, cb: (err?: Error) => void): void;
-  end(cb: () => void): void;
-}
+// `NodeSocketLike` ist der globale Ambient-Typ aus node-sockets.d.ts (Nicht-Modul-Datei, daher
+// kein Import noetig) — hier nicht erneut definiert, um die Duplikat-Review-Anmerkung zu beheben.
+// Die `global`-Direktive ist kein Rule-Disable (kein `eslint-disable`, check-no-inline-disables.mjs
+// blockt sie nicht) — sie erklaert dem typ-blinden Basis-`no-undef` nur, dass dieser Bezeichner ein
+// echter, von TS aufgeloester Ambient-Typ ist, kein tatsaechlich unbekannter Wert.
+/* global NodeSocketLike -- Ambient-Typ aus node-sockets.d.ts, TS-real aufgeloest (types:[]-Adapter) */
 
 interface NetModule {
   connect(opts: { host: string; port: number }, cb: () => void): NodeSocketLike;
@@ -29,7 +25,9 @@ interface NetModule {
 
 interface TlsModule {
   connect(
-    opts: { host: string; port: number; servername: string } | { socket: NodeSocketLike; servername: string },
+    opts:
+      | { host: string; port: number; servername: string; ca?: string[] }
+      | { socket: NodeSocketLike; servername: string; ca?: string[] },
     cb: () => void,
   ): NodeSocketLike;
 }
@@ -75,6 +73,7 @@ export function nodeSocketTransport(): SocketTransport {
   let timeoutMs = 30000;
   let secure = false;
   let hostName = "";
+  let extraCa: string | undefined;
 
   const wake = (): void => {
     const w = waiter;
@@ -128,13 +127,17 @@ export function nodeSocketTransport(): SocketTransport {
       if (!mods) throw new NetError("connect", "desktop only");
       timeoutMs = opts.timeoutMs;
       hostName = opts.servername ?? opts.host;
+      extraCa = opts.extraCa;
       await new Promise<void>((resolve, reject) => {
         const onErr = (e: Error): void => reject(new NetError(opts.tls === "implicit" ? "tls" : "connect", e.message));
         if (opts.tls === "implicit") {
-          const s = mods.tls.connect({ host: opts.host, port: opts.port, servername: hostName }, () => {
-            secure = true;
-            resolve();
-          });
+          const s = mods.tls.connect(
+            { host: opts.host, port: opts.port, servername: hostName, ...(extraCa ? { ca: [extraCa] } : {}) },
+            () => {
+              secure = true;
+              resolve();
+            },
+          );
           s.once("error", onErr);
           attach(s);
         } else {
@@ -150,10 +153,13 @@ export function nodeSocketTransport(): SocketTransport {
       if (!mods || !sock) throw new NetError("tls", "no socket");
       const plain = sock;
       await new Promise<void>((resolve, reject) => {
-        const s = mods.tls.connect({ socket: plain, servername: hostName }, () => {
-          secure = true;
-          resolve();
-        });
+        const s = mods.tls.connect(
+          { socket: plain, servername: hostName, ...(extraCa ? { ca: [extraCa] } : {}) },
+          () => {
+            secure = true;
+            resolve();
+          },
+        );
         s.once("error", (e: Error) => reject(new NetError("tls", e.message)));
         plain.removeAllListeners("data");
         attach(s);
