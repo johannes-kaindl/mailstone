@@ -1,0 +1,19 @@
+From: exchange@example.com
+To: max@example.net
+Subject: Mit TNEF
+Date: Tue, 19 Aug 2026 17:00:00 +0200
+Message-ID: <tnef-001@mail.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="t"
+
+--t
+Content-Type: text/plain; charset=UTF-8
+
+Siehe Anhang.
+--t
+Content-Type: application/ms-tnef; name="winmail.dat"
+Content-Disposition: attachment; filename="winmail.dat"
+Content-Transfer-Encoding: base64
+
+eJ8+Ig==
+--t--

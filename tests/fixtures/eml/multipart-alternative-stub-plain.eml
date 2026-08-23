@@ -1,0 +1,17 @@
+From: newsletter@example.com
+To: max@example.net
+Subject: Newsletter
+Date: Tue, 19 Aug 2026 11:00:00 +0200
+Message-ID: <stub-001@mail.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=UTF-8
+
+Diese Nachricht enthält HTML.
+--alt
+Content-Type: text/html; charset=UTF-8
+
+<html><body><h1>Neuigkeiten</h1><p>Erster Absatz mit <a href="https://example.com/a">Link</a>.</p><p>Zweiter Absatz, deutlich länger als der Plain-Stub, damit die Heuristik greift und HTML gewinnt.</p><table><tr><td>Layout</td></tr></table><img src="https://example.com/pixel.gif" width="1" height="1"></body></html>
+--alt--

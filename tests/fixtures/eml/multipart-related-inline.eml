@@ -1,0 +1,20 @@
+From: erika@example.org
+To: max@example.net
+Subject: Mit Bild
+Date: Tue, 19 Aug 2026 13:00:00 +0200
+Message-ID: <related-001@mail.example.org>
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: text/html; charset=UTF-8
+
+<html><body><p>Siehe Bild:</p><img src="cid:logo@example.org" alt="Logo"></body></html>
+--rel
+Content-Type: image/gif; name="logo.gif"
+Content-ID: <logo@example.org>
+Content-Disposition: inline; filename="logo.gif"
+Content-Transfer-Encoding: base64
+
+R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
+--rel--

@@ -1,0 +1,10 @@
+From: vertrieb@example.com
+To: max@example.net
+Subject: =?windows-1252?B?QW5nZWJvdCCTUHJlbWl1bZQ=?=
+Date: Wed, 20 Aug 2026 08:00:00 +0200
+Message-ID: <cp1252-001@mail.example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=windows-1252
+Content-Transfer-Encoding: base64
+
+QW5nZWJvdCCTUHJlbWl1bZQ=
