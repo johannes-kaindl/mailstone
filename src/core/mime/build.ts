@@ -81,6 +81,12 @@ function boundary(seed: string, n: number): string {
 
 export function buildMime(msg: OutgoingMessage, opts: BuildOptions): { bytes: Uint8Array; envelopeRecipients: string[] } {
   const seed = opts.boundarySeed ?? `${opts.messageId}:${opts.date.getTime()}`;
+  // envelopeRecipients geht unveraendert in SMTP-"RCPT TO:"-Zeilen. Eine Adresse mit CRLF
+  // waere dort ein eigenes Kommando (Command-Injection) — also dieselbe Adressgrammatik wie
+  // fuer den Absender, bevor irgendetwas gebaut wird. Fehler statt Filterung: eine stillschweigend
+  // beschnittene Empfaengerangabe waere eine Mail an jemand anderen als angezeigt.
+  const recipients = [...msg.to, ...(msg.cc ?? []), ...(msg.bcc ?? [])];
+  if (recipients.some((a) => !isAddress(a))) throw new Error("invalid recipient address");
   const h: string[] = [];
   const senderAddr = sanitizeId(opts.sender.address);
   if (!isAddress(senderAddr)) throw new Error("invalid sender address");
@@ -126,5 +132,5 @@ export function buildMime(msg: OutgoingMessage, opts: BuildOptions): { bytes: Ui
   }
 
   const raw = `${h.join(CRLF)}${CRLF}${body}${CRLF}`;
-  return { bytes: new TextEncoder().encode(raw), envelopeRecipients: [...msg.to, ...(msg.cc ?? []), ...(msg.bcc ?? [])] };
+  return { bytes: new TextEncoder().encode(raw), envelopeRecipients: recipients };
 }

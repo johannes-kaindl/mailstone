@@ -83,6 +83,11 @@ describe("buildMime", () => {
     const badOpts = { ...opts, sender: { address: "mail@example.net\r\nBcc: e@x", name: "Max Muster" } };
     expect(() => buildMime(base, badOpts)).toThrow();
   });
+  it("Empfaenger mit CRLF: buildMime wirft, envelopeRecipients wird nie ungeprueft geliefert", () => {
+    expect(() => buildMime({ ...base, to: ["gast@example.org\r\nRCPT TO:<evil@example.org>"] }, opts)).toThrow("invalid recipient address");
+    expect(() => buildMime({ ...base, cc: ["c@example.org\r\nDATA"] }, opts)).toThrow("invalid recipient address");
+    expect(() => buildMime({ ...base, bcc: ["kein-at-zeichen"] }, opts)).toThrow("invalid recipient address");
+  });
   it("Header-Injection ueber die Message-ID: keine Bcc-Zeile, genau eine Message-ID-Zeile", () => {
     const idOpts = { ...opts, messageId: "x\r\nBcc: e@x" };
     const { bytes } = buildMime(base, idOpts);
