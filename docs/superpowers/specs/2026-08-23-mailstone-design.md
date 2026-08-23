@@ -71,7 +71,7 @@ interface SocketTransport {
 ```
 Tests stellen `FakeSocketTransport` mit aufgezeichneten Server-Dialogen bereit (zeilenbasiertes Gegenstück zu calendar-notes' `fakeTransport(routes)`).
 
-**Manifest:** `id: "mailstone"`, `name: "Mailstone"`, `isDesktopOnly: true`, `minAppVersion: "1.11.4"` (wegen `app.secretStorage`), `authorUrl: https://github.com/johannes-kaindl`.
+**Manifest:** `id: "mailstone"`, `name: "Mailstone"`, `isDesktopOnly: true`, `minAppVersion: "1.13.0"` — ursprünglich 1.11.4 (`app.secretStorage`), angehoben in M1 (2026-08-23), weil der Settings-Tab die **deklarative** `getSettingDefinitions()`-API nutzt (Store-Scanner-Regel `settings-tab/prefer-setting-definitions` ohne Override; calendar-notes fährt dieselbe Untergrenze). `authorUrl: https://github.com/johannes-kaindl`.
 
 ### 1.2 Kit-first-Übernahmen (Fundus, nicht Inspiration)
 
@@ -128,7 +128,7 @@ cc: []
 subject: "Termin geändert: Quartalsreview"
 in_reply_to: "[[2026-08-20-0915-quartalsreview]]"   # Wikilink nur wenn Ziel existiert, sonst String
 references: []
-attachments: [{ name: einladung.ics, type: text/calendar, size: 2841 }]
+attachments: ["einladung.ics (text/calendar, 2.8 KB)"]     # Strings, nicht Objekte — der leichte Frontmatter-Serialisierer (Kit yaml_lite) kennt keine Objektlisten; `mail.extractAttachment` liest Anhänge aus der .eml, nie aus diesem Feld
 ```
 Abgeleitete Schlüssel = genau die Profil-Keys + `mail_*`; alles andere gehört dem Nutzer (auch leer, auch unbekannt). `created`/`updated` setzt das Plugin nie.
 
@@ -145,9 +145,9 @@ Abgeleitete Schlüssel = genau die Profil-Keys + `mail_*`; alles andere gehört 
 `## Nachricht` ist echte Überschrift (`![[…#Nachricht]]`). `cid:`-Bilder → Platzhalter `(Inline-Bild: name)`, nie data-URI, nie extrahiert. Zitatebenen bleiben `>`. Bei `multipart/alternative` gewinnt `text/plain`, wenn nicht leer und ≥ 10 % der HTML-Textlänge (kalibrierbar). Zone-Hash (sha256 der Zone) im Plugin-Zustand (`data.json`, Map `mail_id → hash`), nicht im Frontmatter.
 
 **Merge-Regeln** (Prioritätsreihenfolge; Verletzung → `{ok:false, code}` und **kein Schreibvorgang**):
-1. Nur die Zone zwischen den Fences wird ersetzt; Außenbereich byte-identisch.
-2. Frontmatter: nur abgeleitete Keys; unbekannte Keys bleiben samt Wert und Reihenfolge; Parsing nach Schlüssel, nie nach Position.
-3. Fehlende Fences → `fences-missing`. 4. Hash ≠ gespeichert → `zone-edited`. 5. Re-Render nie automatisch; Sync legt nur Neues an und setzt `mail_state`.
+1. Nur die Zone zwischen den Fences wird ersetzt; Außenbereich byte-identisch. Fence-Marker, die im Mailtext selbst vorkommen, werden beim Rendern neutralisiert; der Ende-Marker wird vom Ende her gesucht.
+2. Frontmatter: nur abgeleitete Keys, und zwar **zeilenweise in-place** im rohen Frontmatter-Text (kein Re-Serialisieren des Ganzen) — unbekannte Keys, Kommentare, verschachtelte Maps und Block-Scalars bleibt byte-identisch; Parsing nach Schlüssel, nie nach Position. Ein abgeleiteter Key, der als mehrzeiliger Block-Scalar vorliegt → `frontmatter-unparseable`.
+3. Fehlende Fences → `fences-missing`. 4. Hash ≠ gespeichert → `zone-edited`. 5. Re-Render nie automatisch; Sync legt nur Neues an und setzt `mail_state` (`PlanInput.allowUpdate=false`); nur das Import-/Re-Render-Kommando darf bestehende Notizen aktualisieren. `mail_synced` ist ein **volatiler** Key: ändert sich sonst nichts, wird er nicht neu gestempelt (Idempotenz).
 
 **Verwaiste Notizen** (`mail_id` nicht mehr im Allowlist-Ordner) → `mail_state: detached`; nie löschen. **Anhänge** bleiben in der `.eml`; Frontmatter führt Name/Typ/Größe; Extraktion nur per Kommando, eine Datei, in den Obsidian-Anhangordner. `winmail.dat` wird erkannt und geführt, nicht ausgepackt.
 
