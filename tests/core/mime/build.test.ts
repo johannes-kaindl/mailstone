@@ -107,6 +107,14 @@ describe("buildMime", () => {
     const back = await parseEml(bytes);
     expect(back.attachments.map((a) => a.name)).toContain("a.txt");
   });
+  it("120-Zeichen-Umlaut-Betreff: parseEml-Roundtrip liefert den exakten Original-Betreff, keine Zeile > 78", async () => {
+    const subject = "Ümlaut-Einladung-mit-vielen-Sonderzeichen äöüßÄÖÜ ".repeat(4).slice(0, 120);
+    const { bytes } = buildMime({ ...base, subject }, opts);
+    const s = new TextDecoder().decode(bytes);
+    for (const line of s.split("\r\n")) expect(line.length).toBeLessThanOrEqual(78);
+    const back = await parseEml(bytes);
+    expect(back.subject).toBe(subject);
+  });
 });
 describe("validateOutgoing", () => {
   it("ohne Empfaenger / leerer Betreff / ungueltige Adresse", () => {
