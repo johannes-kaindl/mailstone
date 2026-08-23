@@ -129,11 +129,27 @@ export function nodeSocketTransport(): SocketTransport {
       hostName = opts.servername ?? opts.host;
       extraCa = opts.extraCa;
       await new Promise<void>((resolve, reject) => {
-        const onErr = (e: Error): void => reject(new NetError(opts.tls === "implicit" ? "tls" : "connect", e.message));
+        let settled = false;
+        let s: NodeSocketLike | undefined;
+        const timer = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          s?.destroy();
+          reject(new NetError("timeout", `connect timed out after ${opts.timeoutMs} ms`));
+        }, opts.timeoutMs);
+        const onErr = (e: Error): void => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          reject(new NetError(opts.tls === "implicit" ? "tls" : "connect", e.message));
+        };
         if (opts.tls === "implicit") {
-          const s = mods.tls.connect(
+          s = mods.tls.connect(
             { host: opts.host, port: opts.port, servername: hostName, ...(extraCa ? { ca: [extraCa] } : {}) },
             () => {
+              if (settled) return;
+              settled = true;
+              window.clearTimeout(timer);
               secure = true;
               resolve();
             },
@@ -141,7 +157,12 @@ export function nodeSocketTransport(): SocketTransport {
           s.once("error", onErr);
           attach(s);
         } else {
-          const s = mods.net.connect({ host: opts.host, port: opts.port }, () => resolve());
+          s = mods.net.connect({ host: opts.host, port: opts.port }, () => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            resolve();
+          });
           s.once("error", onErr);
           attach(s);
         }
@@ -151,6 +172,12 @@ export function nodeSocketTransport(): SocketTransport {
     async upgradeTls() {
       const mods = await loadNodeNet();
       if (!mods || !sock) throw new NetError("tls", "no socket");
+      // CVE-2011-0411-Klasse (STARTTLS-Command-Injection): Bytes, die vor dem Handshake im
+      // gemeinsamen Lesepuffer liegen, koennen von einem MITM VOR "220 go" plaziertes Klartext-
+      // Plaintext sein, das sonst nach dem Upgrade so gelesen wuerde, als kaeme es ueber TLS.
+      // Werfen statt leeren: uebrig gebliebene Daten sind nie legitim, ein Leeren wuerde den
+      // Angriff nur stillschweigend verschleiern statt ihn abzuwehren.
+      if (buf.length > 0) throw new NetError("tls", "unerwartete Daten vor dem STARTTLS-Handshake");
       const plain = sock;
       await new Promise<void>((resolve, reject) => {
         const s = mods.tls.connect(
@@ -202,7 +229,18 @@ export function nodeSocketTransport(): SocketTransport {
     async close() {
       if (sock && !eof) {
         const s = sock;
-        await new Promise<void>((resolve) => s.end(() => resolve()));
+        await new Promise<void>((resolve) => {
+          const fallback = window.setTimeout(() => {
+            s.destroy();
+          }, 2000);
+          s.on("close", () => {
+            window.clearTimeout(fallback);
+            resolve();
+          });
+          s.end(() => {
+            /* Bestaetigung kommt ueber das "close"-Event, s. Fallback-Timer oben. */
+          });
+        });
       }
       eof = true;
     },

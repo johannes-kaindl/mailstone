@@ -16,6 +16,7 @@ interface NodeSocketLike {
   removeAllListeners(event: "data"): void;
   write(data: Uint8Array | string, cb: (err?: Error) => void): void;
   end(cb: () => void): void;
+  destroy(): void;
 }
 
 declare module "node:tls" {

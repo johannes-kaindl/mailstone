@@ -161,6 +161,7 @@ describe("upgradeTls", () => {
     key: string,
     cert: string,
     sockets: Set<net.Socket | tls.TLSSocket>,
+    opts?: { injectedLine?: string },
   ): Promise<{ server: net.Server; port: number }> {
     return new Promise((resolve, reject) => {
       const server = net.createServer((socket) => {
@@ -172,7 +173,10 @@ describe("upgradeTls", () => {
           plain += chunk.toString("utf8");
           if (!plain.includes("STARTTLS\r\n")) return;
           socket.removeListener("data", onData);
-          socket.write("220 go\r\n");
+          // MITM-Simulation (opts.injectedLine): das go-ahead und eine zusaetzliche Klartext-Zeile
+          // kommen in EINEM Write, damit der Client sie zusammen im Lesepuffer vorfindet, bevor er
+          // ueberhaupt readLine() fuer "220 go" aufruft.
+          socket.write(`220 go\r\n${opts?.injectedLine ?? ""}`);
           const secureSocket = new tls.TLSSocket(socket, { isServer: true, key, cert });
           sockets.add(secureSocket);
           secureSocket.on("close", () => sockets.delete(secureSocket));
@@ -241,6 +245,42 @@ describe("upgradeTls", () => {
         expect(await distrusting.readLine()).toBe("220 go");
         await expect(distrusting.upgradeTls()).rejects.toMatchObject({ code: "tls" });
         await distrusting.close().catch(() => {});
+      } finally {
+        for (const s of sockets) s.destroy();
+        if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    10000,
+  );
+
+  it(
+    "upgradeTls() lehnt ab, wenn vor dem Handshake bereits Daten im Lesepuffer liegen (STARTTLS-Injection, CVE-2011-0411-Klasse)",
+    async () => {
+      const { dir, key, cert } = makeSelfSignedCert();
+      const sockets = new Set<net.Socket | tls.TLSSocket>();
+      let server: net.Server | null = null;
+      try {
+        const started = await startStarttlsServer(key, cert, sockets, { injectedLine: "250 injected\r\n" });
+        server = started.server;
+        const port = started.port;
+
+        const transport = nodeSocketTransport();
+        await transport.connect({
+          host: "127.0.0.1",
+          port,
+          tls: "starttls",
+          timeoutMs: 2000,
+          servername: "localhost",
+          extraCa: cert,
+        });
+        expect(await transport.readLine()).toBe("220 plain");
+        await transport.write("STARTTLS\r\n");
+        // Der Server hat "220 go\r\n250 injected\r\n" in einem Write geschickt — readLine() liest
+        // nur die erste Zeile, "250 injected\r\n" bleibt im Lesepuffer.
+        expect(await transport.readLine()).toBe("220 go");
+        await expect(transport.upgradeTls()).rejects.toMatchObject({ code: "tls" });
+        await transport.close().catch(() => {});
       } finally {
         for (const s of sockets) s.destroy();
         if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
