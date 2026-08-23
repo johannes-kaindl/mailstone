@@ -13,5 +13,5 @@ Diese Nachricht enthält HTML.
 --alt
 Content-Type: text/html; charset=UTF-8
 
-<html><body><h1>Neuigkeiten</h1><p>Erster Absatz mit <a href="https://example.com/a">Link</a>.</p><p>Zweiter Absatz, deutlich länger als der Plain-Stub, damit die Heuristik greift und HTML gewinnt.</p><table><tr><td>Layout</td></tr></table><img src="https://example.com/pixel.gif" width="1" height="1"></body></html>
+<html><body><h1>Neuigkeiten</h1><p>Erster Absatz mit <a href="https://example.com/a">Link</a>.</p><p>Zweiter Absatz, deutlich länger als der Plain-Stub, damit die Heuristik greift und HTML gewinnt.</p><p>Dritter Absatz mit zusätzlichen Informationen zum Newsletter, damit der HTML-Text insgesamt deutlich länger wird als der kurze Plain-Text-Stub am Anfang dieser Nachricht.</p><p>Vierter Absatz rundet die Testfixtur ab und sorgt dafür, dass die automatische Quellwahl beim Rendern zuverlässig HTML statt reinem Text bevorzugt, auch bei realistischer Länge.</p><table><tr><td>Layout</td></tr></table><img src="https://example.com/pixel.gif" width="1" height="1"></body></html>
 --alt--

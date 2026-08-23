@@ -1,14 +1,18 @@
 import TurndownService from "turndown";
 import type { ParsedMail } from "../mime/types";
 
-export interface RenderBodyOptions { plainMinRatio?: number } // Default 0.25 (empirisch: 0.1 laesst kurze "Diese Nachricht enthaelt HTML."-Stubs faelschlich gewinnen)
+export interface RenderBodyOptions { plainMinRatio?: number }
+
+// Reale Mails: HTML traegt oft tausende Zeichen Text, ein Plain-Stub ("Diese Nachricht
+// enthaelt HTML.") nur 30-80. 0.1 trennt das zuverlaessig; kalibrierbar ueber RenderBodyOptions.plainMinRatio.
+export const DEFAULT_PLAIN_MIN_RATIO = 0.1;
 
 function textLenOfHtml(html: string): number {
   return html.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().length;
 }
 
 export function chooseSource(m: Pick<ParsedMail, "text" | "html">, opts: RenderBodyOptions = {}): "text" | "html" | "none" {
-  const ratio = opts.plainMinRatio ?? 0.25;
+  const ratio = opts.plainMinRatio ?? DEFAULT_PLAIN_MIN_RATIO;
   const text = (m.text ?? "").trim();
   const html = (m.html ?? "").trim();
   if (!text && !html) return "none";
@@ -23,6 +27,7 @@ function turndown(): TurndownService {
   td = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-" });
   td.remove(["style", "script", "head", "title"]);
   // Trackingpixel + sonstige 1x1-Bilder verwerfen
+  // Nur literale width="1" height="1"-Attribute; CSS-groesse 1x1-Pixel liegen ausserhalb dieser Heuristik.
   td.addRule("tracking-pixel", {
     filter: (node) => node.nodeName === "IMG" && ((node.getAttribute("width") === "1" && node.getAttribute("height") === "1")),
     replacement: () => "",
