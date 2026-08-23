@@ -1,0 +1,36 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderMessageBlock > beginnt mit ## Nachricht und rendert Fixtures stabil (Snapshot) > multipart-alternative 1`] = `
+"## Nachricht
+
+Hallo,
+der Termin verschiebt sich auf Donnerstag.
+
+> Zitat der Vorgängermail"
+`;
+
+exports[`renderMessageBlock > beginnt mit ## Nachricht und rendert Fixtures stabil (Snapshot) > multipart-alternative-stub-plain 1`] = `
+"## Nachricht
+
+# Neuigkeiten
+
+Erster Absatz mit [Link](https://example.com/a).
+
+Zweiter Absatz, deutlich länger als der Plain-Stub, damit die Heuristik greift und HTML gewinnt.
+
+Layout"
+`;
+
+exports[`renderMessageBlock > beginnt mit ## Nachricht und rendert Fixtures stabil (Snapshot) > multipart-related-inline 1`] = `
+"## Nachricht
+
+Siehe Bild:
+
+(Inline-Bild: Logo)"
+`;
+
+exports[`renderMessageBlock > beginnt mit ## Nachricht und rendert Fixtures stabil (Snapshot) > utf8-plain 1`] = `
+"## Nachricht
+
+Schöne Grüße aus München — ß und €."
+`;
