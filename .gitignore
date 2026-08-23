@@ -1,0 +1,34 @@
+# Diese Datei existiert, BEVOR das Repo existiert - und das ist ihr ganzer Zweck.
+#
+# Solange mailstone/ kein eigenes Git-Repo hat, ist alles hier geschuetzt, weil das
+# Dach-Repo obsidian-plugins den ganzen Ordner ignoriert (.gitignore Zeile 19).
+# In der Sekunde eines `git init` faellt dieser Schutz weg. Was dann nicht in einer
+# .gitignore steht, ist im ersten Commit - und ein oeffentliches Store-Repo hat
+# keinen Rueckweg aus einem gepushten Commit.
+
+# --- Archiv fremder Vorarbeiten -------------------------------------------
+# Enthaelt einen aelteren Spezifikations-Entwurf vom Arbeitsrechner mit
+# Arbeitgeber-Kontext (Anbieter, Rechnernamen, interne Remote-URL, Hinweise auf
+# Art.-9-DSGVO-Daten). Als Vorarbeit lesbar - aber es werden daraus nur MUSTER
+# uebernommen, nie Werte. Konvention wie im Dach: _archiv/ ist gitignored und
+# wird nicht zitiert.
+_archive/
+_archiv/
+
+# --- Rohdaten und Geheimnisse ----------------------------------------------
+# Vorsorglich, weil dieses Plugin per Definition mit Postfaechern arbeitet:
+# ein versehentlich abgelegter Mail-Abzug oder eine Zugangsdatei waere der
+# teuerste denkbare Fehler in einem oeffentlichen Repo.
+rohdaten/
+fixtures/private/
+*.mbox
+*.eml
+.env
+.env.*
+secrets.json
+
+# --- Build und Werkzeug-Reste ----------------------------------------------
+node_modules/
+main.js
+*.log
+.DS_Store
