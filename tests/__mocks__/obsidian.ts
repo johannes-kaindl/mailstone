@@ -23,3 +23,30 @@ export function getFrontMatterInfo(content: string): FrontMatterInfo {
   const block = m[1] ?? "";
   return { exists: true, frontmatter: block, from: 4, to: 4 + block.length, contentStart: m[0].length };
 }
+
+// Override: der vendorte Kit-Mock (Stand 0.28.0) kennt nur FuzzySuggestModal, nicht das nicht-
+// fuzzy SuggestModal, das der Konto/Identitaets-Picker im Kommando "Test-Mail an mich" (M2 Task 7)
+// verwendet — Bauart wie FuzzySuggestModal dort (Test-Affordances __choose/__close), nur ohne den
+// FuzzyMatch<T>-Wrapper.
+export class SuggestModal<T> {
+  app: any;
+  inputEl: { value: string } = { value: "" };
+  static __instance: any = null;
+  constructor(app?: any) {
+    this.app = app;
+    (this.constructor as any).__instance = this;
+    SuggestModal.__instance = this;
+  }
+  setPlaceholder(_s: string): this { return this; }
+  setInstructions(_i: any): this { return this; }
+  getSuggestions(_query: string): T[] { return []; }
+  renderSuggestion(_item: T, _el: any): void {}
+  onChooseSuggestion(_item: T, _evt?: any): void {}
+  open(): void {}
+  close(): void {}
+  onOpen(): void {}
+  onClose(): void {}
+  // Test affordances (not in real Obsidian): simulate choose / dismiss.
+  __choose(item: T): void { this.onChooseSuggestion(item); }
+  __close(): void { this.onClose(); }
+}
