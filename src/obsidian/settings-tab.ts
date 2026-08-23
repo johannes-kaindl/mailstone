@@ -1,5 +1,6 @@
-import { PluginSettingTab, type App, type SettingDefinitionItem } from "obsidian";
+import { PluginSettingTab, getLanguage, type App, type SettingDefinitionItem } from "obsidian";
 import { t } from "../vendor/code-kit/i18n";
+import { initI18n } from "../i18n/strings";
 import type MailstonePlugin from "../main";
 
 /** M1: Ordner, Jahr-Unterordner, Dateiname-Template, Sprache — Konten folgen in M2.
@@ -52,6 +53,9 @@ export class MailstoneSettingTab extends PluginSettingTab {
     const s = this.plugin.settings;
     if (key === "language") {
       s.language = value as typeof s.language;
+      // Sofort umschalten statt erst beim naechsten Start: sonst zeigen Notices und der
+      // Kommando-Name bis zum Neustart die alte Sprache, obwohl die Auswahl schon steht.
+      initI18n(s.language === "auto" ? getLanguage() : s.language);
     } else if (key === "profile.folder") {
       s.profile.folder = typeof value === "string" ? value.trim() || "Mail" : "Mail";
     } else if (key === "profile.yearSubfolder") {
