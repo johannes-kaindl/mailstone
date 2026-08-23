@@ -21,6 +21,13 @@ export type OutgoingValidation = { ok: true } | { ok: false; code: "no-recipient
 
 const ADDR = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
+/** Grobe, aber strenge Adressgrammatik — dieselbe Regel, die validateOutgoing auf
+ *  Empfaenger anwendet. Wird auch von build.ts genutzt, um die Absenderadresse vor dem
+ *  Einsetzen in den `From:`-Header zu pruefen (Haertung gegen Header-Injection). */
+export function isAddress(s: string): boolean {
+  return ADDR.test(s);
+}
+
 export function validateOutgoing(msg: OutgoingMessage): OutgoingValidation {
   const all = [...msg.to, ...(msg.cc ?? []), ...(msg.bcc ?? [])];
   if (all.length === 0) return { ok: false, code: "no-recipients" };

@@ -1,5 +1,5 @@
 import { encodeHeaderWord, foldHeader } from "./headers";
-import type { OutgoingMessage, Sender } from "../send/outgoing";
+import { isAddress, type OutgoingMessage, type Sender } from "../send/outgoing";
 import { sha256HexUtf8 } from "../../vendor/code-kit/sha256";
 
 export interface BuildOptions { sender: Sender; messageId: string; date: Date; boundarySeed?: string }
@@ -30,6 +30,18 @@ export function sanitizeHeaderValue(v: string): string {
  *  (siehe headers.ts normalizeMessageId/splitReferences). */
 function sanitizeId(v: string): string {
   return v.replace(/\s+/g, "");
+}
+
+/** Anhangs-MIME-Typ gegen Header-Injection und Part-Splitting haerten. Zuerst wird alles ab
+ *  dem ersten Whitespace/CR/LF/Semikolon abgeschnitten (ein eingebettetes
+ *  "\r\nContent-Disposition: inline" waere sonst ein syntaktisch gueltiges "type/subtype",
+ *  weil es genau einen "/" enthaelt — der Schnitt muss also VOR der Zeichen-Filterung
+ *  passieren, nicht danach). Danach werden nur RFC-2045-Token-Zeichen zugelassen; passt das
+ *  Ergebnis nicht auf "type/subtype", faellt es auf einen sicheren Default zurueck. */
+function sanitizeAttachmentType(v: string): string {
+  const rawType = v.split(/[\s\r\n;]/)[0] ?? "";
+  const type = rawType.replace(/[^A-Za-z0-9!#$&^_.+\-/]/g, "");
+  return /^[^/]+\/[^/]+$/.test(type) ? type : "application/octet-stream";
 }
 
 export function encodeQuotedPrintable(text: string): string {
@@ -70,11 +82,15 @@ function boundary(seed: string, n: number): string {
 export function buildMime(msg: OutgoingMessage, opts: BuildOptions): { bytes: Uint8Array; envelopeRecipients: string[] } {
   const seed = opts.boundarySeed ?? `${opts.messageId}:${opts.date.getTime()}`;
   const h: string[] = [];
+  const senderAddr = sanitizeId(opts.sender.address);
+  if (!isAddress(senderAddr)) throw new Error("invalid sender address");
   const senderName = sanitizeHeaderValue(opts.sender.name);
-  const fromHdr = senderName ? `${encodeHeaderWord(senderName)} <${opts.sender.address}>` : opts.sender.address;
+  const fromHdr = senderName ? `${encodeHeaderWord(senderName)} <${senderAddr}>` : senderAddr;
   h.push(foldHeader("From", fromHdr), foldHeader("To", msg.to.map(sanitizeHeaderValue).join(", ")));
   if (msg.cc?.length) h.push(foldHeader("Cc", msg.cc.map(sanitizeHeaderValue).join(", ")));
-  h.push(foldHeader("Subject", encodeHeaderWord(sanitizeHeaderValue(msg.subject))), `Date: ${rfc5322Date(opts.date)}`, `Message-ID: <${opts.messageId}>`);
+  const mid = sanitizeId(opts.messageId);
+  if (!mid) throw new Error("invalid message-id");
+  h.push(foldHeader("Subject", encodeHeaderWord(sanitizeHeaderValue(msg.subject))), `Date: ${rfc5322Date(opts.date)}`, `Message-ID: <${mid}>`);
   if (msg.inReplyTo) h.push(`In-Reply-To: <${sanitizeId(msg.inReplyTo)}>`);
   if (msg.references?.length) h.push(foldHeader("References", msg.references.map((r) => `<${sanitizeId(r)}>`).join(" ")));
   h.push("MIME-Version: 1.0", "X-Mailer: mailstone (Obsidian)");
@@ -98,7 +114,8 @@ export function buildMime(msg: OutgoingMessage, opts: BuildOptions): { bytes: Ui
   }
   for (const a of msg.attachments ?? []) {
     const name = sanitizeHeaderValue(a.name).replace(/"/g, "");
-    parts.push(`Content-Type: ${a.type}; name="${name}"${CRLF}Content-Disposition: attachment; filename="${name}"${CRLF}Content-Transfer-Encoding: base64${CRLF}${CRLF}${base64Lines(a.data)}`);
+    const type = sanitizeAttachmentType(a.type);
+    parts.push(`Content-Type: ${type}; name="${name}"${CRLF}Content-Disposition: attachment; filename="${name}"${CRLF}Content-Transfer-Encoding: base64${CRLF}${CRLF}${base64Lines(a.data)}`);
   }
 
   let body: string;

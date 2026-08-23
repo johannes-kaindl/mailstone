@@ -47,7 +47,14 @@ describe("buildMime", () => {
     expect(back.attachments.map((a) => a.name)).toContain("invite.ics");
     // Golden-File: beim ersten Lauf schreiben, danach vergleichen (Review sieht Aenderungen am Format)
     const golden = "tests/fixtures/golden/imip-request.eml";
-    if (!existsSync(golden)) { mkdirSync("tests/fixtures/golden", { recursive: true }); writeFileSync(golden, bytes); }
+    if (!existsSync(golden)) {
+      // CI-Guard: ein fehlendes Golden-File darf in CI nie still neu geschrieben werden —
+      // sonst faellt eine unabsichtliche Format-Aenderung nie auf (sie "besteht" einfach,
+      // weil das neue Ergebnis sich selbst zum neuen Golden-File macht).
+      if (process.env["CI"]) throw new Error(`golden file missing: ${golden}`);
+      mkdirSync("tests/fixtures/golden", { recursive: true });
+      writeFileSync(golden, bytes);
+    }
     expect(s).toBe(readFileSync(golden, "utf8"));
   });
   it("Threading-Header und bcc nur im Envelope", () => {
@@ -71,6 +78,29 @@ describe("buildMime", () => {
     const s = new TextDecoder().decode(bytes);
     expect(s).toContain("In-Reply-To: <x@example.orgBcc:e@x>\r\n");
     expect(s.split("\r\n").some((l) => l.startsWith("Bcc:"))).toBe(false);
+  });
+  it("Header-Injection ueber die Absenderadresse: buildMime wirft statt eine Bcc-Zeile einzuschleusen", () => {
+    const badOpts = { ...opts, sender: { address: "mail@example.net\r\nBcc: e@x", name: "Max Muster" } };
+    expect(() => buildMime(base, badOpts)).toThrow();
+  });
+  it("Header-Injection ueber die Message-ID: keine Bcc-Zeile, genau eine Message-ID-Zeile", () => {
+    const idOpts = { ...opts, messageId: "x\r\nBcc: e@x" };
+    const { bytes } = buildMime(base, idOpts);
+    const s = new TextDecoder().decode(bytes);
+    const lines = s.split("\r\n");
+    expect(lines.filter((l) => l.startsWith("Message-ID:")).length).toBe(1);
+    expect(lines.some((l) => l.startsWith("Bcc:"))).toBe(false);
+  });
+  it("Header-Injection ueber den Anhangs-Content-Type wird auf type/subtype eingedampft", async () => {
+    const { bytes } = buildMime(
+      { ...base, attachments: [{ name: "a.txt", type: "text/plain\r\nContent-Disposition: inline", data: new Uint8Array([1, 2, 3]) }] },
+      opts,
+    );
+    const s = new TextDecoder().decode(bytes);
+    expect(s).toContain('Content-Type: text/plain; name="a.txt"\r\n');
+    expect(s.split("\r\n").some((l) => l.startsWith("Content-Disposition: inline"))).toBe(false);
+    const back = await parseEml(bytes);
+    expect(back.attachments.map((a) => a.name)).toContain("a.txt");
   });
 });
 describe("validateOutgoing", () => {
