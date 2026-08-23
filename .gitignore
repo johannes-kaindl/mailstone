@@ -35,3 +35,18 @@ main.js
 
 # SDD-/Skill-Arbeitsverzeichnisse (git-ignoriert, Scratch)
 .superpowers/
+
+# Ausnahme: synthetische Test-Fixtures (tests/fixtures/eml/README.md erklaert die Regel)
+!tests/fixtures/
+!tests/fixtures/eml/
+!tests/fixtures/eml/*.eml
+# Build/Werkzeug-Reste
+node_modules/
+main.js
+data.json
+.claude/
+.superpowers/
+.remember/
+.gui-smoke.mjs
+.shots.mjs
+.DS_Store
