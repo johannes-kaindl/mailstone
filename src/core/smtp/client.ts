@@ -50,6 +50,16 @@ async function send(t: SocketTransport, line: string, log?: (line: string) => vo
   await t.write(`${line}\r\n`);
 }
 
+// RFC 4616 (PLAIN) verlangt UTF-8-Oktette vor der Base64-Kodierung — btoa() operiert auf UTF-16-
+// Codeunits als Latin-1-Bytes und verstuemmelt Umlaute bzw. wirft bei Zeichen > U+00FF. Deshalb erst
+// ueber TextEncoder in UTF-8-Bytes wandeln und die als Binaerstring an btoa() geben.
+function base64Utf8(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
 function fail(code: SmtpErrorCode, detail: string, rejected?: string[]): SmtpSendResult {
   return rejected ? { ok: false, code, detail, rejected } : { ok: false, code, detail };
 }
@@ -98,7 +108,7 @@ async function runDialog(transport: SocketTransport, opts: SmtpSendOptions): Pro
     return fail("tls-required", "keine Klartext-Authentifizierung ohne TLS");
   }
 
-  const authToken = btoa(`\0${opts.username}\0${opts.password}`);
+  const authToken = base64Utf8(`\0${opts.username}\0${opts.password}`);
   await send(transport, `AUTH PLAIN ${authToken}`, log, "AUTH PLAIN ****");
   const authResponse = await readResponse(transport, log);
   if ("protocolError" in authResponse) return fail("protocol", authResponse.protocolError);

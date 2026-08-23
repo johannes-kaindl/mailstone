@@ -86,6 +86,28 @@ describe("smtpSend", () => {
     }
   });
 
+  it("AUTH PLAIN kodiert Umlaut-Passwoerter als UTF-8-Bytes, nicht als Latin-1 (btoa-Bug)", async () => {
+    // Base64 von UTF-8-Bytes von "\0user\0pässwörd" — verifiziert mit node vor dem Festschreiben.
+    const t = new FakeSocketTransport(
+      ["220 smtp.example.net ESMTP"],
+      [
+        { expect: /^EHLO /, send: ["250-smtp.example.net", "250 AUTH PLAIN"] },
+        { expect: "AUTH PLAIN AHVzZXIAcMOkc3N3w7ZyZA==", send: ["235 2.7.0 ok"] },
+        { expect: "MAIL FROM:<mail@example.net>", send: ["250 ok"] },
+        { expect: "RCPT TO:<gast@example.org>", send: ["250 ok"] },
+        { expect: "DATA", send: ["354 go"] },
+        { expect: /^\.$/, send: ["250 2.0.0 queued as abc"] },
+        { expect: "QUIT", send: ["221 bye"] },
+      ],
+    );
+    const log = vi.fn();
+    const result = await smtpSend(t, baseOpts({ password: "pässwörd", log }));
+    expect(result).toEqual({ ok: true, response: "250 2.0.0 queued as abc" });
+    const lines = log.mock.calls.map((c) => c[0] as string);
+    expect(lines).toContain("C: AUTH PLAIN ****");
+    expect(lines.some((l) => l.includes("AHVzZXIAcMOkc3N3w7ZyZA=="))).toBe(false);
+  });
+
   it("teilweise abgelehnte Empfaenger: ok:true mit rejected-Liste, wenn mindestens einer akzeptiert wurde", async () => {
     const t = new FakeSocketTransport(
       ["220 smtp.example.net ESMTP"],
