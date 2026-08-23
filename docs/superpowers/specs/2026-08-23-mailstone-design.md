@@ -92,7 +92,7 @@ interface Account {
   secretId: string;                      // "mailstone-<account-id>" → app.secretStorage
   identities: Identity[];                // nur manuell gepflegt — der Server liefert keine sendefähige Liste
   defaultIdentityId: string;
-  folders: { inbox: string; allowlist: string; archive: string; sent?: string };  // Namen vom Nutzer gesetzt; inbox Default "INBOX"
+  folders: { inbox: string; allowlist: string; archive: string; sent?: string };  // Defaults INBOX / Vault / Archive — entsprechen der ③-Ordnerstruktur des Zielpostfachs (Nachtrag im Betriebsdoc); vom Nutzer änderbar
   sync: { enabled: boolean; intervalMin: number };                       // Default true / 5
 }
 interface Identity { id: string; address: string; name: string; }
@@ -228,6 +228,7 @@ Befund (TaskNotes 4.12.3): JS-API am Plugin-Objekt `app.plugins.plugins.tasknote
 - Alle Netz-/Protokollfehler sind Werte mit Codes; Notices über `Notifier` (übersetzt in `src/obsidian/`). Kein Stacktrace-Spam, kein wiederholtes Notice bei dauerhaftem Fehler (Backoff: nach 3 Fehlläufen Intervall ×4, Reset bei Erfolg).
 - Secrets nur in `app.secretStorage`; Passwort nie loggen; Protokoll-Debug-Log (opt-in, Setting `debugLog`) maskiert `AUTHENTICATE`/`LOGIN`-Zeilen und loggt keine Body-Inhalte.
 - TLS: Zertifikatsprüfung ist **nicht** abschaltbar. Klartext-Auth ohne TLS verweigert.
+- **Lesen setzt nie `\Seen`:** überall `BODY.PEEK[]`, Sync nur mit `EXAMINE`. Das ist seit dem ③-Nachtrag ein Vertrag, keine Hygiene — der Ordner `Belege` (Keyword `$beleg`) wird von einem anderen Abholer (paperless-ngx, Teilprojekt ⑤) über „ungelesen“ gesteuert; ein Plugin, das beim Anzeigen `\Seen` setzt, bricht diesen Weg. Die View zeigt `$beleg`/Flags nur an.
 - Reconnect ist kein Fehler: jeder Lauf baut eine frische Verbindung, abgebrochene Läufe werden beim nächsten Tick wiederholt; kein Teilzustand — `NotePlan[]` wird erst nach vollständigem Abruf ausgeführt.
 - Vault-Schreibgarantien: Merge-Regeln (§ 2.2), Busy-Guard, Schreiben nur über den Executor, Löschen gibt es nicht (auch nicht `trashFile`).
 - Datenschutz Repo: keine echte Mail, kein echter Header in Fixtures/Doku/Commit/Screenshot; Fehlerfälle werden nachgebaut, nicht kopiert.
@@ -268,8 +269,8 @@ Abhängigkeiten nach außen: App-Passwort (④) für jeden Test gegen das echte 
 
 | Punkt | Eigentümer | Wann |
 |---|---|---|
-| Name des Allowlist-Ordners | Maintainer, via mailbox-org-③ (Task 4) | Nachtrag nach ③ |
-| App-Passwort → erster echter Login/Versand; ManageSieve-Login | mailbox-org-④ | nach ③ |
+| ~~Name des Allowlist-Ordners~~ — **entschieden: `Vault`** (existiert, leer, oberste Ebene, keine Sieve-Regel); Archiv `Archive`; sechs flache Ordner (`Listen`, `Systempost`, `Belege`, `Fremd`, `Vault`, `Archive`) + Standardordner | ③ erledigt 2026-08-23 | — |
+| App-Passwort → erster echter Login/Versand (ManageSieve-Login mit App-Passwort ist laut ③-Nachtrag bereits gemessen: funktioniert) | mailbox-org-④ | offen |
 | Vault-Schema: Typ `mail` in `_types/` anlegen, Linter-Ausnahme für den Mail-Ordner, `.eml` aus dem Vault-Git ausnehmen | Maintainer (Vault) | vor M3-Nutzung |
 | Reihenfolge `## Notizen` vor `## Nachricht` | Gebrauch | nach M3 |
 | `IDLE`, IMAP `SEARCH` in der View, Absender → Kontakt via `calendar-notes`, B-mittel | V1.1+ | nach Nutzung |
