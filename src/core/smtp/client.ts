@@ -24,6 +24,11 @@ export interface SmtpSendOptions {
   timeoutMs?: number;
   /** Bekommt jede Protokollzeile (Client als "C: ", Server als "S: "). AUTH PLAIN wird maskiert. */
   log?: (line: string) => void;
+  /** Erlaubt AUTH PLAIN ueber eine unverschluesselte Verbindung (transport.secure === false).
+   *  NUR vom SendService gesetzt, und dort ausschliesslich fuer smtp.tls==="none" auf einem
+   *  Loopback-Host (isLoopback) — ein lokaler Fake-SMTP-Server ohne TLS. Nie aus der Settings-UI
+   *  erreichbar, nie fuer echte Server. */
+  allowInsecureAuth?: boolean;
 }
 
 export type SmtpSendResult = { ok: true; response: string; rejected?: string[] } | { ok: false; code: SmtpErrorCode; detail: string; rejected?: string[] };
@@ -116,7 +121,7 @@ async function connectEhloAuth(transport: SocketTransport, opts: SmtpProbeOption
     if ("result" in capabilities) return capabilities;
   }
 
-  if (!transport.secure) {
+  if (!transport.secure && !opts.allowInsecureAuth) {
     return { result: fail("tls-required", "keine Klartext-Authentifizierung ohne TLS") };
   }
 

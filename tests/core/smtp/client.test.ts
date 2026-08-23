@@ -160,6 +160,33 @@ describe("smtpSend", () => {
     expect(lines.some((l) => l.includes("AHVzZXIAcGFzcw=="))).toBe(false);
   });
 
+  it("tls:'none' ohne allowInsecureAuth: tls-required, kein AUTH im Dialog", async () => {
+    const t = new FakeSocketTransport(
+      ["220 mailstone-fake ESMTP"],
+      [{ expect: /^EHLO /, send: ["250-fake", "250 AUTH PLAIN"] }],
+    );
+    const result = await smtpSend(t, baseOpts({ tls: "none" }));
+    expect(result).toEqual({ ok: false, code: "tls-required", detail: expect.any(String) });
+    expect(t.written.some((l) => l.startsWith("AUTH"))).toBe(false);
+  });
+
+  it("tls:'none' + allowInsecureAuth:true (Fake-Dialog): AUTH laeuft trotz unsecure transport durch", async () => {
+    const t = new FakeSocketTransport(
+      ["220 mailstone-fake ESMTP"],
+      [
+        { expect: /^EHLO /, send: ["250-fake", "250 AUTH PLAIN"] },
+        { expect: "AUTH PLAIN AHVzZXIAcGFzcw==", send: ["235 2.7.0 authenticated"] },
+        { expect: "MAIL FROM:<mail@example.net>", send: ["250 2.1.0 ok"] },
+        { expect: "RCPT TO:<gast@example.org>", send: ["250 2.1.5 ok"] },
+        { expect: "DATA", send: ["354 go ahead"] },
+        { expect: /^\.$/, send: ["250 2.0.0 queued"] },
+        { expect: "QUIT", send: ["221 2.0.0 bye"] },
+      ],
+    );
+    const result = await smtpSend(t, baseOpts({ tls: "none", allowInsecureAuth: true }));
+    expect(result).toEqual({ ok: true, response: "250 2.0.0 queued" });
+  });
+
   it("NetError des Transports (Skript erschoepft) wird auf {ok:false, code:'closed'} gemappt", async () => {
     const t = new FakeSocketTransport(["220 smtp.example.net ESMTP"], []);
     const result = await smtpSend(t, baseOpts());

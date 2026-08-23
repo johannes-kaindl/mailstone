@@ -87,6 +87,7 @@ export function createSendService(deps: SendDeps): SendService {
         recipients: built.envelopeRecipients,
         message: built.bytes,
         ...(deps.log ? { log: deps.log } : {}),
+        ...(account.smtp.tls === "none" && isLoopback(account.smtp.host) ? { allowInsecureAuth: true } : {}),
       });
 
       if (result.ok) return { ok: true, messageId, ...(result.rejected ? { rejected: result.rejected } : {}) };

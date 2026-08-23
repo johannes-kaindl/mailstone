@@ -106,15 +106,21 @@ export class MailstoneSettingTab extends PluginSettingTab {
     }).open();
   }
 
+  // Der Entwurf steckt bewusst noch NICHT in this.host.settings.accounts — ein abgebrochenes
+  // Modal (Cancel/Escape) darf keine leere Konto-Zeile hinterlassen (Review-Fund). Die id
+  // (kollisionssicher, "-2" bei Kollision) wird schon hier vergeben, DAMIT das im Modal via
+  // SecretComponent gesetzte Passwort (secretId = secretIdFor(id)) beim Save nicht verwaist —
+  // erst der Array-Push selbst (und damit das Sichtbarwerden des Kontos) wartet auf Save.
   private addAccount(): void {
     const label = t("settings.accounts.add");
     const id = uniqueAccountId(label, this.host.settings.accounts.map((a) => a.id));
-    const account = newAccount(id);
-    account.label = label;
-    this.host.settings.accounts = [...this.host.settings.accounts, account];
-    void this.host.saveSettings();
-    this.update();
-    this.openEditModal(account);
+    const draft = newAccount(id);
+    draft.label = label;
+    new AccountModal(this.app, draft, { secrets: this.host.secrets, transport: () => this.host.transport() }, (saved) => {
+      this.host.settings.accounts = [...this.host.settings.accounts, saved];
+      void this.host.saveSettings();
+      this.update();
+    }).open();
   }
 
   private confirmRemoveAccount(account: Account): void {

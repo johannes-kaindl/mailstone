@@ -7,6 +7,7 @@ import type { Account, Identity } from "../../core/settings";
 import type { SecretStore } from "../../core/send/secrets";
 import { isAddress } from "../../core/send/outgoing";
 import { smtpProbe, type SmtpProbeOptions } from "../../core/smtp/client";
+import { isLoopback } from "../../core/send/service";
 import type { SocketTransport, TlsMode } from "../../core/net/types";
 import { t } from "../../vendor/code-kit/i18n";
 
@@ -194,6 +195,9 @@ export class AccountModal extends Modal {
       tls: this.draft.smtp.tls,
       username: this.draft.username,
       password,
+      // Nur fuer den lokalen Fake-SMTP-Server erreichbar (settings.account.tls Dropdown bietet
+      // "none" nie an) — s. Doc-Kommentar an SmtpSendOptions.allowInsecureAuth.
+      ...(this.draft.smtp.tls === "none" && isLoopback(this.draft.smtp.host) ? { allowInsecureAuth: true } : {}),
     };
     const result = await smtpProbe(this.deps.transport(), opts);
     if (result.ok) new Notice(t("settings.account.test.ok", result.capabilities.length));
