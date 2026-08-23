@@ -41,6 +41,9 @@ data.json
 # SDD-/Skill-Arbeitsverzeichnisse (git-ignoriert, Scratch)
 .superpowers/
 
+# scripts/fake-smtp.mjs schreibt hierhin (empfangene Test-Mails, Klartext)
+.fake-smtp/
+
 # Ausnahme: synthetische Test-Fixtures (tests/fixtures/eml/README.md erklaert die Regel)
 !tests/fixtures/
 !tests/fixtures/eml/
