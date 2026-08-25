@@ -71,12 +71,18 @@ export class AccountModal extends Modal {
     );
 
     const secretSetting = new Setting(this.contentEl).setName(t("settings.account.secret")).setDesc(t("settings.account.secret.desc"));
-    new SecretComponent(this.app, secretSetting.controlEl).setValue(this.draft.secretId).onChange((v) => {
-      try {
-        this.deps.secrets.set(this.draft.secretId, v);
-      } catch {
-        new Notice(t("settings.account.secret.failed"));
-      }
+    // `SecretComponent` ist ein VERWEIS auf einen Schluesselbund-Eintrag, kein Passwortfeld:
+    // `onChange` liefert die ID des im Dialog gewaehlten/neu angelegten Eintrags, NIE dessen Wert
+    // (Obsidian schreibt den Wert selbst) -- oder `null`, wenn die Verknuepfung ueber das X geloest
+    // wird (die .d.ts nennt das nicht, gemessen am Laufzeitverhalten, s. REGISTRY.md). Der Wert als
+    // Passwort behandelt zu haben, war der eigentliche Bug: geaenderte Konto-Kennwoerter landeten
+    // nie im Klartext-Feld, sondern die ID-Zeichenkette selbst wurde als "Passwort" gespeichert.
+    new SecretComponent(this.app, secretSetting.controlEl).setValue(this.draft.secretId).onChange((v: string | null) => {
+      if (v === null) return;
+      this.draft.secretId = v;
+      // Sofortiger Verbindungstest gibt dem Nutzer direkt eine sichtbare Rueckmeldung statt erst
+      // beim naechsten Sendeversuch zu bemerken, dass die falsche/keine Identitaet hinterlegt ist.
+      void this.testConnection();
     });
 
     this.renderIdentities();
