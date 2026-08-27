@@ -298,3 +298,55 @@ zu sehen.
 **Was unverändert gilt:** Bis zum **2026-09-05** steht die Domain-Policy auf `quarantine` — ein
 fehlgeschlagener Versandtest landet dann beim Empfänger im Spam statt abgewiesen zu werden.
 Das ist das günstigere Testfenster.
+
+---
+
+## Stand nach ④ (2026-08-27) — euer Passwort liegt vor, beide Rollen sind belegt
+
+**Das ersetzt den Abschnitt „Euer App-Passwort — Stand" von 2026-08-23.**
+
+**Das App-Passwort für das Plugin existiert** und ist mit IMAP **und** SMTP berechtigt. Der
+Nutzer hat den Wert selbst eingetragen; weder wir noch ihr haben ihn gesehen — so war es
+vereinbart und so ist es geblieben.
+
+Wir haben die Bedingung dafür nicht aus eurer Meldung übernommen, sondern nachgeprüft: Es gibt
+die Stelle im Code, die den Wert entgegennimmt, und die Oberflächentexte nennen den
+Secret-Storage der Anwendung statt der Plugin-Konfigurationsdatei. Dieselbe Regel wie überall
+in diesem Vorhaben — eine Meldung aus einer anderen Sitzung ist ein Hinweis, ein Messwert ist
+etwas anderes.
+
+**Beide Identitäten sind nachweislich sendefähig.** Je eine Testmail aus der privaten und aus
+der öffentlichen Rolle wurde von einer **externen Gegenstelle** geprüft und bestätigt:
+
+| Prüfung | Ergebnis |
+|---|---|
+| `spf` | `pass` |
+| `dkim` | `pass`, `header.d` = die eigene Domain, Selector wie in der Betriebsdoku |
+| `dmarc` | `pass` |
+| Absender | die jeweils gewählte Rolle — nicht beide Male die private |
+
+Die öffentliche Rolle wurde vom Empfänger in den **Posteingang** gelegt, nicht in den Spam. Unter
+der derzeit laufenden Policy ist das die aussagekräftige Probe. Belegt wurde das über einen
+Desktop-Client; die Einrichtung des Mobilgeräts steht noch aus, ändert an der Aussage aber
+nichts — geprüft wurde die Absenderkette, nicht das Gerät.
+
+**Damit ist eure Vorbedingung erfüllt:** Der Punkt „kein Test gegen das echte Konto möglich, bis
+④ das App-Passwort liefert" ist aufgehoben. Ihr könnt gegen das echte Konto testen.
+
+### Das Zeitfenster, in dem ein Fehlschlag billig ist
+
+| Zeitraum | Policy | Was ein fehlgeschlagener Versandtest kostet |
+|---|---|---|
+| **bis 2026-09-05** | `quarantine` | Die Mail landet beim Empfänger im Spam. Sichtbar, aber folgenlos. |
+| danach | `reject` | Dieselbe Mail wird endgültig abgewiesen — der Fehlschlag kostet eine echte Nachricht. |
+
+Das ist keine Warnung, sondern eine Preisangabe: **Wer vor dem 5. September testet, testet
+billiger.** Die Verschärfung ist beschlossen und terminiert; sie wird nicht für einen Test
+verschoben.
+
+### Was weiterhin offen ist
+
+Die Scheduling-Frage (C9) ist unverändert offen — dieselbe Ursache wie am 2026-08-23: Der
+DAV-Endpunkt verlangt das Kontopasswort, und die Erhebung wandert deshalb hinter die reguläre
+Einrichtung des DAV-Zugangs. **Euer iTIP-Transport-Vertrag bleibt bis dahin gültig.** Baut ihn
+weiter.
