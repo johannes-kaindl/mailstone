@@ -17,7 +17,7 @@ describe("settings", () => {
   it("newAccount + secretIdFor", () => {
     const a = newAccount("privat");
     expect(a.secretId).toBe(secretIdFor("privat"));
-    expect(a.folders).toEqual({ inbox: "INBOX", allowlist: "Vault", archive: "Archive" });
+    expect(a.folders).toEqual({ inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "Sent" });
     expect(a.smtp).toEqual({ host: "", port: 465, tls: "implicit" });
   });
   it("loadSettings repariert verschachtelte Konto-Objekte (partial imap)", () => {
@@ -60,5 +60,21 @@ describe("settings", () => {
     expect(uniqueAccountId("Privat", [])).toBe("privat");
     expect(uniqueAccountId("Privat", ["privat"])).toBe("privat-2");
     expect(uniqueAccountId("Privat", ["privat", "privat-2"])).toBe("privat-3");
+  });
+});
+
+describe("Sent-Ordner", () => {
+  it("neue Konten legen die Kopie im Ordner Sent ab", () => {
+    expect(newAccount("privat").folders.sent).toBe("Sent");
+  });
+
+  it("ein bestehendes Konto ohne sent-Feld erbt den Default", () => {
+    const s = loadSettings({ accounts: [{ id: "alt", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" } }] });
+    expect(s.accounts[0]?.folders.sent).toBe("Sent");
+  });
+
+  it("ein leerer sent-Ordner ueberlebt die Reparatur — sonst liesse sich die Kopie nicht abschalten", () => {
+    const s = loadSettings({ accounts: [{ id: "aus", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "" } }] });
+    expect(s.accounts[0]?.folders.sent).toBe("");
   });
 });

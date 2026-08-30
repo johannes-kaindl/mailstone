@@ -9,6 +9,9 @@ export interface Account {
   // fuer einen lokalen Fake-SMTP-Server (127.0.0.1) tragen — siehe core/send/service.ts isLoopback.
   imap: { host: string; port: number; tls: "implicit" | "starttls" }; smtp: { host: string; port: number; tls: TlsMode };
   username: string; secretId: string; identities: Identity[]; defaultIdentityId: string;
+  // sent traegt den Default "Sent": eine gesendete Mail, die im Webmail nirgends auftaucht,
+  // ist ein Verlust, den man erst bemerkt, wenn man sie sucht. Ein leerer Wert schaltet die
+  // Kopie ab — das ist die Opt-out-Form, absichtlich statt Opt-in (Spec § 3.3, praezisiert 2026-08-30).
   folders: { inbox: string; allowlist: string; archive: string; sent?: string }; sync: { enabled: boolean; intervalMin: number };
 }
 export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number | boolean>; debugLog: boolean }
@@ -46,7 +49,7 @@ export function uniqueAccountId(label: string, existingIds: readonly string[]): 
 
 export function newAccount(id: string): Account {
   return { id, label: id, imap: { host: "", port: 993, tls: "implicit" }, smtp: { host: "", port: 465, tls: "implicit" }, username: "", secretId: secretIdFor(id),
-    identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" }, sync: { enabled: true, intervalMin: 5 } };
+    identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "Sent" }, sync: { enabled: true, intervalMin: 5 } };
 }
 
 const IMAP_TLS_VALUES = ["implicit", "starttls"] as const;

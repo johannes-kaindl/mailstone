@@ -38,6 +38,10 @@ export interface ImapSession {
   uidFetchMessageIds(uids: readonly number[]): Promise<Map<number, string | null>>;
   /** Rohe RFC-5322-Bytes via BODY.PEEK[] — null, wenn die UID nicht mehr existiert. */
   uidFetchBody(uid: number): Promise<Uint8Array | null>;
+  /** Legt eine Nachricht in einem Ordner ab (RFC 3501 § 6.3.11). Der einzige schreibende
+   *  Vorgang dieses Clients — er faellt bewusst NICHT unter den Nur-lesend-Vertrag des Syncs,
+   *  weil er eine selbst versandte Mail ablegt, statt fremde zu veraendern. */
+  append(mailbox: string, bytes: Uint8Array, flags?: readonly string[]): Promise<{ ok: true } | { ok: false; code: ImapErrorCode; detail: string }>;
   logout(): Promise<void>;
 }
 
@@ -92,6 +96,47 @@ class Connection {
     this.log?.(`C: ${masked ?? full}`);
     await this.guard(this.transport.write(`${full}\r\n`), "imap-write");
     const untagged: ImapResponse[] = [];
+    for (;;) {
+      const raw = await this.guard(readRawLine(this.transport), "imap-read");
+      const r = parseResponse(raw);
+      this.log?.(`S: ${raw.text}`);
+      if (r.tag === tag) {
+        const m = /^(OK|NO|BAD)\b\s*(.*)$/s.exec(r.text);
+        if (!m) throw new NetError("protocol", `unverstaendliche Abschlusszeile: ${raw.text}`);
+        return { status: m[1] as "OK" | "NO" | "BAD", text: m[2] ?? "", untagged };
+      }
+      if (r.tag !== "*" && r.tag !== "+") throw new NetError("protocol", `fremder Tag in der Antwort: ${raw.text}`);
+      untagged.push(r);
+    }
+  }
+
+  /** Kommando mit anschliessendem Literal (RFC 3501 § 4.3): erst die Groessenankuendigung,
+   *  dann wartet der Server-Dialog auf ein `+`, und ERST DANN gehen die Bytes raus. Lehnt der
+   *  Server stattdessen direkt ab (`NO`/`BAD` — etwa fehlender Ordner oder volles Postfach),
+   *  duerfen die Bytes nicht mehr geschrieben werden; sie waeren sonst herrenlose Daten auf
+   *  einer Leitung, die schon auf das naechste Kommando wartet. */
+  async commandWithLiteral(tag: string, line: string, bytes: Uint8Array): Promise<Tagged> {
+    this.log?.(`C: ${line} (${String(bytes.byteLength)} Bytes folgen)`);
+    await this.guard(this.transport.write(`${tag} ${line}\r\n`), "imap-write");
+
+    const untagged: ImapResponse[] = [];
+    for (;;) {
+      const raw = await this.guard(readRawLine(this.transport), "imap-read");
+      const r = parseResponse(raw);
+      this.log?.(`S: ${raw.text}`);
+      if (r.tag === tag) {
+        // Abschluss VOR der Continuation = Ablehnung. Bytes bleiben ungeschrieben.
+        const m = /^(OK|NO|BAD)\b\s*(.*)$/s.exec(r.text);
+        if (!m) throw new NetError("protocol", `unverstaendliche Abschlusszeile: ${raw.text}`);
+        return { status: m[1] as "OK" | "NO" | "BAD", text: m[2] ?? "", untagged };
+      }
+      if (r.tag === "+") break;
+      if (r.tag !== "*") throw new NetError("protocol", `fremder Tag in der Antwort: ${raw.text}`);
+      untagged.push(r);
+    }
+
+    await this.guard(this.transport.write(bytes), "imap-write-literal");
+    await this.guard(this.transport.write("\r\n"), "imap-write");
     for (;;) {
       const raw = await this.guard(readRawLine(this.transport), "imap-read");
       const r = parseResponse(raw);
@@ -275,6 +320,21 @@ function makeSession(conn: Connection, capabilities: string[]): ImapSession {
         if (bytes) return bytes;
       }
       return null;
+    },
+
+    async append(mailbox, bytes, flags) {
+      const tag = conn.nextTag();
+      const flagTeil = flags && flags.length > 0 ? ` (${flags.join(" ")})` : "";
+      const r = await conn.commandWithLiteral(
+        tag,
+        `APPEND ${quoteArg(encodeMailbox(mailbox))}${flagTeil} {${String(bytes.byteLength)}}`,
+        bytes,
+      );
+      if (r.status === "OK") return { ok: true };
+      // TRYCREATE ist die Antwort auf einen fehlenden Ordner; jedes andere NO/BAD hat einen
+      // anderen Grund (Quota, Rechte) und wird nicht als "Ordner fehlt" ausgegeben.
+      const fehlt = r.status === "NO" && /TRYCREATE|does\s*n.?t exist|unknown mailbox/i.test(r.text);
+      return { ok: false, code: fehlt ? "folder-missing" : "protocol", detail: r.text };
     },
 
     async logout() {
