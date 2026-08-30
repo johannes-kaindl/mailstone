@@ -66,6 +66,20 @@ class TransportPickerModal extends SuggestModal<TransportRow> {
   }
 }
 
+/** Text fuer die Statusleiste, wenn ein Sync-Lauf zuende ist, aber KEIN Konto erfolgreich war.
+ *  Das `"synced"`-Event (das den Status im Normalfall auf `status.sync.idle` zurueckstellt)
+ *  feuert nur auf dem Erfolgspfad eines Kontos (s. core/sync/service.ts) — ohne diesen Zweig
+ *  bliebe die Anzeige bei "synchronisiert…" haengen, obwohl der Lauf laengst vorbei ist (Fund
+ *  Fix-Runde 1: besonders sichtbar bei "no-secret", das der Passwort-Hinweis in der Kontenzeile
+ *  jetzt haeufiger provoziert). `null`, wenn mindestens ein Konto erfolgreich war (das Event hat
+ *  den Status dann schon aktuell gesetzt) oder `results` leer ist (keine aktivierten Konten).
+ *  Reine Funktion (kein Obsidian-Zugriff) — direkt ohne Mock testbar. */
+export function syncFailureStatus(results: readonly SyncRunResult[]): string | null {
+  if (results.length === 0 || results.some((r) => r.ok)) return null;
+  const failed = results.find((r): r is Extract<SyncRunResult, { ok: false }> => !r.ok);
+  return failed ? `Mailstone: ${t(`error.sync.${failed.code}`)}` : null;
+}
+
 export default class MailstonePlugin extends Plugin {
   settings: MailstoneSettings = loadSettings(undefined);
   zoneHashes: Record<string, string> = {};
@@ -207,6 +221,10 @@ export default class MailstonePlugin extends Plugin {
       const results = await this.syncService.syncAll();
       for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
       const ok = results.filter((r): r is Extract<SyncRunResult, { ok: true }> => r.ok);
+      // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
+      // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).
+      const failureStatus = syncFailureStatus(results);
+      if (failureStatus) this.status.setText(failureStatus);
       if (!silent && ok.length > 0) {
         const sum = ok.reduce((acc, r) => ({
           created: acc.created + r.counts.created,
