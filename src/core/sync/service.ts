@@ -85,6 +85,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
       const onServer = new Set<string>();
       const fetched: { mail: ParsedMail; eml: Uint8Array }[] = [];
       let errors = 0;
+      // Zaehlt UIDs, deren Mail-ID dieser Lauf NICHT bestimmen konnte (Body zwischenzeitlich
+      // verschwunden oder unparsbar) — onServer bleibt fuer diese UID leer, siehe unten.
+      let undetermined = 0;
 
       for (const uid of uids) {
         const cachedId = known.get(uid);
@@ -93,33 +96,44 @@ export function createSyncService(deps: SyncDeps): SyncService {
           if (index.has(cachedId)) continue; // Notiz existiert — kein Body noetig
         }
         const eml = await session.uidFetchBody(uid);
-        if (!eml) { errors += 1; continue; } // UID zwischenzeitlich verschwunden
+        if (!eml) { errors += 1; undetermined += 1; continue; } // UID zwischenzeitlich verschwunden — ID unbekannt
         try {
           const mail = await parseEml(eml);
           onServer.add(mail.id);
           deps.uidCache.remember(account.id, folder, examined.uidValidity, uid, mail.id);
           if (!index.has(mail.id)) fetched.push({ mail, eml });
         } catch {
-          errors += 1; // unparsbare Mail ueberspringt der Lauf, er bricht nicht ab
+          errors += 1; undetermined += 1; // unparsbare Mail ueberspringt der Lauf, ID bleibt unbekannt
         }
       }
       deps.uidCache.retain(account.id, folder, examined.uidValidity, uids);
 
-      const plans = planSync({
+      const rawPlans = planSync({
         profile, source, syncedAt: deps.now(), index,
         takenPaths: deps.takenPaths(), fetched, onServer,
         linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null,
       });
 
+      // Konnte dieser Lauf mindestens eine Server-ID nicht bestimmen, ist `onServer`
+      // unvollstaendig — ein Detach waere dann evtl. falsch (die Mail liegt vielleicht noch
+      // im Ordner, wir wissen es nur nicht). Ein liegengebliebenes Detach holt der naechste
+      // saubere Lauf nach; ein faelschliches Detach schreibt sofort in den Vault — deshalb
+      // bei Unsicherheit lieber keins. reattach/create beruhen auf tatsaechlich gefundenen
+      // IDs, nicht auf Abwesenheit, und bleiben unberuehrt.
+      const plans = undetermined > 0
+        ? rawPlans.filter((p) => !(p.kind === "setState" && p.state === "detached"))
+        : rawPlans;
+
       const result = await deps.executor().execute(plans);
+      const executedPlans = executed(plans, result.errors);
       const counts: SyncCounts = {
         created: result.created,
-        reattached: plans.filter((p) => p.kind === "setState" && p.state === "live").length,
-        detached: plans.filter((p) => p.kind === "setState" && p.state === "detached").length,
+        reattached: executedPlans.filter((p) => p.kind === "setState" && p.state === "live").length,
+        detached: executedPlans.filter((p) => p.kind === "setState" && p.state === "detached").length,
         skipped: result.skipped.length,
         errors: errors + result.errors.length,
       };
-      for (const p of executed(plans, result.errors.map((e) => e.plan))) {
+      for (const p of executedPlans) {
         deps.events.emit("changed", { path: p.path, kind: p.kind, mailId: p.mailId });
       }
       deps.events.emit("synced", { accountId: account.id, counts });
@@ -129,9 +143,19 @@ export function createSyncService(deps: SyncDeps): SyncService {
     }
   }
 
-  /** Plaene, die tatsaechlich gewirkt haben: keine skips, keine gescheiterten. */
-  function executed(plans: NotePlan[], failed: NotePlan[]): NotePlan[] {
-    return plans.filter((p) => p.kind !== "skip" && !failed.includes(p));
+  /** Eindeutiger Schluessel eines Plans fuer den Abgleich gegen `PlanExecutionResult.errors`
+   *  (s. u.) — jede Mail-ID liefert `planSync` hoechstens einen Plan, `path` grenzt zusaetzlich ab. */
+  function planKey(p: NotePlan): string {
+    return `${p.path}|${p.mailId}`;
+  }
+
+  /** Plaene, die tatsaechlich gewirkt haben: keine skips, keine gescheiterten. Der Abgleich
+   *  laeuft ueber `path`+`mailId` statt Objektidentitaet — `PlanExecutionResult.errors` (siehe
+   *  core/mirror/execute.ts) sagt nicht zu, dass `errors[].plan` dieselbe Referenz ist wie der
+   *  uebergebene Plan; ein Executor darf den Plan klonen oder rekonstruieren. */
+  function executed(plans: NotePlan[], failed: { plan: NotePlan; message: string }[]): NotePlan[] {
+    const failedKeys = new Set(failed.map((f) => planKey(f.plan)));
+    return plans.filter((p) => p.kind !== "skip" && !failedKeys.has(planKey(p)));
   }
 
   return {

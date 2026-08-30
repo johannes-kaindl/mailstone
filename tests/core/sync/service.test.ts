@@ -119,20 +119,16 @@ describe("createSyncService", () => {
     const header = new TextEncoder().encode("Message-ID: <da@example.net>\r\n\r\n");
     const index: MailIndex = new Map([["da@example.net", { path: "Mail/2026/d.md", state: "live", source: "acc/Vault" }]]);
     const cache = createUidCache(undefined);
-    // LOGOUT antwortet mit dem Tag, den der Client fuer DIESEN Lauf tatsaechlich sendet — im
-    // zweiten Lauf faellt der Header-Fetch weg, also steht der Client dort einen Tag frueher.
-    // Ein fest verdrahteter Tag waere im zweiten Lauf falsch (der Client wartet auf a005, nicht
-    // a006) und der LOGOUT-Pfad würde ungeprueft durchlaufen, weil logout() Fehler verschluckt.
-    const steps = (n: number, withHeader: boolean): DialogStep[] => {
-      const logoutN = withHeader ? n + 2 : n + 1;
-      return [
-        { expect: new RegExp(`^a00${String(n)} UID SEARCH ALL$`), send: ["* SEARCH 7", `a00${String(n)} OK done`] },
-        ...(withHeader
-          ? [{ expect: new RegExp(`^a00${String(n + 1)} UID FETCH 7 \\(BODY\\.PEEK\\[HEADER`), send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(header.byteLength)}}`, header, ")", `a00${String(n + 1)} OK done`] }]
-          : []),
-        { expect: /LOGOUT$/, send: ["* BYE", `a00${String(logoutN)} OK done`] },
-      ];
-    };
+    const steps = (n: number, withHeader: boolean): DialogStep[] => [
+      { expect: new RegExp(`^a00${String(n)} UID SEARCH ALL$`), send: ["* SEARCH 7", `a00${String(n)} OK done`] },
+      ...(withHeader ? [{ expect: /^a005 UID FETCH 7 \(BODY\.PEEK\[HEADER/, send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(header.byteLength)}}`, header, ")", "a005 OK done"] }] : []),
+      // Die Antwort auf LOGOUT ist absichtlich tag-neutral und beliebig: logout() wertet das
+      // Ergebnis nicht aus (jeder Fehler wird verschluckt, s. client.ts), und ein fest
+      // ausgerechneter Tag wuerde bei jeder Aenderung der vorangehenden Kommandofolge wieder
+      // stillschweigend falsch. Geprueft wird stattdessen direkt per Assertion unten, dass der
+      // Client ueberhaupt ein LOGOUT-Kommando sendet.
+      { expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] },
+    ];
     const mk = (withHeader: boolean): FakeSocketTransport => new FakeSocketTransport(["* OK ready"], dialog(steps(4, withHeader)));
     let current = mk(true);
     const svc = createSyncService({
@@ -145,6 +141,7 @@ describe("createSyncService", () => {
     current = mk(false);
     expect((await svc.syncAccount("acc")).ok).toBe(true);
     expect(current.written.some((l) => l.includes("HEADER.FIELDS"))).toBe(false);
+    expect(current.written.some((l) => /^a\d+ LOGOUT$/.test(l))).toBe(true);
   });
 
   it("meldet no-secret, ohne eine Verbindung aufzubauen", async () => {
@@ -208,6 +205,57 @@ describe("createSyncService", () => {
     await svc.syncAccount("acc");
     expect(synced).toHaveBeenCalledWith(expect.objectContaining({ accountId: "acc" }));
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({ path: "Mail/2026/w.md" }));
+  });
+
+  it("feuert kein changed fuer einen Plan, den der Executor scheitern laesst, und zaehlt ihn als Fehler", async () => {
+    const index: MailIndex = new Map([["weg@example.net", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
+    const events = createEmitter<{ synced: { accountId: string; counts: { detached: number; errors: number } }; changed: { path: string } }>();
+    const changed = vi.fn();
+    events.on("changed", changed);
+    // Der Executor gibt fuer jeden Plan eine FLACHE KOPIE zurueck statt der Original-Referenz —
+    // ein Abgleich ueber Objektidentitaet wuerde diesen (durchaus vertragskonformen) Executor
+    // faelschlich als "ausgefuehrt" behandeln und trotz Fehlschlag ein changed-Event feuern.
+    const failingExecutor: PlanExecutor = {
+      execute: (plans) => Promise.resolve({
+        created: 0,
+        updated: 0,
+        stateChanged: 0,
+        skipped: [],
+        errors: plans.map((p) => ({ plan: { ...p }, message: "kaputt" })),
+      }),
+    };
+    const fake = new FakeSocketTransport(["* OK ready"], dialog([
+      { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
+      { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
+    ]));
+    const svc = createSyncService({
+      accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
+      transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
+      executor: () => failingExecutor, uidCache: createUidCache(undefined),
+      busy: createBusyGuard(), events: events as never, timers: testTimers, now: () => new Date(),
+    });
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { detached: 0, errors: 1 } });
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it("laesst detached aus, wenn eine Server-ID in diesem Lauf nicht bestimmbar war", async () => {
+    const index: MailIndex = new Map([["geblieben@example.net", { path: "Mail/2026/g.md", state: "live", source: "acc/Vault" }]]);
+    // UID 9 ist unbekannt (kein Cache-Treffer), der Header-Fetch liefert keine Message-ID (z. B.
+    // Header schon verschwunden) und der anschliessende Body-Fetch liefert ebenfalls nichts —
+    // die UID "verschwindet" also spurlos, ihre Mail-ID bleibt unbestimmt.
+    const { svc, exec } = service(
+      dialog([
+        { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 9", "a004 OK done"] },
+        { expect: /^a005 UID FETCH 9 \(BODY\.PEEK\[HEADER\.FIELDS \(MESSAGE-ID\)\]\)$/, send: ["a005 OK done"] },
+        { expect: /^a006 UID FETCH 9 \(BODY\.PEEK\[\]\)$/, send: ["a006 OK done"] },
+        { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
+      ]),
+      index,
+    );
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { detached: 0, errors: 1 } });
+    expect(exec.seen).toEqual([]);
   });
 
   it("meldet no-account fuer eine unbekannte Konto-ID", async () => {
