@@ -12,6 +12,7 @@ import { createSendService, resolveSender, type SendService } from "./core/send/
 import { transportAccounts, splitTransportId } from "./core/send/imip";
 import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge } from "./obsidian/calendar-notes-bridge";
 import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
+import { dueAccounts, TICK_MS } from "./core/sync/schedule";
 import { createBusyGuard } from "./core/sync/busy";
 import { createEmitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
@@ -80,6 +81,63 @@ export function syncFailureStatus(results: readonly SyncRunResult[]): string | n
   return failed ? `Mailstone: ${t(`error.sync.${failed.code}`)}` : null;
 }
 
+export interface SyncNotice { key: string; args: (string | number)[] }
+
+/** Schreibt den Plugin-Zustand nur, wenn er sich seit dem letzten Schreibvorgang geaendert hat.
+ *  Der Intervall-Lauf ruft `saveSettings()` in jedem Tick — ohne diesen Riegel entstuende alle
+ *  fuenf Minuten eine Schreiboperation auf `data.json`, eine Datei, die Obsidian Sync und Git
+ *  beobachten (M3-Nachlese).
+ *
+ *  Der Vergleich laeuft ueber die Serialisierung, nicht ueber ein Dirty-Flag an fuenf
+ *  Mutationsstellen: `JSON.stringify` kostet hier nichts gegen die Datei-IO, und ein Flag, das
+ *  irgendwo zu setzen vergessen wird, verliert Daten still. Der Stand gilt erst NACH erfolgreichem
+ *  Schreiben als geschrieben — sonst wuerde eine Aenderung, deren Schreibvorgang scheiterte, beim
+ *  naechsten Aufruf uebersprungen. Rueckgabe sagt, ob geschrieben wurde (fuer Tests). */
+export function createPersister<T>(save: (state: T) => Promise<void>): (state: T) => Promise<boolean> {
+  let last: string | null = null;
+  return async (state: T): Promise<boolean> => {
+    const serialised = JSON.stringify(state);
+    if (serialised === last) return false;
+    await save(state);
+    last = serialised;
+    return true;
+  };
+}
+
+/** Text der Statusleiste nach einem beendeten Lauf. `created + reattached` ist ein LAUF-Zaehler;
+ *  in der Form "{0} Notizen" las er sich wie eine Bestandszahl, und nach einem Lauf ohne
+ *  Aenderungen stand dort "0 Notizen" — als waere der Vault leer (M3-Nachlese). Der Nullfall
+ *  bekommt deshalb einen eigenen Satz statt einer Null. */
+export function syncIdleStatus(counts: { created: number; reattached: number }, time: string): string {
+  const n = counts.created + counts.reattached;
+  return n > 0 ? t("status.sync.idle", String(n), time) : t("status.sync.idleNoChange", time);
+}
+
+/** Welche Meldungen ein beendeter Sync-Lauf ausgibt. Reine Funktion (kein Obsidian-Zugriff),
+ *  damit die Auswahl ohne Plugin-Mock pruefbar ist — dieselbe Begruendung wie bei
+ *  `syncFailureStatus`.
+ *
+ *  Der Zuschnitt ist der eigentliche Punkt: die Zusammenfassung ("x neu, y verbunden…") gehoert
+ *  dem beaufsichtigten Lauf, sonst poppte alle fuenf Minuten eine Meldung auf. **Ausgelassene
+ *  Abloesungen gehoeren beiden.** Sie sind kein Zaehler des Normalfalls, sondern der Hinweis,
+ *  dass der Detach-Zweig dieses Laufs stillgelegt war — und der Fall tritt gerade im
+ *  unbeaufsichtigten Intervall-Lauf auf, wo ihn vorher niemand zu sehen bekam (M3-Nachlese). */
+export function syncNotices(results: readonly SyncRunResult[], silent: boolean): SyncNotice[] {
+  const ok = results.filter((r): r is Extract<SyncRunResult, { ok: true }> => r.ok);
+  if (ok.length === 0) return [];
+  const sum = ok.reduce((acc, r) => ({
+    created: acc.created + r.counts.created,
+    reattached: acc.reattached + r.counts.reattached,
+    detached: acc.detached + r.counts.detached,
+    detachSkipped: acc.detachSkipped + r.counts.detachSkipped,
+    errors: acc.errors + r.counts.errors,
+  }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
+  const out: SyncNotice[] = [];
+  if (!silent) out.push({ key: "notice.sync.done", args: [sum.created, sum.reattached, sum.detached, sum.errors] });
+  if (sum.detachSkipped > 0) out.push({ key: "notice.sync.detachSkipped", args: [sum.detachSkipped] });
+  return out;
+}
+
 export default class MailstonePlugin extends Plugin {
   settings: MailstoneSettings = loadSettings(undefined);
   zoneHashes: Record<string, string> = {};
@@ -144,15 +202,22 @@ export default class MailstonePlugin extends Plugin {
 
     this.status = this.addStatusBarItem();
     this.syncEvents.on("synced", ({ counts }) => {
-      this.status.setText(t("status.sync.idle", String(counts.created + counts.reattached), new Date().toLocaleTimeString()));
+      this.status.setText(syncIdleStatus(counts, new Date().toLocaleTimeString()));
     });
 
     this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
     this.addRibbonIcon("mail", t("ribbon.sync"), () => void this.runSync(notify));
 
     // registerInterval statt setInterval: Obsidian raeumt den Timer beim Entladen selbst ab.
-    const everyMs = Math.max(1, Math.min(...this.settings.accounts.map((a) => a.sync.intervalMin), 60)) * 60_000;
-    this.registerInterval(window.setInterval(() => { void this.runSync(notify, true); }, everyMs));
+    // Fester Takt statt einer beim Laden berechneten Kadenz — welche Konten faellig sind,
+    // entscheidet `dueAccounts` bei jedem Schlag neu (s. core/sync/schedule.ts).
+    // Beim Laden gilt jedes vorhandene Konto als gerade gelaufen, sonst synchronisierte der erste
+    // Takt unmittelbar nach dem Start. Ein spaeter angelegtes Konto hat keinen Eintrag und ist
+    // damit sofort faellig — genau das erwartet man nach dem Einrichten.
+    const lastRun: Record<string, number> = {};
+    const startedAt = Date.now();
+    for (const a of this.settings.accounts) lastRun[a.id] = startedAt;
+    this.registerInterval(window.setInterval(() => { void this.runDueSyncs(notify, lastRun); }, TICK_MS));
 
     this.bridge = createCalendarNotesBridge(
       this.app,
@@ -209,40 +274,46 @@ export default class MailstonePlugin extends Plugin {
     this.bridge?.unregister();
   }
 
+  /** Schreibt nur bei tatsaechlicher Aenderung — s. createPersister. */
+  private readonly persist = createPersister<PersistedState>((state) => this.saveData(state));
+
   async saveSettings(): Promise<void> {
     // uidCache.data() liefert die interne Referenz, keine Kopie — hier nur lesen, nie
     // hineinschreiben, sonst umgeht man die Verwerfungslogik des Caches bei UIDVALIDITY-Wechsel.
-    await this.saveData({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data() } satisfies PersistedState);
+    await this.persist({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data() } satisfies PersistedState);
+  }
+
+  /** Ein Takt des Weckers: nur die faelligen Konten, und die Faelligkeit wird bei jedem Schlag
+   *  frisch aus den Einstellungen bestimmt. Der Zeitstempel wird VOR dem Lauf gesetzt und auch
+   *  dann, wenn das Konto scheitert — sonst versuchte ein dauerhaft unerreichbares Konto es bei
+   *  jedem Takt erneut, statt in seinem eigenen Intervall zu bleiben. */
+  private async runDueSyncs(notify: Notifier, lastRun: Record<string, number>): Promise<void> {
+    const due = dueAccounts(this.settings.accounts, lastRun, Date.now());
+    if (due.length === 0) return;
+    const now = Date.now();
+    for (const id of due) lastRun[id] = now;
+    await this.runSync(notify, true, due);
   }
 
   /** `silent` = Intervall-Lauf: kein Notice bei Erfolg, nur bei Fehlern — sonst poppt alle
-   *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste. */
-  private async runSync(notify: Notifier, silent = false): Promise<void> {
+   *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste.
+   *  `only` schraenkt auf bestimmte Konten ein (der Wecker uebergibt die faelligen); ohne
+   *  Angabe laufen alle aktivierten. */
+  private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<void> {
     const enabled = this.settings.accounts.filter((a) => a.sync.enabled);
     if (enabled.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return; }
     this.status.setText(t("status.sync.running"));
     try {
-      const results = await this.syncService.syncAll();
+      // Nacheinander, nie parallel gegen denselben Vault — dieselbe Zusage wie in syncAll.
+      const results: SyncRunResult[] = [];
+      if (only) { for (const id of only) results.push(await this.syncService.syncAccount(id)); }
+      else results.push(...(await this.syncService.syncAll()));
       for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
-      const ok = results.filter((r): r is Extract<SyncRunResult, { ok: true }> => r.ok);
       // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
       // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).
       const failureStatus = syncFailureStatus(results);
       if (failureStatus) this.status.setText(failureStatus);
-      if (!silent && ok.length > 0) {
-        const sum = ok.reduce((acc, r) => ({
-          created: acc.created + r.counts.created,
-          reattached: acc.reattached + r.counts.reattached,
-          detached: acc.detached + r.counts.detached,
-          detachSkipped: acc.detachSkipped + r.counts.detachSkipped,
-          errors: acc.errors + r.counts.errors,
-        }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
-        notify.info("notice.sync.done", sum.created, sum.reattached, sum.detached, sum.errors);
-        // Ausgelassene Ablösungen bekommen eine eigene Meldung statt einer weiteren Zahl in der
-        // Zeile oben: sie sind kein Zaehler des Normalfalls, sondern der Hinweis, dass der
-        // Detach-Zweig dieses Laufs stillgelegt war (sonst ununterscheidbar von "nichts zu tun").
-        if (sum.detachSkipped > 0) notify.info("notice.sync.detachSkipped", sum.detachSkipped);
-      }
+      for (const n of syncNotices(results, silent)) notify.info(n.key, ...n.args);
     } finally {
       // Zone-Hashes und UID-Cache muessen auch nach einem Abbruch persistiert sein — sonst
       // gilt jede geschriebene Notiz beim naechsten Lauf als fremd editiert (dieselbe

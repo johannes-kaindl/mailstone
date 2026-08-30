@@ -55,6 +55,16 @@ export interface SyncService {
  *  UID-Cache befuellt, der Abbruch loest also keine falschen Detaches aus. */
 export const MAX_FETCH_PER_RUN = 200;
 
+/** Obergrenze fuer den Header-Abgleich je Lauf. Derselbe Gedanke wie bei MAX_FETCH_PER_RUN, nur
+ *  eine Groessenordnung hoeher: ein Message-ID-Header wiegt ein paar Dutzend Bytes, ein Body
+ *  schnell ein Megabyte. Die FETCH-Kommandos selbst waren nie unbegrenzt — client.ts schickt den
+ *  Abgleich in Baendern von HEADER_BATCH (200). Unbegrenzt war die MENGE je Lauf: alle Baender
+ *  landen in einer Map, ein einziger Lauf zog also den ganzen Ordner durch. 2000 haelt einen
+ *  Erstbestand von 10.000 Mails bei fuenf Laeufen — statt fuenfzig, wenn man den Body-Deckel
+ *  wiederverwendete. Was die Grenze abschneidet, bleibt UNBESTIMMT — genau wie beim
+ *  Body-Deckel setzt der Lauf dann Detaches aus, statt sie faelschlich auszuloesen. */
+export const MAX_HEADER_FETCH_PER_RUN = 2000;
+
 export function createSyncService(deps: SyncDeps): SyncService {
   async function run(account: Account): Promise<SyncRunResult> {
     const profile = deps.profile();
@@ -95,7 +105,9 @@ export function createSyncService(deps: SyncDeps): SyncService {
       }
 
       const known = deps.uidCache.known(account.id, folder, examined.uidValidity);
-      const unknownUids = uids.filter((u) => !known.has(u));
+      // slice NACH dem Filter: was hier abgeschnitten wird, bleibt ohne bekannte Mail-ID und
+      // zaehlt unten als `undetermined` — der Lauf setzt Detaches dann aus (s. MAX_HEADER_FETCH_PER_RUN).
+      const unknownUids = uids.filter((u) => !known.has(u)).slice(0, MAX_HEADER_FETCH_PER_RUN);
       if (unknownUids.length > 0) {
         for (const [uid, mailId] of await session.uidFetchMessageIds(unknownUids)) {
           if (mailId === null) continue; // ohne Message-ID-Header: ID entsteht erst beim Parsen

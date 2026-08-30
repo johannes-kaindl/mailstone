@@ -82,3 +82,29 @@ describe("parseResponse / Helfer", () => {
     expect(firstLiteral(tokenize("a001 OK done", []))).toBeNull();
   });
 });
+
+describe("tokenize — unausgeglichene eckige Klammern", () => {
+  // Ein schliessendes ] ohne oeffnendes machte die Klammertiefe negativ. Danach war
+  // `depth === 0` nie wieder wahr, also griff KEIN Trennzeichen mehr: der ganze Rest der
+  // Zeile verschmolz zu einem einzigen Atom. Ein Server, der so etwas schickt (oder eine
+  // Zeile, die durch einen fremden Fehler verstuemmelt ankommt), legte damit die Auswertung
+  // aller folgenden Felder still, statt nur das eine kaputte Feld zu verlieren.
+  it("trennt nach einem verirrten ] weiter an Leerzeichen", () => {
+    expect(tokenize("A] B C", [])).toEqual([
+      { kind: "atom", value: "A]" },
+      { kind: "atom", value: "B" },
+      { kind: "atom", value: "C" },
+    ]);
+  });
+
+  it("findAtomValue findet einen Schluessel hinter einem verirrten ]", () => {
+    expect(findAtomValue(tokenize("* 1 FETCH] UID 7", []), "UID")).toBe("7");
+  });
+
+  it("laesst ausgeglichene Klammern unveraendert zum Atom gehoeren", () => {
+    expect(tokenize("BODY[HEADER.FIELDS (MESSAGE-ID)] NIL", [])).toEqual([
+      { kind: "atom", value: "BODY[HEADER.FIELDS (MESSAGE-ID)]" },
+      { kind: "nil" },
+    ]);
+  });
+});

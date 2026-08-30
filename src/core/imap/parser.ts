@@ -71,7 +71,10 @@ export function tokenize(text: string, literals: Uint8Array[]): ImapItem[] {
       const c = text[i];
       if (c === undefined) break;
       if (c === "[") depth++;
-      else if (c === "]") depth--;
+      // Nie unter 0: ein schliessendes ] ohne oeffnendes darf die Tiefe nicht negativ machen,
+      // sonst ist `depth === 0` nie wieder wahr und kein Trennzeichen greift mehr — der Rest
+      // der Zeile wuerde zu einem einzigen Atom verschmelzen.
+      else if (c === "]") depth = Math.max(0, depth - 1);
       else if (depth === 0 && DELIM.has(c)) break;
       i++;
     }
