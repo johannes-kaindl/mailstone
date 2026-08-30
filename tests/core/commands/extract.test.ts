@@ -14,11 +14,30 @@ function mail(): ParsedMail {
     from: { name: "E", address: "e@example.org" }, to: [], cc: [],
     subject: "Termin", date: new Date("2026-08-29T08:00:00Z"), text: "Hallo", html: null,
     attachments: [
-      { name: "einladung.ics", type: "text/calendar", size: 2800, inline: false },
-      { name: "logo.png", type: "image/png", size: 100, contentId: "logo@cid", inline: true },
+      { name: "einladung.ics", type: "text/calendar", size: 2800, inline: false, key: "0:einladung.ics" },
+      { name: "logo.png", type: "image/png", size: 100, contentId: "logo@cid", inline: true, key: "logo@cid" },
     ],
-    attachmentData: new Map([["einladung.ics", new Uint8Array([66, 69])], ["logo@cid", new Uint8Array([1])]]),
+    attachmentData: new Map([["0:einladung.ics", new Uint8Array([66, 69])], ["logo@cid", new Uint8Array([1])]]),
     rawSize: 3000,
+  };
+}
+
+/** Zwei NICHT-inline Anhaenge mit demselben Dateinamen, aber verschiedenem key — der Fall aus
+ *  Fund 1 der M3b-Nachlese: eine weitergeleitete Mail mit zwei "invoice.pdf". */
+function mailWithDuplicateAttachments(): ParsedMail {
+  return {
+    id: "a@x", messageIdRaw: "<a@x>", inReplyTo: null, references: [],
+    from: { name: "E", address: "e@example.org" }, to: [], cc: [],
+    subject: "Zwei Rechnungen", date: new Date("2026-08-29T08:00:00Z"), text: "Hallo", html: null,
+    attachments: [
+      { name: "invoice.pdf", type: "application/pdf", size: 2, inline: false, key: "0:invoice.pdf" },
+      { name: "invoice.pdf", type: "application/pdf", size: 2, inline: false, key: "1:invoice.pdf" },
+    ],
+    attachmentData: new Map([
+      ["0:invoice.pdf", new Uint8Array([1, 1])],
+      ["1:invoice.pdf", new Uint8Array([2, 2])],
+    ]),
+    rawSize: 500,
   };
 }
 
@@ -87,7 +106,7 @@ describe("mail.extractAttachment", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.plan.attachment).toEqual({ path: "Anhaenge/einladung.ics", data: new Uint8Array([66, 69]) });
-    expect(r.plan.notes[0]).toMatchObject({ kind: "update", path: "Mail/2026/x.md", zoneHash: "gespeichert" });
+    expect(r.plan.notes[0]).toMatchObject({ kind: "update", path: "Mail/2026/x.md", zoneHash: "gespeichert", expectedContent: NOTE });
   });
 
   it("weist einen Namen ab, der nicht in der Mail steckt", () => {
@@ -96,7 +115,7 @@ describe("mail.extractAttachment", () => {
 
   it("meldet attachment-missing, wenn zum Namen keine Bytes vorliegen", () => {
     const m = mail();
-    m.attachmentData.delete("einladung.ics");
+    m.attachmentData.delete("0:einladung.ics");
     expect(EXTRACT_ATTACHMENT_COMMAND.plan({ name: "einladung.ics" }, ctx({ mail: m }))).toEqual({ ok: false, code: "attachment-missing" });
   });
 
@@ -104,5 +123,35 @@ describe("mail.extractAttachment", () => {
     const c = ctx();
     delete c.mail;
     expect(EXTRACT_ATTACHMENT_COMMAND.plan({ name: "einladung.ics" }, c)).toEqual({ ok: false, code: "eml-missing" });
+  });
+
+  it("verwendet fmKeyFor statt eines fest verdrahteten \"attachments\" — respektiert ein umbenanntes Feld", () => {
+    const custom = { ...profile, fields: { ...profile.fields, attachments: "anhaenge" } };
+    const probeCtx = ctx({ profile: custom, frontmatter: { mail_id: "a@x", anhaenge: ["x.pdf"] } });
+    expect(EXTRACT_ATTACHMENT_COMMAND.appliesTo(probeCtx)).toBe(true);
+  });
+
+  it("ist nicht anwendbar, wenn das Attachments-Feld im Profil abgeschaltet ist (null)", () => {
+    const disabled = { ...profile, fields: { ...profile.fields, attachments: null } };
+    const probeCtx = ctx({ profile: disabled, frontmatter: { mail_id: "a@x", attachments: ["x.pdf"] } });
+    expect(EXTRACT_ATTACHMENT_COMMAND.appliesTo(probeCtx)).toBe(false);
+  });
+
+  describe("zwei Anhaenge mit demselben Dateinamen (Fund 1, M3b-Nachlese)", () => {
+    it("zeigt sie im Enum als unterscheidbare Labels", () => {
+      const schema = schemaOf(EXTRACT_ATTACHMENT_COMMAND, ctx({ mail: mailWithDuplicateAttachments() }));
+      expect(schema.properties["name"]).toMatchObject({ type: "string", enum: ["invoice.pdf", "invoice.pdf (2)"] });
+    });
+
+    it("extrahiert fuer JEDE Auswahl die EIGENEN Bytes, nicht die des jeweils anderen Anhangs", () => {
+      const c = ctx({ mail: mailWithDuplicateAttachments() });
+      const erste = EXTRACT_ATTACHMENT_COMMAND.plan({ name: "invoice.pdf" }, c);
+      const zweite = EXTRACT_ATTACHMENT_COMMAND.plan({ name: "invoice.pdf (2)" }, c);
+      expect(erste.ok).toBe(true);
+      expect(zweite.ok).toBe(true);
+      if (!erste.ok || !zweite.ok) return;
+      expect(erste.plan.attachment?.data).toEqual(new Uint8Array([1, 1]));
+      expect(zweite.plan.attachment?.data).toEqual(new Uint8Array([2, 2]));
+    });
   });
 });

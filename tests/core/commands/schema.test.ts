@@ -41,4 +41,22 @@ describe("validateInput", () => {
   it("weist eine Nicht-Objekt-Eingabe ab", () => {
     expect(validateInput(schema, ["a"])).toEqual({ ok: false, errors: ["input is not an object"] });
   });
+
+  it("weist einen leeren String bei einem Pflichtfeld ohne enum ab (Fund 4, M3b-Nachlese)", () => {
+    const freitext: ObjectSchema = { type: "object", properties: { note: { type: "string" } }, required: ["note"] };
+    const r = validateInput(freitext, { note: "" });
+    expect(r).toMatchObject({ ok: false });
+    expect(r.ok === false && r.errors[0]).toContain("missing (required)");
+  });
+
+  it("weist einen nur aus Whitespace bestehenden Pflichtwert ebenfalls ab", () => {
+    const freitext: ObjectSchema = { type: "object", properties: { note: { type: "string" } }, required: ["note"] };
+    const r = validateInput(freitext, { note: "   " });
+    expect(r).toMatchObject({ ok: false });
+  });
+
+  it("nimmt einen nicht-leeren String bei einem Pflichtfeld ohne enum an", () => {
+    const freitext: ObjectSchema = { type: "object", properties: { note: { type: "string" } }, required: ["note"] };
+    expect(validateInput(freitext, { note: "x" })).toEqual({ ok: true, value: { note: "x" } });
+  });
 });

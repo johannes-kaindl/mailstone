@@ -82,6 +82,21 @@ describe("mail.relink", () => {
     expect(RELINK_COMMAND.plan({}, ctx([note("a@x", { in_reply_to: "[[Mail/2026/b@x]]" })]))).toEqual({ ok: false, code: "nothing-to-do" });
   });
 
+  it("traegt expectedContent = ref.content in den Plan (Fund 2, M3b-Nachlese)", () => {
+    const n = note("a@x", { in_reply_to: "b@x" });
+    const r = RELINK_COMMAND.plan({}, ctx([n]));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.notes[0]).toMatchObject({ kind: "update", expectedContent: n.content });
+  });
+
+  it("formatiert die 'after'-Seite der Diff-Zeile mit show(), genau wie 'before' — Arrays einheitlich mit Leerzeichen (Fund 6, M3b-Nachlese)", () => {
+    const r = RELINK_COMMAND.plan({}, ctx([note("a@x", { references: ["b@x", "c@x"] })]));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.diff[0]).toMatchObject({ before: "b@x, c@x", after: "[[Mail/2026/b@x]], [[Mail/2026/c@x]]" });
+  });
+
   it("zeigt hoechstens 20 Diff-Zeilen, zaehlt aber alle", () => {
     const viele = Array.from({ length: 25 }, (_, i) => note(`m${i}@x`, { in_reply_to: "b@x" }));
     const r = RELINK_COMMAND.plan({}, ctx(viele));

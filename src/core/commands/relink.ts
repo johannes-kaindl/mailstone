@@ -69,10 +69,10 @@ export const RELINK_COMMAND: CommandDescriptor = {
       if (hash === null) continue; // Notiz ohne Zone: Merge-Regel 3, nicht halb anfassen
       const merged = mergeFrontmatterOnly({ existing: ref.content, values });
       if (!merged.ok || !merged.changed) continue;
-      notes.push({ kind: "update", path: ref.path, content: merged.content, mailId: ref.mailId, zoneHash: hash });
+      notes.push({ kind: "update", path: ref.path, content: merged.content, mailId: ref.mailId, zoneHash: hash, expectedContent: ref.content });
       if (diff.length < MAX_DIFF_ROWS) {
         const k = Object.keys(values)[0] as string;
-        diff.push({ field: ref.path, before: show(ref.frontmatter[k]), after: String(values[k] ?? "") });
+        diff.push({ field: ref.path, before: show(ref.frontmatter[k]), after: show(values[k]) });
       }
     }
     if (notes.length === 0) return { ok: false, code: "nothing-to-do" };

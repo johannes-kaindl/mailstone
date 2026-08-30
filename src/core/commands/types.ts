@@ -17,7 +17,8 @@ export type CommandErrorCode =
   | "attachment-missing"       // gewaehlter Anhang liegt nicht in der .eml
   | "no-recipient"             // keine Absenderadresse zum Antworten
   | "nothing-to-do"            // Plan waere leer — nichts zu schreiben
-  | "write-failed";            // Schreibvorgang gescheitert
+  | "write-failed"             // Schreibvorgang gescheitert
+  | "unexpected";              // runCommand() hat geworfen, BEVOR etwas geschrieben wurde (M3b-Nachlese, Fund 3)
 
 /** Die Notiz, auf die ein Kommando wirkt. */
 export interface MailTarget {

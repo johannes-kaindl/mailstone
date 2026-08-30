@@ -7,8 +7,28 @@ import { mergeNote, newNote } from "../merge/merge";
 
 export type NotePlan =
   | { kind: "create"; path: string; emlPath: string; content: string; eml: Uint8Array; mailId: string; zoneHash: string }
-  | { kind: "update"; path: string; content: string; mailId: string; zoneHash: string }
-  | { kind: "skip"; path: string; mailId: string; reason: "unchanged" | "fences-missing" | "zone-edited" | "frontmatter-unparseable" | "missing-target" }
+  | {
+      kind: "update";
+      path: string;
+      content: string;
+      mailId: string;
+      zoneHash: string;
+      /** OPTIONAL: der Notiz-Inhalt, aus dem dieser Plan berechnet wurde. `buildContext`
+       *  liest die Notiz VOR unbeschraenkter Nutzer-Zeit (Formular- und Vorschau-Modal); wird
+       *  dieses Feld gesetzt, prueft der Executor beim Schreiben, ob die Datei noch denselben
+       *  Inhalt hat, und schreibt sonst NICHT (skip, reason "content-changed") — sonst wuerde
+       *  ein Schreibvorgang, der lange nach dem Lesen ausgefuehrt wird, eine zwischenzeitliche
+       *  Aenderung (Sync, anderes Fenster, anderes Plugin) stillschweigend ueberschreiben
+       *  (M3b-Nachlese, Fund 2). Sync- und Import-Pfad (`planMailNote`, `planSync`) lassen es
+       *  bewusst weg: sie planen und schreiben ohne Nutzer-Wartezeit dazwischen. */
+      expectedContent?: string;
+    }
+  | {
+      kind: "skip";
+      path: string;
+      mailId: string;
+      reason: "unchanged" | "fences-missing" | "zone-edited" | "frontmatter-unparseable" | "missing-target" | "content-changed";
+    }
   | { kind: "setState"; path: string; mailId: string; state: "live" | "detached"; stateField: string };
 
 export interface ExistingNote {

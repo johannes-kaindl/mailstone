@@ -74,6 +74,18 @@ describe("executeCommandPlan", () => {
     expect(order).toEqual(["notes", "open"]);
   });
 
+  it("meldet openedUrl im Ergebnis, wenn eine URL geoeffnet wurde", async () => {
+    const d = deps({ notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) } });
+    const r = await executeCommandPlan(plan({ notes: [], openUrl: "mailto:a@example.net" }), d);
+    expect(r).toMatchObject({ ok: true, openedUrl: true });
+  });
+
+  it("hat kein openedUrl, wenn der Plan keine URL oeffnet", async () => {
+    const r = await executeCommandPlan(plan(), deps());
+    expect(r).toMatchObject({ ok: true });
+    expect(r.ok && r.openedUrl).toBeUndefined();
+  });
+
   it("meldet einen Fehler aus dem PlanExecutor als write-failed", async () => {
     const d = deps({ notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [{ plan: update, message: "kaputt" }] })) } });
     expect(await executeCommandPlan(plan(), d)).toEqual({ ok: false, code: "write-failed" });

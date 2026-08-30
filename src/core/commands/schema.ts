@@ -55,7 +55,11 @@ export function validateInput(schema: ObjectSchema, input: unknown): ValidationR
   if (!input || typeof input !== "object" || Array.isArray(input)) return { ok: false, errors: ["input is not an object"] };
   const o = input as Record<string, unknown>;
   for (const key of schema.required ?? []) {
-    if (!Object.hasOwn(o, key) || o[key] === undefined) errors.push(`${key}: missing (required)`);
+    const value = o[key];
+    if (!Object.hasOwn(o, key) || value === undefined) { errors.push(`${key}: missing (required)`); continue; }
+    // Ein String, der nur aus Whitespace besteht (oder leer ist), erfuellt die Pflicht nicht —
+    // ohne minLength wuerde er sonst durchrutschen (M3b-Nachlese, Fund 4).
+    if (typeof value === "string" && value.trim() === "") errors.push(`${key}: missing (required)`);
   }
   for (const [key, value] of Object.entries(o)) {
     const fieldSchema = schema.properties[key];

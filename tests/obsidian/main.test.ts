@@ -1,10 +1,76 @@
 import { describe, it, expect } from "vitest";
-import { syncFailureStatus, syncNotices, syncIdleStatus, createPersister } from "../../src/main";
+import { syncFailureStatus, syncNotices, syncIdleStatus, createPersister, safeRunCommand, suppressDoneNotice, staleSkipCount } from "../../src/main";
 import type { SyncRunResult } from "../../src/core/sync/service";
+import type { RunResult } from "../../src/obsidian/command-flow";
+import type { CommandExecuteResult } from "../../src/core/commands/execute";
+import type { NotePlan } from "../../src/core/mirror/plan";
 import { t } from "../../src/vendor/code-kit/i18n";
 import { initI18n } from "../../src/i18n/strings";
 
 initI18n("de");
+
+// M3b-Nachlese, Fund 3: `runMailCommand` fing frueher nichts um seinen `runCommand()`-Aufruf
+// ab; der Aufrufer startet ihn ueber `void this.runMailCommand(...)`, also blieb ein Wurf
+// eine unbeobachtete Promise-Ablehnung — kein Notice, kein Status, nichts. `safeRunCommand`
+// ist reine Logik (kein Obsidian-Zugriff), deshalb direkt testbar.
+describe("safeRunCommand", () => {
+  it("faengt einen werfenden runCommand ab und liefert einen Fehler-Wert statt zu werfen", async () => {
+    await expect(safeRunCommand(() => { throw new Error("kaputt"); })).resolves.toEqual({ kind: "error", code: "unexpected" });
+  });
+
+  it("faengt auch eine abgelehnte Promise ab", async () => {
+    await expect(safeRunCommand(() => Promise.reject(new Error("kaputt")))).resolves.toEqual({ kind: "error", code: "unexpected" });
+  });
+
+  it("reicht das Ergebnis unveraendert durch, wenn runCommand nicht wirft", async () => {
+    const ok: RunResult = { kind: "cancelled" };
+    await expect(safeRunCommand(() => Promise.resolve(ok))).resolves.toEqual(ok);
+  });
+});
+
+function okResult(over: Partial<Extract<CommandExecuteResult, { ok: true }>> = {}): Extract<CommandExecuteResult, { ok: true }> {
+  return { ok: true, created: 0, updated: 0, stateChanged: 0, skipped: [], ...over };
+}
+
+// M3b-Nachlese, Sammel-Review: mail.replyExternal plant keine Notizen (nur eine URL) — ohne
+// diese Bedingung meldete `runMailCommand` "Done: 0 note(s) written, 0 skipped." nach jeder
+// Antwort im externen Mailprogramm, was wie ein Fehlschlag aussieht statt wie ein Erfolg.
+describe("suppressDoneNotice", () => {
+  it("unterdrueckt, wenn NUR eine URL geoeffnet wurde und sonst nichts geschrieben ist", () => {
+    expect(suppressDoneNotice(okResult({ openedUrl: true }))).toBe(true);
+  });
+
+  it("unterdrueckt NICHT, wenn ausserdem Notizen geschrieben wurden", () => {
+    expect(suppressDoneNotice(okResult({ openedUrl: true, updated: 1 }))).toBe(false);
+  });
+
+  it("unterdrueckt NICHT, wenn Plaene uebersprungen wurden (die Zahl bleibt sichtbar)", () => {
+    const skipped: NotePlan[] = [{ kind: "skip", path: "Mail/x.md", mailId: "a@x", reason: "unchanged" }];
+    expect(suppressDoneNotice(okResult({ openedUrl: true, skipped }))).toBe(false);
+  });
+
+  it("unterdrueckt NICHT ohne geoeffnete URL, auch wenn nichts geschrieben wurde", () => {
+    expect(suppressDoneNotice(okResult())).toBe(false);
+  });
+});
+
+// Fund 2, M3b-Nachlese: der Lost-Update-Schutz in vaultPlanExecutor erzeugt einen neuen
+// Skip-Grund ("content-changed") — der reine Zaehler in "Done: … skipped" sagt nicht, warum.
+describe("staleSkipCount", () => {
+  it("zaehlt nur Skips mit reason \"content-changed\"", () => {
+    const skipped: NotePlan[] = [
+      { kind: "skip", path: "a.md", mailId: "a@x", reason: "content-changed" },
+      { kind: "skip", path: "b.md", mailId: "b@x", reason: "unchanged" },
+      { kind: "skip", path: "c.md", mailId: "c@x", reason: "content-changed" },
+    ];
+    expect(staleSkipCount(skipped)).toBe(2);
+  });
+
+  it("liefert 0 ohne Skips dieser Art", () => {
+    const skipped: NotePlan[] = [{ kind: "skip", path: "a.md", mailId: "a@x", reason: "missing-target" }];
+    expect(staleSkipCount(skipped)).toBe(0);
+  });
+});
 
 // Fix-Runde 1, Finding 1: `runSync` verliess sich fuer den Statusleisten-Reset allein auf das
 // "synced"-Event, das der Sync-Service nur auf dem Erfolgspfad EINES Kontos feuert — scheiterten

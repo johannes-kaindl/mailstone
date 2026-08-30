@@ -1,4 +1,6 @@
 import { BLOCK_BEGIN } from "../merge/fences";
+import type { MailAttachmentMeta } from "../mime/types";
+import { fmKeyFor } from "../mirror/profile";
 import { validateInput, type ObjectSchema } from "./schema";
 import { keepZoneHash } from "./zone";
 import type { CommandContext, CommandDescriptor, CommandErrorCode, CommandProbe, PlanResult } from "./types";
@@ -22,10 +24,33 @@ export function insertAttachmentLink(content: string, link: string): { ok: true;
   return { ok: true, content: `${content.slice(0, i)}${link}\n\n${content.slice(i)}` };
 }
 
-/** Die Namen aus der .eml — nur echte Anhaenge, keine Inline-Bilder (die bleiben laut
- *  Spec § 2.2 in der .eml und erscheinen im Text als Platzhalter). */
-function attachmentNames(ctx: CommandContext): string[] {
-  return (ctx.mail?.attachments ?? []).filter((a) => !a.inline).map((a) => a.name);
+interface LabeledAttachment {
+  meta: MailAttachmentMeta;
+  /** Menschenlesbares Enum-/Anzeige-Label — der Dateiname, es sei denn zwei Anhaenge teilen
+   *  ihn: dann bekommt der zweite und jeder weitere " (n)" angehaengt. Das Label waehlt im
+   *  Formular; `meta.key` waehlt die Bytes. Ohne diese Trennung waeren zwei "invoice.pdf" im
+   *  Dropdown ununterscheidbar und jede Wahl traefe zufaellig eines der beiden (M3b-Nachlese,
+   *  Fund 1). */
+  label: string;
+}
+
+/** Nur echte Anhaenge, keine Inline-Bilder (die bleiben laut Spec § 2.2 in der .eml und
+ *  erscheinen im Text als Platzhalter) — mit eindeutigem Label je Anhang. Einziger Ort, der
+ *  "nicht-inline" filtert; sowohl das Enum-Schema als auch die Auswahl in `plan()` gehen
+ *  darueber, damit sie nicht auseinanderlaufen koennen. */
+function nonInlineAttachments(ctx: CommandContext): LabeledAttachment[] {
+  const metas = (ctx.mail?.attachments ?? []).filter((a) => !a.inline);
+  const seen = new Map<string, number>();
+  const total = new Map<string, number>();
+  for (const m of metas) total.set(m.name, (total.get(m.name) ?? 0) + 1);
+  return metas.map((meta) => {
+    const n = (seen.get(meta.name) ?? 0) + 1;
+    seen.set(meta.name, n);
+    // Der ERSTE Anhang eines Namens behaelt den blanken Namen (kein Verhaltenssprung fuer den
+    // Normalfall ohne Kollision); erst ab dem zweiten wird das Label eindeutig gemacht.
+    const label = (total.get(meta.name) ?? 0) > 1 && n > 1 ? `${meta.name} (${n})` : meta.name;
+    return { meta, label };
+  });
 }
 
 function extractSchema(ctx: CommandContext): ObjectSchema {
@@ -34,7 +59,7 @@ function extractSchema(ctx: CommandContext): ObjectSchema {
     properties: {
       name: {
         type: "string",
-        enum: attachmentNames(ctx),
+        enum: nonInlineAttachments(ctx).map((a) => a.label),
         description: "Which attachment to copy into the vault.",
         descriptionKey: "cmd.mail.extractAttachment.field.name",
       },
@@ -55,9 +80,14 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
 
   /** Billige Vorpruefung ueber das Frontmatter-Feld: `appliesTo` laeuft bei JEDEM Oeffnen
    *  der Kommandopalette, und dafuer eine .eml zu parsen waere unverhaeltnismaessig. Die
-   *  DATEN kommen weiterhin ausschliesslich aus der .eml (Spec § 2.2). */
+   *  DATEN kommen weiterhin ausschliesslich aus der .eml (Spec § 2.2). Ueber `fmKeyFor` statt
+   *  einem festverdrahteten "attachments", wie jedes andere Kommando auch — sonst verschwindet
+   *  das Kommando lautlos aus der Palette, sobald das Feld im Profil umbenannt oder auf `null`
+   *  gesetzt wird, obwohl die Mail sichtbar Anhaenge hat. */
   appliesTo(probe: CommandProbe): boolean {
-    const v = probe.frontmatter["attachments"];
+    const key = fmKeyFor(probe.profile, "attachments");
+    if (!key) return false;
+    const v = probe.frontmatter[key];
     return Array.isArray(v) && v.length > 0;
   },
 
@@ -67,13 +97,16 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
     const v = validateInput(extractSchema(ctx), input);
     if (!v.ok) return { ok: false, code: "invalid-input" };
 
-    const name = String(v.value["name"]);
-    const meta = mail.attachments.find((a) => !a.inline && a.name === name);
-    if (!meta) return { ok: false, code: "attachment-missing" };
-    const data = mail.attachmentData.get(meta.contentId ?? meta.name);
+    const label = String(v.value["name"]);
+    const found = nonInlineAttachments(ctx).find((a) => a.label === label);
+    if (!found) return { ok: false, code: "attachment-missing" };
+    const meta = found.meta;
+    // IMMER ueber meta.key, nie ueber meta.name — zwei Anhaenge mit demselben Namen wuerden
+    // sonst dieselben (falschen) Bytes liefern (M3b-Nachlese, Fund 1).
+    const data = mail.attachmentData.get(meta.key);
     if (!data) return { ok: false, code: "attachment-missing" };
 
-    const path = ctx.attachmentPathFor(name);
+    const path = ctx.attachmentPathFor(meta.name);
     const link = attachmentLink(path, meta.type);
     const ins = insertAttachmentLink(ctx.content, link);
     if (!ins.ok) return { ok: false, code: ins.code };
@@ -85,11 +118,11 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
       plan: {
         commandId: "mail.extractAttachment",
         mailId: ctx.target.mailId,
-        summary: `Extract attachment: ${name} → ${path}`,
+        summary: `Extract attachment: ${meta.name} → ${path}`,
         summaryKey: "plan.mail.extractAttachment.summary",
-        summaryArgs: [name, path],
+        summaryArgs: [meta.name, path],
         diff: [{ field: "attachment", after: path }],
-        notes: [{ kind: "update", path: ctx.target.path, content: ins.content, mailId: ctx.target.mailId, zoneHash: hash }],
+        notes: [{ kind: "update", path: ctx.target.path, content: ins.content, mailId: ctx.target.mailId, zoneHash: hash, expectedContent: ctx.content }],
         attachment: { path, data },
       },
     };

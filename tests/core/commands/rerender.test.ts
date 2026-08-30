@@ -111,4 +111,29 @@ describe("mail.rerender", () => {
     const m = mail();
     expect(RERENDER_COMMAND.plan({ egal: 1 }, ctxFor(m, noteFor(m)))).toEqual({ ok: false, code: "invalid-input" });
   });
+
+  it("traegt ctx.content als expectedContent in den Plan — der Executor prueft damit gegen einen zwischenzeitlichen Schreibvorgang (Fund 2, M3b-Nachlese)", () => {
+    const alt = mail();
+    const note = noteFor(alt);
+    const neu = mail({ subject: "Quartalsreview (verschoben)" });
+    const r = RERENDER_COMMAND.plan({}, ctxFor(neu, note));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.notes[0]).toMatchObject({ kind: "update", expectedContent: note.content });
+  });
+
+  it("legacy-Notiz ohne mail_state (state: null) bekommt beim Rerender live, nicht detached", () => {
+    const m = mail();
+    const note = noteFor(m, "live");
+    // Simuliert eine Notiz aus der Zeit vor mail_state (Altbestand): die Zeile fehlt komplett.
+    const contentOhneState = note.content.split("\n").filter((l) => !l.startsWith("mail_state:")).join("\n");
+    const ctx = ctxFor(mail({ subject: "neu" }), { content: contentOhneState, zoneHash: note.zoneHash }, {
+      target: { mailId: "a@x", path: "Mail/2026/x.md", source: "acc/Vault", state: null },
+      frontmatter: { mail_id: "a@x", mail_source: "acc/Vault", subject: "Quartalsreview" },
+    });
+    const r = RERENDER_COMMAND.plan({}, ctx);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect((r.plan.notes[0] as { content: string }).content).toContain("mail_state: live");
+  });
 });

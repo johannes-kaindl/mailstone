@@ -13,7 +13,7 @@ export interface CommandExecuteDeps {
 }
 
 export type CommandExecuteResult =
-  | { ok: true; created: number; updated: number; stateChanged: number; skipped: NotePlan[]; attachmentPath?: string }
+  | { ok: true; created: number; updated: number; stateChanged: number; skipped: NotePlan[]; attachmentPath?: string; openedUrl?: boolean }
   | { ok: false; code: CommandErrorCode };
 
 /**
@@ -37,6 +37,7 @@ export async function executeCommandPlan(plan: MailCommandPlan, deps: CommandExe
       stateChanged: r.stateChanged,
       skipped: r.skipped,
       ...(plan.attachment ? { attachmentPath: plan.attachment.path } : {}),
+      ...(plan.openUrl ? { openedUrl: true } : {}),
     };
   } catch {
     // Fehler sind Werte (Spec § 5): ein werfender Port wird zum Code, nicht zum Stacktrace.

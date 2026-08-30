@@ -112,6 +112,7 @@ export const en = {
   "plan.mail.replyExternal.summary": "Open your mail client with a reply to {0}.",
 
   "notice.command.done": "Done: {0} note(s) written, {1} skipped.",
+  "notice.command.staleSkip": "{0} note(s) were skipped: they changed while the preview was open, so nothing was overwritten. Run the command again if you still want it applied.",
   "notice.command.attachment": "Attachment saved as {0}.",
 
   "error.command.busy": "A synchronisation or another command is running. Try again in a moment.",
@@ -127,6 +128,7 @@ export const en = {
   "error.command.no-recipient": "This note has no sender address to reply to.",
   "error.command.nothing-to-do": "Nothing to change.",
   "error.command.write-failed": "Writing failed. Nothing or only part of it was saved — check the note.",
+  "error.command.unexpected": "Something went wrong before anything was written. Nothing was changed.",
 };
 export const de: typeof en = {
   "cmd.importEml.name": ".eml-Dateien aus einem Vault-Ordner importieren",
@@ -240,6 +242,7 @@ export const de: typeof en = {
   "plan.mail.replyExternal.summary": "Mailprogramm mit einer Antwort an {0} öffnen.",
 
   "notice.command.done": "Fertig: {0} Notizen geschrieben, {1} übersprungen.",
+  "notice.command.staleSkip": "{0} Notiz(en) wurden übersprungen: Sie haben sich geändert, während die Vorschau offen war, deshalb wurde nichts überschrieben. Bei Bedarf das Kommando erneut ausführen.",
   "notice.command.attachment": "Anhang gespeichert als {0}.",
 
   "error.command.busy": "Es läuft gerade eine Synchronisation oder ein anderes Kommando. Bitte gleich noch einmal versuchen.",
@@ -255,6 +258,7 @@ export const de: typeof en = {
   "error.command.no-recipient": "In dieser Notiz steht keine Absenderadresse, an die geantwortet werden könnte.",
   "error.command.nothing-to-do": "Es gibt nichts zu ändern.",
   "error.command.write-failed": "Das Schreiben ist fehlgeschlagen. Es wurde nichts oder nur ein Teil gespeichert — sieh in der Notiz nach.",
+  "error.command.unexpected": "Es ist etwas schiefgelaufen, bevor irgendetwas geschrieben wurde. Es wurde nichts geändert.",
 };
 
 export function initI18n(raw: string): void { defineStrings({ en, de }); setLang(pickLang(raw)); }

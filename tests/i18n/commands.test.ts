@@ -10,7 +10,7 @@ import type { CommandErrorCode } from "../../src/core/commands/types";
 const COMMAND_ERROR_CODES = [
   "busy", "invalid-input", "not-applicable", "eml-missing", "eml-unparseable", "eml-mismatch",
   "fences-missing", "zone-edited", "frontmatter-unparseable", "attachment-missing",
-  "no-recipient", "nothing-to-do", "write-failed",
+  "no-recipient", "nothing-to-do", "write-failed", "unexpected",
 ] as const satisfies readonly CommandErrorCode[];
 
 // Exhaustiveness in the other direction: if MissingCodes is non-empty (a union member is

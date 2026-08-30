@@ -19,7 +19,8 @@ import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sy
 import { mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import type { CommandDescriptor } from "./core/commands/types";
-import type { CommandExecuteDeps } from "./core/commands/execute";
+import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/execute";
+import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
 import { trTitle } from "./obsidian/command-i18n";
 
@@ -113,6 +114,39 @@ export function createPersister<T>(save: (state: T) => Promise<void>): (state: T
     last = serialised;
     return true;
   };
+}
+
+/**
+ * Faengt einen werfenden `runCommand()` ab. Der Aufrufer in `onload` startet ihn ueber
+ * `void this.runMailCommand(...)` (Obsidians `checkCallback` ist synchron) — eine Rejection
+ * dort ist unbeobachtet: kein Notice, kein Status, nichts. Reachable throws liegen VOR dem
+ * try/catch in `executeCommandPlan` (das nur Fehler waehrend des Schreibens abfaengt): ein
+ * verschwundenes/umbenanntes File beim `vault.read`/`readBinary`, `getAvailablePathForAttachment`,
+ * ein werfendes `Modal.open()` (M3b-Nachlese, Fund 3). Eigene Exportfunktion statt inline im
+ * `try`, damit sie ohne Obsidian-App testbar ist. */
+export async function safeRunCommand(run: () => Promise<RunResult>): Promise<RunResult> {
+  try {
+    return await run();
+  } catch {
+    return { kind: "error", code: "unexpected" };
+  }
+}
+
+/** Ob das Standard-Notice "Done: {0} note(s) written, {1} skipped." unterdrueckt wird.
+ *  mail.replyExternal plant per Bauart keine Notizen — nur eine externe URL —, deshalb waere
+ *  "Done: 0 note(s) written, 0 skipped." dort keine Information, sondern eine Verwirrung
+ *  (M3b-Nachlese, Sammel-Review). Reine Funktion, damit die Bedingung ohne Obsidian-App
+ *  pruefbar ist. */
+export function suppressDoneNotice(r: Extract<CommandExecuteResult, { ok: true }>): boolean {
+  const wroteNothing = r.created + r.updated === 0 && r.skipped.length === 0 && !r.attachmentPath;
+  return wroteNothing && r.openedUrl === true;
+}
+
+/** Wie viele uebersprungene Plaene an einem zwischenzeitlichen Schreibvorgang scheiterten
+ *  (Fund 2, M3b-Nachlese: der Lost-Update-Schutz in vaultPlanExecutor). Der reine Zaehler in
+ *  "Done: … skipped" sagt nicht, WARUM — ohne diese Zahl waere das nur im Log nachvollziehbar. */
+export function staleSkipCount(skipped: readonly NotePlan[]): number {
+  return skipped.filter((p) => p.kind === "skip" && p.reason === "content-changed").length;
 }
 
 /** Text der Statusleiste nach einem beendeten Lauf. `created + reattached` ist ein LAUF-Zaehler;
@@ -347,11 +381,11 @@ export default class MailstonePlugin extends Plugin {
   private async runMailCommand(descriptor: CommandDescriptor, notify: Notifier): Promise<void> {
     let outcome: RunResult;
     try {
-      outcome = await runCommand(
+      outcome = await safeRunCommand(() => runCommand(
         { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
         this.commandExecuteDeps(),
         descriptor,
-      );
+      ));
     } finally {
       await this.saveSettings();
     }
@@ -359,7 +393,9 @@ export default class MailstonePlugin extends Plugin {
     if (outcome.kind === "error") { notify.error(`error.command.${outcome.code}`); return; }
     const r = outcome.result;
     if (!r.ok) { notify.error(`error.command.${r.code}`); return; }
-    notify.info("notice.command.done", r.created + r.updated, r.skipped.length);
+    if (!suppressDoneNotice(r)) notify.info("notice.command.done", r.created + r.updated, r.skipped.length);
+    const staleSkips = staleSkipCount(r.skipped);
+    if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
     if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
   }
 

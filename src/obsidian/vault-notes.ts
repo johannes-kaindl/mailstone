@@ -44,6 +44,17 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
           } else if (p.kind === "update") {
             const f = app.vault.getAbstractFileByPath(normalizePath(p.path));
             if (!(f instanceof TFile)) { skipped.push(missingTarget(p)); continue; }
+            // Der Plan kann aelter sein als der Schreibvorgang — zwischen Lesen (buildContext)
+            // und hier lag ein unbeschraenktes Formular-/Vorschau-Modal. Wenn der Aufrufer den
+            // Inhalt mitgegeben hat, den der Plan voraussetzt, wird nur geschrieben, wenn die
+            // Datei ihn noch genauso hat; sonst waere dies ein Lost Update (M3b-Nachlese, Fund 2).
+            if (p.expectedContent !== undefined) {
+              const current = await app.vault.read(f);
+              if (current !== p.expectedContent) {
+                skipped.push({ kind: "skip", path: p.path, mailId: p.mailId, reason: "content-changed" });
+                continue;
+              }
+            }
             await app.vault.modify(f, p.content);
             hashes.set(p.mailId, p.zoneHash);
             updated++;

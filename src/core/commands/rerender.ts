@@ -68,7 +68,7 @@ export const RERENDER_COMMAND: CommandDescriptor = {
         summaryKey: "plan.mail.rerender.summary",
         summaryArgs: [changedFields],
         diff,
-        notes: [{ kind: "update", path: ctx.target.path, content: r.content, mailId: ctx.target.mailId, zoneHash: r.zoneHash }],
+        notes: [{ kind: "update", path: ctx.target.path, content: r.content, mailId: ctx.target.mailId, zoneHash: r.zoneHash, expectedContent: ctx.content }],
       },
     };
   },
