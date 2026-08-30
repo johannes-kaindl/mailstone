@@ -1,5 +1,6 @@
 import { mergeFrontmatterOnly } from "../merge/merge";
 import { fmKeyFor, type FmVal } from "../mirror/profile";
+import { show } from "./diff";
 import { keepZoneHash } from "./zone";
 import type { NotePlan } from "../mirror/plan";
 import { validateInput } from "./schema";
@@ -9,15 +10,6 @@ import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type Command
  *  braeuchte die Message-ID, und die steht dann nirgends mehr. */
 function isWikilink(v: string): boolean {
   return v.startsWith("[[") && v.endsWith("]]");
-}
-
-/** Frontmatter-Rohwert (aus dem Metadata-Cache, also `unknown`) fuer die Diff-Vorschau in
- *  Text — `String(unknown)` waere ein no-base-to-string-Fund, falls der Wert je ein Objekt ist. */
-function show(v: unknown): string {
-  if (Array.isArray(v)) return v.map((x) => String(x)).join(", ");
-  if (v === undefined || v === null) return "";
-  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
-  return JSON.stringify(v) ?? "";
 }
 
 export function relinkOne(value: string, linkFor: (id: string) => string | null): string {

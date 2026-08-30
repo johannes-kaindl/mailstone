@@ -1,6 +1,6 @@
 import type { FmVal } from "../mirror/profile";
 
-function show(v: unknown): string {
+export function show(v: unknown): string {
   if (Array.isArray(v)) return v.map((x) => String(x)).join(", ");
   if (v === undefined || v === null) return "";
   if (typeof v === "string") return v;
