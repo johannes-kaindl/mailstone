@@ -1,14 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { FakeSocketTransport, type DialogStep, type SendPart } from "../../helpers/fake-socket";
+import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
 import { imapConnect } from "../../../src/core/imap/client";
+import { MAX_UNTAGGED_PER_COMMAND } from "../../../src/core/imap/types";
 
 const base = { host: "imap.example.net", port: 993, tls: "implicit" as const, username: "u@example.net", password: "geheim", timers: testTimers };
-
-function literal(text: string): SendPart[] {
-  const bytes = new TextEncoder().encode(text);
-  return [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(bytes.byteLength)}}`, bytes, ")"];
-}
 
 const greetingAndAuth: DialogStep[] = [
   { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS MOVE", "a001 OK done"] },
@@ -49,7 +45,9 @@ describe("imapConnect", () => {
     ]);
     const r = await imapConnect(fake, base);
     expect(r.ok).toBe(true);
-    expect(fake.written.some((l) => l.startsWith("a002 LOGIN"))).toBe(true);
+    // Die Aussage ist der Verzicht auf AUTHENTICATE — dass LOGIN gesendet wurde, erzwingt schon
+    // der Dialog-Step oben, eine Assertion darauf koennte gar nicht fehlschlagen.
+    expect(fake.written.some((l) => l.includes("AUTHENTICATE"))).toBe(false);
   });
 
   // Die Initial-Response-Form von AUTHENTICATE ist RFC 4959 und braucht SASL-IR. Ein Server, der
@@ -62,7 +60,9 @@ describe("imapConnect", () => {
     ]);
     const r = await imapConnect(fake, base);
     expect(r.ok).toBe(true);
-    expect(fake.written.some((l) => l.startsWith("a002 LOGIN"))).toBe(true);
+    // Die Aussage ist der Verzicht auf AUTHENTICATE — dass LOGIN gesendet wurde, erzwingt schon
+    // der Dialog-Step oben, eine Assertion darauf koennte gar nicht fehlschlagen.
+    expect(fake.written.some((l) => l.includes("AUTHENTICATE"))).toBe(false);
     expect(fake.written.some((l) => l.includes("AUTHENTICATE"))).toBe(false);
   });
 
@@ -298,5 +298,61 @@ describe("imapConnect — Randfaelle des Verbindungsaufbaus", () => {
     // Kein Dialog-Step fuer LOGOUT: das Kommando laeuft ins Leere und wirft.
     await r.session.logout();
     expect(fake.closed).toBe(true);
+  });
+});
+
+// M3-Nachlese: jeder einzelne Read steht unter Timeout, die Sammelschleife um ihn herum nicht.
+// Ein Server, der ohne Pause untagged Antworten schickt, haelt damit jeden Read innerhalb der
+// Frist und laesst das Array trotzdem unbegrenzt wachsen. In einem Modul, das MAX_LITERAL_BYTES
+// ausdruecklich gegen "einen defekten oder feindlichen Server" begruendet, war das inkonsistent.
+describe("imapConnect — Obergrenze fuer untagged Antworten", () => {
+  it("bricht ab, wenn ein Kommando mehr untagged Antworten bekommt als vorgesehen", async () => {
+    const flut = Array.from({ length: MAX_UNTAGGED_PER_COMMAND + 1 }, (_, i) => `* ${String(i + 1)} EXISTS`);
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: [...flut, "a001 OK done"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    expect(r).toMatchObject({ ok: false, code: "protocol" });
+    if (r.ok) throw new Error("unreachable");
+    expect(r.detail).toMatch(/untagged/i);
+  });
+
+  it("laesst eine grosse, aber legitime Antwort durch", async () => {
+    const viele = Array.from({ length: 500 }, (_, i) => `* ${String(i + 1)} EXISTS`);
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: [...viele, "* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+    ]);
+    expect((await imapConnect(fake, base)).ok).toBe(true);
+  });
+});
+
+// M3-Nachlese, zwei Uneinheitlichkeiten im selben Modul:
+describe("imapConnect — einheitliche Konventionen", () => {
+  // `line` kommt OHNE Tag (command setzt es davor), `masked` musste es bisher MITBRINGEN. Wer das
+  // verwechselte, bekam eine Log-Zeile ohne Tag — harmlos, aber genau die Sorte Falle, die man
+  // erst beim Debuggen bemerkt. Jetzt tragen beide Parameter dieselbe Form.
+  it("loggt die maskierte Zeile MIT Tag, ohne dass der Aufrufer es mitgibt", async () => {
+    const lines: string[] = [];
+    const fake = new FakeSocketTransport(["* OK ready"], greetingAndAuth);
+    await imapConnect(fake, { ...base, log: (l) => lines.push(l) });
+    expect(lines).toContain("C: a002 AUTHENTICATE PLAIN ****");
+    expect(lines.some((l) => l.includes("geheim"))).toBe(false);
+  });
+
+  // uidFetchMessageIds verglich numerisch, uidFetchBody als Zeichenkette. Beide Wege treffen im
+  // Normalfall dasselbe, aber nur der numerische ist gegen eine fuehrende Null robust.
+  it("ordnet eine FETCH-Antwort auch dann zu, wenn der Server die UID mit fuehrender Null schreibt", async () => {
+    const body = new TextEncoder().encode("Message-ID: <x@y>\r\n\r\nHallo\r\n");
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      {
+        expect: /^a003 UID FETCH 7 \(BODY\.PEEK\[\]\)$/,
+        send: [`* 1 FETCH (UID 007 BODY[] {${String(body.byteLength)}}`, body, ")", "a003 OK done"],
+      },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(await r.session.uidFetchBody(7)).not.toBeNull();
   });
 });

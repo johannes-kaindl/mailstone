@@ -9,6 +9,7 @@ import { normalizeMessageId } from "../mime/headers";
 import { assertNoCrlf, buildUidSet, chunk, encodeMailbox, quoteArg } from "./commands";
 import { findAtomValue, firstLiteral, parseResponse, readRawLine } from "./parser";
 import type { ImapErrorCode, ImapResponse } from "./types";
+import { MAX_UNTAGGED_PER_COMMAND } from "./types";
 
 export interface ImapConnectOptions {
   host: string;
@@ -54,6 +55,17 @@ const HEADER_BATCH = 200;
 
 interface Tagged { status: "OK" | "NO" | "BAD"; text: string; untagged: ImapResponse[] }
 
+/** Sammelt eine untagged Antwort und haelt dabei die Obergrenze ein. Jeder einzelne Read steht
+ *  unter Timeout, die Sammelschleife um ihn herum nicht — ein Server, der ohne Pause
+ *  weiterschickt, haelt also jede Frist ein und liesse das Array trotzdem unbegrenzt wachsen.
+ *  Derselbe Gedanke wie MAX_LITERAL_BYTES, nur fuer die Anzahl statt die Groesse. */
+function pushUntagged(untagged: ImapResponse[], r: ImapResponse): void {
+  if (untagged.length >= MAX_UNTAGGED_PER_COMMAND) {
+    throw new NetError("protocol", `mehr als ${String(MAX_UNTAGGED_PER_COMMAND)} untagged Antworten auf ein Kommando`);
+  }
+  untagged.push(r);
+}
+
 function base64Utf8(s: string): string {
   const bytes = new TextEncoder().encode(s);
   let bin = "";
@@ -89,11 +101,13 @@ class Connection {
   }
 
   /** Schickt ein Kommando und liest bis zur gleichnamig getaggten Antwort. `masked` ersetzt die
-   *  Zeile im Log (Passwoerter). Jeder Schritt laeuft unter guard() — ein haengendes FETCH
-   *  darf den Intervall-Lauf nicht blockieren. */
+   *  Zeile im Log (Passwoerter) und wird — wie `line` — OHNE Tag uebergeben; das Tag setzt diese
+   *  Methode davor. Bis 2026-08-30 trugen die beiden Parameter unterschiedliche Konventionen, was
+   *  eine Log-Zeile ohne Tag ergab, sobald jemand sie verwechselte. Jeder Schritt laeuft unter
+   *  guard() — ein haengendes FETCH darf den Intervall-Lauf nicht blockieren. */
   async command(tag: string, line: string, masked?: string): Promise<Tagged> {
     const full = `${tag} ${line}`;
-    this.log?.(`C: ${masked ?? full}`);
+    this.log?.(`C: ${masked === undefined ? full : `${tag} ${masked}`}`);
     await this.guard(this.transport.write(`${full}\r\n`), "imap-write");
     const untagged: ImapResponse[] = [];
     for (;;) {
@@ -106,7 +120,7 @@ class Connection {
         return { status: m[1] as "OK" | "NO" | "BAD", text: m[2] ?? "", untagged };
       }
       if (r.tag !== "*" && r.tag !== "+") throw new NetError("protocol", `fremder Tag in der Antwort: ${raw.text}`);
-      untagged.push(r);
+      pushUntagged(untagged, r);
     }
   }
 
@@ -132,7 +146,7 @@ class Connection {
       }
       if (r.tag === "+") break;
       if (r.tag !== "*") throw new NetError("protocol", `fremder Tag in der Antwort: ${raw.text}`);
-      untagged.push(r);
+      pushUntagged(untagged, r);
     }
 
     await this.guard(this.transport.write(bytes), "imap-write-literal");
@@ -147,7 +161,7 @@ class Connection {
         return { status: m[1] as "OK" | "NO" | "BAD", text: m[2] ?? "", untagged };
       }
       if (r.tag !== "*" && r.tag !== "+") throw new NetError("protocol", `fremder Tag in der Antwort: ${raw.text}`);
-      untagged.push(r);
+      pushUntagged(untagged, r);
     }
   }
 }
@@ -249,8 +263,8 @@ async function runConnect(transport: SocketTransport, opts: ImapConnectOptions):
 
     const authTag = conn.nextTag();
     const auth = canSaslIr
-      ? await conn.command(authTag, `AUTHENTICATE PLAIN ${base64Utf8(`\0${opts.username}\0${opts.password}`)}`, `${authTag} AUTHENTICATE PLAIN ****`)
-      : await conn.command(authTag, `LOGIN ${quoteArg(opts.username)} ${quoteArg(opts.password)}`, `${authTag} LOGIN **** ****`);
+      ? await conn.command(authTag, `AUTHENTICATE PLAIN ${base64Utf8(`\0${opts.username}\0${opts.password}`)}`, `AUTHENTICATE PLAIN ****`)
+      : await conn.command(authTag, `LOGIN ${quoteArg(opts.username)} ${quoteArg(opts.password)}`, `LOGIN **** ****`);
     if (auth.status !== "OK") return { ok: false, code: "auth", detail: auth.text };
 
     return { ok: true, session: makeSession(conn, capabilities) };
@@ -315,7 +329,9 @@ function makeSession(conn: Connection, capabilities: string[]): ImapSession {
       for (const resp of r.untagged) {
         const list = resp.items.find((i) => i.kind === "list");
         if (list?.kind !== "list") continue;
-        if (findAtomValue(list.items, "UID") !== String(uid)) continue;
+        // Numerisch vergleichen wie in uidFetchMessageIds: ein Zeichenketten-Vergleich haette
+        // "007" nicht als 7 erkannt und die Antwort stillschweigend verworfen.
+        if (Number(findAtomValue(list.items, "UID")) !== uid) continue;
         const bytes = firstLiteral(list.items);
         if (bytes) return bytes;
       }
