@@ -207,6 +207,20 @@ describe("createCalendarNotesBridge", () => {
     expect(bridge.registered).toBe(false);
   });
 
+  it("unregister() faengt eine werfende unregisterMailTransport ab und crasht nicht (onunload darf nicht abbrechen)", () => {
+    const registerMailTransport = vi.fn().mockReturnValue({ ok: true });
+    const unregisterMailTransport = vi.fn().mockImplementation(() => {
+      throw new Error("Nachbar bereits abgebaut");
+    });
+    const app = makeApp({ version: 1, registerMailTransport, unregisterMailTransport });
+    const bridge = createCalendarNotesBridge(app, transport);
+    bridge.tryRegister();
+
+    expect(() => bridge.unregister()).not.toThrow();
+    expect(unregisterMailTransport).toHaveBeenCalledWith("mailstone");
+    expect(bridge.registered).toBe(false);
+  });
+
   it("tryRegister() liefert false, wenn der Nachbar mit { error } ablehnt (invalid-mail-transport)", () => {
     const registerMailTransport = vi.fn().mockReturnValue({ error: "invalid-mail-transport" });
     const unregisterMailTransport = vi.fn();
