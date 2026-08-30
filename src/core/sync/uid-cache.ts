@@ -55,6 +55,9 @@ export function createUidCache(initial: unknown): UidCacheStore {
       const keep = new Set(uids.map((u) => String(u)));
       for (const uid of Object.keys(cur.map)) if (!keep.has(uid)) delete cur.map[uid];
     },
+    /** Liefert die INTERNE Referenz, keine Kopie — fuer die Persistenz gedacht (`saveData`).
+     *  Wer hineinschreibt, umgeht die Verwerfungslogik bei einem UIDVALIDITY-Wechsel und
+     *  hinterlaesst Zuordnungen aus einer alten Generation unter neuen UIDs. Nur lesen. */
     data: () => data,
   };
 }

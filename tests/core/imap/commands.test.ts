@@ -35,3 +35,17 @@ describe("buildUidSet / chunk", () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
   });
 });
+
+// M3-Nachlese: `buildUidSet` dedupliziert nicht. `[1,1,2,3]` ergab "1,1:3" — semantisch dasselbe
+// wie "1:3", aber laenger und irritierend im Log. Doppelte UIDs entstehen nicht im Normalfall,
+// wohl aber, wenn eine Aufrufstelle zwei Quellen zusammenwirft.
+describe("buildUidSet — Duplikate", () => {
+  it("fasst doppelte UIDs zu einem Bereich zusammen", () => {
+    expect(buildUidSet([1, 1, 2, 3])).toBe("1:3");
+  });
+
+  it("wirft Duplikate auch bei Einzelwerten weg", () => {
+    expect(buildUidSet([5, 5, 5])).toBe("5");
+    expect(buildUidSet([9, 3, 9, 3])).toBe("3,9");
+  });
+});

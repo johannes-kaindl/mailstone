@@ -5,6 +5,10 @@ import type { ParsedMail } from "../mime/types";
 import { planMailNote, type NotePlan } from "./plan";
 import type { MailProfile } from "./profile";
 
+/** Ein Eintrag des Vault-Index. `state: null` heisst "Notiz ohne Zustandsfeld" — zusammen mit
+ *  einer zu diesem Lauf passenden `source` ergibt das einen detach-Plan, sobald die Mail nicht
+ *  mehr auf dem Server liegt: der Zweig prueft auf `!== "detached"`, nicht auf `=== "live"`.
+ *  Eine fremde `source` schuetzt die Notiz dagegen unabhaengig vom Zustand. */
 export interface MailIndexEntry { path: string; state: string | null; source: string | null }
 export type MailIndex = Map<string, MailIndexEntry>;
 
@@ -14,6 +18,9 @@ export interface ApplyInput {
   source: string;
   syncedAt: Date;
   index: MailIndex;
+  /** Alle im Vault schon belegten Pfade — MUSS vorbesetzt uebergeben werden, nicht leer.
+   *  `planSync` traegt neu vergebene Pfade hier nach, um Kollisionen innerhalb EINES Laufs zu
+   *  vermeiden; ein leeres Set laesst den Lauf Pfade vergeben, die es bereits gibt. */
   takenPaths: Set<string>;
   /** Frisch geholte Mails, die im Vault noch fehlen. */
   fetched: { mail: ParsedMail; eml: Uint8Array }[];

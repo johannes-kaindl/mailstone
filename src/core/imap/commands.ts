@@ -49,7 +49,10 @@ export function quoteArg(value: string): string {
 }
 
 export function buildUidSet(uids: readonly number[]): string {
-  const sorted = [...uids].sort((a, b) => a - b);
+  // Set vor dem Sortieren: doppelte UIDs ergaben sonst "1,1:3" statt "1:3" — semantisch dasselbe,
+  // aber laenger und im Log irritierend. Sie entstehen, sobald eine Aufrufstelle zwei Quellen
+  // zusammenwirft.
+  const sorted = [...new Set(uids)].sort((a, b) => a - b);
   const parts: string[] = [];
   let i = 0;
   while (i < sorted.length) {

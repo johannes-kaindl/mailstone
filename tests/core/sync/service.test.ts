@@ -3,7 +3,7 @@ import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket"
 import { testTimers } from "../../helpers/timers";
 import { createSyncService, MAX_FETCH_PER_RUN, MAX_HEADER_FETCH_PER_RUN } from "../../../src/core/sync/service";
 import { createBusyGuard } from "../../../src/core/sync/busy";
-import { createEmitter } from "../../../src/core/sync/events";
+import { createEmitter, type SyncEvents } from "../../../src/core/sync/events";
 import { createUidCache } from "../../../src/core/sync/uid-cache";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
 import { newAccount, type Account } from "../../../src/core/settings";
@@ -190,7 +190,7 @@ describe("createSyncService", () => {
 
   it("feuert synced mit den Zaehlern und changed je ausgefuehrtem Plan", async () => {
     const index: MailIndex = new Map([["weg@example.net", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
-    const events = createEmitter<{ synced: { accountId: string; counts: { detached: number } }; changed: { path: string } }>();
+    const events = createEmitter<SyncEvents>();
     const synced = vi.fn();
     const changed = vi.fn();
     events.on("synced", synced);
@@ -203,7 +203,7 @@ describe("createSyncService", () => {
       accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
       transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
       executor: () => recordingExecutor().executor, uidCache: createUidCache(undefined),
-      busy: createBusyGuard(), events: events as never, timers: testTimers, now: () => new Date(),
+      busy: createBusyGuard(), events: events, timers: testTimers, now: () => new Date(),
     });
     await svc.syncAccount("acc");
     expect(synced).toHaveBeenCalledWith(expect.objectContaining({ accountId: "acc" }));
@@ -212,7 +212,7 @@ describe("createSyncService", () => {
 
   it("feuert kein changed fuer einen Plan, den der Executor scheitern laesst, und zaehlt ihn als Fehler", async () => {
     const index: MailIndex = new Map([["weg@example.net", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
-    const events = createEmitter<{ synced: { accountId: string; counts: { detached: number; errors: number } }; changed: { path: string } }>();
+    const events = createEmitter<SyncEvents>();
     const changed = vi.fn();
     events.on("changed", changed);
     // Der Executor gibt fuer jeden Plan eine FLACHE KOPIE zurueck statt der Original-Referenz —
@@ -235,7 +235,7 @@ describe("createSyncService", () => {
       accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
       transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
       executor: () => failingExecutor, uidCache: createUidCache(undefined),
-      busy: createBusyGuard(), events: events as never, timers: testTimers, now: () => new Date(),
+      busy: createBusyGuard(), events: events, timers: testTimers, now: () => new Date(),
     });
     const r = await svc.syncAccount("acc");
     expect(r).toMatchObject({ ok: true, counts: { detached: 0, errors: 1 } });
@@ -288,7 +288,7 @@ describe("createSyncService", () => {
   it("zaehlt einen vom Executor uebersprungenen setState-Plan nicht als detached und feuert kein changed", async () => {
     const index: MailIndex = new Map([["weg@example.net", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
     const changed = vi.fn();
-    const events = createEmitter<{ synced: { accountId: string; counts: { detached: number } }; changed: { path: string } }>();
+    const events = createEmitter<SyncEvents>();
     events.on("changed", changed);
     const skippingExecutor: PlanExecutor = {
       execute: (plans) => Promise.resolve({
@@ -306,7 +306,7 @@ describe("createSyncService", () => {
       accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
       transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
       executor: () => skippingExecutor, uidCache: createUidCache(undefined),
-      busy: createBusyGuard(), events: events as never, timers: testTimers, now: () => new Date(),
+      busy: createBusyGuard(), events: events, timers: testTimers, now: () => new Date(),
     });
     expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { detached: 0, skipped: 1 } });
     expect(changed).not.toHaveBeenCalled();
