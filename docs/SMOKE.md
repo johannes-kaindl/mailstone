@@ -78,3 +78,26 @@ selbst anlegt, ist das kosmetisch; sobald ein Nutzer eigene Felder mit bewusster
 ist ungenutzt — wer im Webmail nachsieht, findet seine ueber mailstone verschickte Mail nirgends.
 Das ist kein M3-Fehler (Versand ist M2), aber ein Verhalten, das ein Nutzer anders erwartet.
 Vorgemerkt fuer die Nachlese.
+
+## Sent-Kopie (Nachtrag zu M2) — Live-Probe 2026-08-30
+
+Der zweite Befund der M3-Live-Probe („kein Abbild im `Sent`-Ordner") ist behoben und ebenfalls am
+echten Konto geprüft. `send()` legt die versandte Nachricht jetzt per `APPEND` im Ordner aus
+`folders.sent` ab; der Default ist `"Sent"` und greift auch für bereits eingerichtete Konten (über
+die Settings-Reparatur), ein leerer Wert schaltet die Kopie ab.
+
+| Beobachtung | Ergebnis |
+|---|---|
+| Default am bestehenden Konto | `folders.sent` = `"Sent"`, ohne dass in `data.json` etwas stand |
+| Versand | `{ok: true, messageId: …, sentCopy: "ok"}` |
+| Ablage | Kopie im Ordner `Sent` gefunden (UID 294), Flag `\Seen` — sie erscheint nicht als ungelesen |
+
+**Zwei Entwurfsentscheidungen, die dabei zählen:**
+
+- **Ein Fehlschlag der Kopie macht den Versand nicht zum Fehlschlag.** Die Mail ist zugestellt; sie
+  nachträglich als gescheitert zu melden, würde zu einem zweiten Sendeversuch verleiten. Der Ausgang
+  steht deshalb als `sentCopy: "ok" | "failed" | "skipped"` im Ergebnis, nicht im `ok`.
+- **Die Bytes gehen erst nach der Continuation raus.** `APPEND` kündigt die Größe an, der Server
+  antwortet mit `+`, und erst dann folgt die Nachricht. Lehnt er stattdessen sofort ab (fehlender
+  Ordner, volles Postfach), bleiben die Bytes ungeschrieben — sonst lägen sie herrenlos auf einer
+  Leitung, die schon auf das nächste Kommando wartet. Drei Unit-Tests decken genau diese drei Wege ab.

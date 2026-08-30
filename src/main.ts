@@ -113,6 +113,10 @@ export default class MailstonePlugin extends Plugin {
       accounts: () => this.settings.accounts,
       secret: (id) => secrets.get(id),
       transport: () => nodeSocketTransport(),
+      // Zweite Fabrik fuer die Ablage im Sent-Ordner: der SMTP-Transport ist nach dem Versand
+      // verbraucht, die Kopie braucht eine eigene Verbindung.
+      imapTransport: () => nodeSocketTransport(),
+      timers: window,
       now: () => new Date(),
       randomId: () => crypto.randomUUID(),
       ...(this.settings.debugLog ? { log: (l: string) => console.debug("[mailstone smtp]", l) } : {}),

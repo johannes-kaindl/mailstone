@@ -185,7 +185,7 @@ export class AccountModal extends Modal {
       c.setValue(this.draft.folders.archive).onChange((v) => { this.draft.folders.archive = v; }),
     );
     new Setting(this.contentEl).setName(t("settings.account.folders.sent")).addText((c) =>
-      c.setValue(this.draft.folders.sent ?? "").onChange((v) => { this.draft.folders.sent = v || undefined; }),
+      c.setValue(this.draft.folders.sent ?? "").onChange((v) => { this.draft.folders.sent = v; }),
     );
   }
 

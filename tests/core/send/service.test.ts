@@ -160,3 +160,55 @@ describe("isLoopback", () => {
     expect(isLoopback("smtp.example.net")).toBe(false);
   });
 });
+
+describe("Kopie im Sent-Ordner", () => {
+  function imapFake(appendAntwort: string[]): FakeSocketTransport {
+    return new FakeSocketTransport(
+      ["* OK ready"],
+      [
+        { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+        { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+        { expect: /^a003 APPEND /, send: appendAntwort },
+        { expect: /^$/, send: ["a003 OK [APPENDUID 1 9] done"] },
+        { expect: /^a004 LOGOUT$/, send: ["* BYE", "a004 OK done"] },
+      ],
+    );
+  }
+
+  function sendeMit(imap: FakeSocketTransport | undefined, sentOrdner: string | undefined) {
+    const konto = makeAccount();
+    konto.folders = { ...konto.folders, ...(sentOrdner === undefined ? {} : { sent: sentOrdner }) };
+    const smtp = happyPathTransport();
+    return createSendService({
+      accounts: () => [konto],
+      secret: () => "geheim",
+      transport: () => smtp,
+      now: () => new Date("2026-08-23T13:00:00.000Z"),
+      randomId: () => "msgid-1",
+      timers: { setTimeout: (f, ms) => globalThis.setTimeout(f, ms) as unknown as number, clearTimeout: (i) => { globalThis.clearTimeout(i); } },
+      ...(imap ? { imapTransport: () => imap } : {}),
+    });
+  }
+
+  it("legt die gesendete Mail per APPEND im Sent-Ordner ab", async () => {
+    const imap = imapFake(["+ Ready for literal data"]);
+    const r = await sendeMit(imap, "Sent").send("privat", baseMsg);
+    expect(r).toMatchObject({ ok: true, sentCopy: "ok" });
+    expect(imap.written.some((l) => /^a003 APPEND "Sent" \(\\Seen\) \{\d+\}$/.test(l))).toBe(true);
+    // Die abgelegte Kopie ist dieselbe Nachricht, die verschickt wurde.
+    expect(imap.written.join("\n")).toContain("Subject: Hallo");
+  });
+
+  it("ein Fehlschlag der Kopie laesst den Versand erfolgreich bleiben", async () => {
+    const imap = imapFake(["a003 NO [TRYCREATE] Mailbox doesn't exist"]);
+    const r = await sendeMit(imap, "Sent").send("privat", baseMsg);
+    expect(r).toMatchObject({ ok: true, messageId: "msgid-1@example.net", sentCopy: "failed" });
+  });
+
+  it("ohne Sent-Ordner wird nichts abgelegt und nichts verbunden", async () => {
+    const imap = imapFake(["+ ok"]);
+    const r = await sendeMit(imap, "").send("privat", baseMsg);
+    expect(r).toMatchObject({ ok: true, sentCopy: "skipped" });
+    expect(imap.connectCalls).toHaveLength(0);
+  });
+});

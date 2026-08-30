@@ -186,3 +186,42 @@ describe("ImapSession", () => {
     expect(await s.examine("Vault")).toMatchObject({ ok: false, code: "protocol" });
   });
 });
+
+describe("ImapSession.append", () => {
+  async function sessionFor(steps: DialogStep[]) {
+    const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth, ...steps]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error(`connect fehlgeschlagen: ${r.detail}`);
+    return { fake, s: r.session };
+  }
+  const eml = new TextEncoder().encode("From: a@b\r\nSubject: x\r\n\r\nHallo\r\n");
+
+  it("kuendigt die Groesse an, wartet auf die Continuation und schickt dann die Bytes", async () => {
+    const { fake, s } = await sessionFor([
+      { expect: new RegExp(`^a003 APPEND "Sent" \\(\\\\Seen\\) \\{${String(eml.byteLength)}\\}$`), send: ["+ Ready for literal data"] },
+      { expect: /^$/, send: ["a003 OK [APPENDUID 1 7] Append completed"] },
+    ]);
+    expect(await s.append("Sent", eml, ["\\Seen"])).toEqual({ ok: true });
+    // Die Bytes gehen NACH der Continuation raus, nicht davor.
+    const idx = fake.written.findIndex((l) => l.startsWith("a003 APPEND"));
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(fake.written.slice(idx + 1).join("\n")).toContain("Subject: x");
+  });
+
+  it("kodiert den Ordnernamen und meldet folder-missing bei NO", async () => {
+    const { fake, s } = await sessionFor([
+      { expect: /^a003 APPEND "Gel&APY-scht" /, send: ["a003 NO [TRYCREATE] Mailbox doesn't exist"] },
+    ]);
+    expect(await s.append("Gelöscht", eml)).toMatchObject({ ok: false, code: "folder-missing" });
+    expect(fake.written.some((l) => l.includes("Gel&APY-scht"))).toBe(true);
+  });
+
+  it("schickt die Bytes NICHT, wenn der Server statt der Continuation ablehnt", async () => {
+    const { fake, s } = await sessionFor([
+      { expect: /^a003 APPEND /, send: ["a003 NO Over quota"] },
+    ]);
+    const r = await s.append("Sent", eml);
+    expect(r.ok).toBe(false);
+    expect(fake.written.join("\n")).not.toContain("Subject: x");
+  });
+});

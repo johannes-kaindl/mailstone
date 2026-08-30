@@ -159,7 +159,7 @@ Abgeleitete Schlüssel = genau die Profil-Keys + `mail_*`; alles andere gehört 
 
 Pro Konto, pro Lauf eine Verbindung:
 1. `connect` → Greeting → `CAPABILITY` (merken: `MOVE`, `UIDPLUS`, `CONDSTORE`, `OBJECTID`, `IDLE`, `AUTH=PLAIN`) → `AUTHENTICATE PLAIN` (Fallback `LOGIN`).
-2. `EXAMINE <allowlist>` (read-only) → `UID SEARCH ALL` → für UIDs ohne bekannte Message-ID: `UID FETCH (ENVELOPE BODYSTRUCTURE)` → Message-ID aus `ENVELOPE` normalisieren → Abgleich gegen Index.
+2. `EXAMINE <allowlist>` (read-only) → `UID SEARCH ALL` → für UIDs ohne bekannte Message-ID: `UID FETCH BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` → Header durch `normalizeMessageId` → Abgleich gegen Index. ⚠️ **Geändert in M3 (2026-08-30), ursprünglich stand hier `UID FETCH (ENVELOPE BODYSTRUCTURE)`.** Zwei Gründe: `ENVELOPE` verlangt einen vollständigen Parser für verschachtelte Adresslisten, dessen einziger Ertrag hier ein einzelner Header wäre, und `BODYSTRUCTURE` wird gar nicht gebraucht (der Anlagen-Bestand kommt ohnehin aus der geparsten `.eml`). Der wichtigere Grund kam aus dem Abschluss-Review: `ENVELOPE` liefert die Message-ID in der **Interpretation des Servers**, während `normalizeMessageId` denselben Rohstring normalisiert, aus dem später beim Parsen des Bodys die `mail.id` entsteht. Der Abgleich Cache ↔ Notiz ↔ Mail läuft so über **eine** Normalisierung statt über zwei Quellen, die auseinanderlaufen können — in einem Modul, dessen teuerster Fehler ein falscher ID-Abgleich ist. Beide Kommandos sind `PEEK`-sicher.
    *UID→Message-ID-Cache* in `data.json` pro `<konto>/<ordner>/<UIDVALIDITY>`, damit nicht jeder Lauf alle Envelopes holt; bei `UIDVALIDITY`-Wechsel verworfen.
 3. Neu: `UID FETCH BODY.PEEK[]` → Bytes → `mime/parse` → `render` → `NotePlan create` (`.md` + `.eml`).
 4. Bekannt, aber `mail_state: detached` und wieder im Ordner → `NotePlan reattach`. Bekannt `live`, aber nicht mehr im Ordner → `NotePlan detach`.
@@ -199,7 +199,7 @@ send(accountId, msg): Promise<{ ok: true; messageId: string } | { ok: false; cod
 - `ImipMessage` (Vertrag) → `OutgoingMessage` 1:1 (`from` = Account-ID aus `accounts()` ↔ Identity-ID; `text`; `calendar`).
 - MIME-Builder: `multipart/alternative` mit `text/plain; charset=utf-8` und — falls `calendar` — `text/calendar; method=<M>; charset=utf-8` (+ optional `invite.ics` als Anhang); RFC-2047-kodierte Header, `Message-ID: <uuid@host-der-identity>`, `Date`, `MIME-Version`, `In-Reply-To`/`References`; 7-bit-sichere Kodierung (`quoted-printable` bzw. `base64`).
 - SMTP: nur der konfigurierte Anbieter-SMTP; 465 implizit TLS oder 587 `STARTTLS` (Klartext-Auth ohne TLS wird verweigert: `code:"tls-required"`); `AUTH PLAIN`; Dot-Stuffing; `RCPT`-Ablehnungen einzeln als Codes.
-- Nach Erfolg `APPEND` in `folders.sent`, falls gesetzt (Fehler dabei nicht fatal: `ok:true` + Notice).
+- Nach Erfolg `APPEND` in `folders.sent` (Fehler dabei nicht fatal: `ok:true` + Notice). ⚠️ **Präzisiert 2026-08-30:** ursprünglich „falls gesetzt" — gemeint war Opt-in, gebaut ist jetzt **Opt-out**. `folders.sent` trägt den Default `"Sent"` (auch für bestehende Konten, über die Settings-Reparatur); ein leerer Wert schaltet die Kopie ab. Anlass ist die M3-Live-Probe: nach zwei zugestellten Testmails war der `Sent`-Ordner leer, und ein Nutzer, der seine gesendete Mail im Webmail sucht, findet sie dann nirgends. Ein Vorgang, dessen Fehlen man erst merkt, wenn man ihn braucht, gehört nicht hinter einen Schalter, den niemand kennt.
 
 ### 3.4 Brücke zu `calendar-notes` (`src/obsidian/calendar-notes-bridge.ts`)
 
