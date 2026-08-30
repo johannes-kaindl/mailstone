@@ -350,3 +350,32 @@ Die Scheduling-Frage (C9) ist unverändert offen — dieselbe Ursache wie am 202
 DAV-Endpunkt verlangt das Kontopasswort, und die Erhebung wandert deshalb hinter die reguläre
 Einrichtung des DAV-Zugangs. **Euer iTIP-Transport-Vertrag bleibt bis dahin gültig.** Baut ihn
 weiter.
+
+---
+
+## C9 ist beantwortet (2026-08-29) — der iTIP-Transport wird für dieses Konto nicht gebraucht
+
+**Der Abschnitt „Was weiterhin offen ist" direkt darüber ist überholt.** Er stand auf dem
+Befund, DAV verlange das Kontopasswort — der war falsch und ist seit dem 2026-08-27 korrigiert.
+Mit einem Applikationspasswort (eigener Berechtigungsbereich, Recht `dav`) ist die Erhebung
+heute gefahren worden.
+
+**Das Ergebnis:** Der DAV-Server dieses Anbieters kann **Scheduling nach RFC 6638 selbst.**
+Schedule-Outbox und Schedule-Inbox sind vorhanden, und der `DAV`-Header von `OPTIONS` nennt
+`calendar-auto-schedule` und `calendar-schedule` — zwei unabhängige Belege. Ein Kalender-Client
+legt ein Ereignis mit Teilnehmern in seiner Collection ab; den Versand der Einladung übernimmt
+der Server.
+
+**Was das für euch heißt:** Die Zeile „Baut ihn weiter" gilt nicht mehr. Für dieses Konto
+braucht `calendar-notes` **keinen** Mail-Versand aus `mailstone`; der Vertrag, der zwischen den
+beiden Plugins offen stand, entfällt. Wenn ihr einen iTIP-Transport dennoch baut, dann als
+Fähigkeit für **andere** Server ohne Auto-Schedule — nicht, weil dieses Setup ihn verlangt. Das
+ist eure Entscheidung, nicht unsere; wir melden nur, dass die Vorbedingung weggefallen ist.
+
+**Was gültig bleibt:** Die Auflagen aus § 7 (Versandweg) und § 6 (Identitäten und Catch-All)
+sind unberührt. Sie galten nie nur für Einladungen, sondern für **jeden** Versand aus dem
+Plugin. Ebenso unberührt: das Zeitfenster oben — `p=reject` ab 2026-09-05, wer vorher testet,
+testet billiger.
+
+Der vollständige DAV-Befund liegt drüben in
+`calendar-notes/docs/dav/befunde/mailbox-org.md`, Abschnitt „Erhebung gefahren".
