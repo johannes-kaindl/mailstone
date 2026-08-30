@@ -7,7 +7,7 @@ import type { MailProfile } from "../core/mirror/profile";
 import { SchemaFormModal } from "./modals/schema-form-modal";
 import { PlanPreviewModal } from "./modals/plan-preview-modal";
 import { trTitle } from "./command-i18n";
-import type { ZoneHashStore } from "./vault-notes";
+import { findMailNotes, type ZoneHashStore } from "./vault-notes";
 
 export interface CommandFlowDeps {
   app: App;
@@ -69,11 +69,11 @@ export async function buildContext(
   const target = mailTargetFor(profile, file.path, frontmatter);
   if (!target) return { ok: false, code: "not-applicable" };
 
+  // findMailNotes() macht denselben Scan (getMarkdownFiles + Metadata-Cache-Frontmatter) wie
+  // ein hier eigens geschriebener Index es taete — nur der Wert ist ein anderer (Pfad ohne
+  // ".md" statt TFile), deshalb hier abgeleitet statt dupliziert (Fix-Runde 1, Finding 1).
   const index = new Map<string, string>();
-  for (const f of app.vault.getMarkdownFiles()) {
-    const id: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.[profile.idField];
-    if (typeof id === "string" && id) index.set(id, f.path.replace(/\.md$/, ""));
-  }
+  for (const [id, f] of findMailNotes(app, profile.idField)) index.set(id, f.path.replace(/\.md$/, ""));
 
   const attachmentPaths = new Map<string, string>();
   let mail: Awaited<ReturnType<typeof parseEml>> | undefined;
