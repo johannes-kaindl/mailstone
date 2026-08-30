@@ -49,13 +49,15 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     child = undefined;
   });
 
-  it("legt ueber den echten Socket zwei Notizen an und meldet sie als created", async () => {
+  async function starteServer(): Promise<void> {
     child = spawn(process.execPath, [join(process.cwd(), "scripts/fake-imap.mjs")], {
       env: { ...process.env, PORT: String(PORT) },
       stdio: ["ignore", "pipe", "pipe"],
     });
     await waitForReady(child);
+  }
 
+  function service(): { lauf: () => Promise<unknown>; seen: NotePlan[] } {
     const account = newAccount("acc");
     // Account["imap"]["tls"] ist bewusst auf "implicit"|"starttls" beschraenkt (die Settings-UI
     // bietet unverschluesselt nie an) — der Fake-Server spricht aber kein TLS. Cast im Testcode
@@ -83,9 +85,35 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
       timers: testTimers,
       now: () => new Date(),
     });
+    return { lauf: () => svc.syncAccount("acc"), seen };
+  }
 
-    const r = await svc.syncAccount("acc");
-    expect(r).toMatchObject({ ok: true, counts: { created: 2 } });
-    expect(seen.map((p) => p.mailId).sort()).toEqual(["eins@example.net", "zwei@example.net"]);
+  it("legt ueber den echten Socket drei Notizen an und meldet sie als created", async () => {
+    await starteServer();
+    const { lauf, seen } = service();
+    expect(await lauf()).toMatchObject({ ok: true, counts: { created: 3 } });
+    expect(seen.map((p) => p.mailId).sort()).toEqual(["drei@example.net", "eins@example.net", "zwei@example.net"]);
+  });
+
+  // M3-Nachlese, Abdeckungsluecke: IMAP-Literale kuendigen ihre Laenge in BYTES an, nicht in
+  // Zeichen. Dass der Client das richtig liest, war bis 2026-08-30 nur per Codelektuere belegt —
+  // ueber einen echten Socket lief bis dahin ausschliesslich reines ASCII, wo beide Laengen
+  // zusammenfallen. Die dritte Fixture-Mail trennt sie um 12 Bytes (Umlaute, Gedankenstrich,
+  // Emoji). Zaehlte der Client Zeichen, bliebe der Rest des Literals im Strom stehen: die Antwort
+  // desynchronisiert, und die Pruefung oben verlaengert sich um die verlorenen Mails.
+  it("liest ein Literal mit Nicht-ASCII byte-genau und gibt den Text unveraendert weiter", async () => {
+    await starteServer();
+    const { lauf, seen } = service();
+    await lauf();
+
+    const drei = seen.find((p) => p.mailId === "drei@example.net");
+    expect(drei?.kind).toBe("create");
+    if (drei?.kind !== "create") throw new Error("unreachable");
+    expect(drei.content).toContain("Grüße aus München");
+    expect(drei.content).toContain("Äpfel, Öl, Füße");
+    expect(drei.content).toContain("🚀");
+    // Die .eml-Beilage ist die Treueflaeche: sie muss die BYTES tragen, nicht die Zeichen.
+    expect(drei.eml.byteLength).toBeGreaterThan(new TextDecoder().decode(drei.eml).length);
+    expect(new TextDecoder().decode(drei.eml)).toContain("Grüße aus München");
   });
 });

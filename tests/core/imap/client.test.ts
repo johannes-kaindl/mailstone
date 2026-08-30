@@ -225,3 +225,78 @@ describe("ImapSession.append", () => {
     expect(fake.written.join("\n")).not.toContain("Subject: x");
   });
 });
+
+// M3-Nachlese, Abdeckungsluecken: der STARTTLS-Zweig wird in der Konten-UI angeboten und war
+// vollstaendig ungetestet — der Fake-Transport kann `upgrade: true` seit M3, benutzt hatte es
+// niemand. Fuer einen Nutzer mit einem Server ohne implizites TLS lief also ungeprueter Code.
+describe("imapConnect — STARTTLS", () => {
+  const starttls = { ...base, port: 143, tls: "starttls" as const };
+
+  it("schickt STARTTLS, hebt die Verbindung an und authentifiziert erst danach", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 STARTTLS$/, send: ["a001 OK begin TLS"], upgrade: true },
+      { expect: /^a002 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a002 OK done"] },
+      { expect: /^a003 AUTHENTICATE PLAIN /, send: ["a003 OK authenticated"] },
+    ]);
+    const r = await imapConnect(fake, starttls);
+    expect(r.ok).toBe(true);
+    expect(fake.secure).toBe(true);
+    // Die Reihenfolge ist die Zusage: kein Passwort auf der Leitung vor dem Upgrade.
+    const idxTls = fake.written.findIndex((l) => l.includes("STARTTLS"));
+    const idxAuth = fake.written.findIndex((l) => l.includes("AUTHENTICATE"));
+    expect(idxTls).toBeGreaterThanOrEqual(0);
+    expect(idxAuth).toBeGreaterThan(idxTls);
+  });
+
+  it("bricht mit 'tls-required' ab, wenn der Server STARTTLS ablehnt — ohne Zugangsdaten zu senden", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 STARTTLS$/, send: ["a001 NO not available"] },
+    ]);
+    const r = await imapConnect(fake, starttls);
+    expect(r).toMatchObject({ ok: false, code: "tls-required" });
+    expect(fake.secure).toBe(false);
+    expect(fake.written.some((l) => l.includes("AUTHENTICATE") || l.includes("LOGIN"))).toBe(false);
+    expect(fake.written.some((l) => l.includes("geheim"))).toBe(false);
+  });
+});
+
+// M3-Nachlese: Greeting-nicht-OK, existsFrom-Rueckfall und logout() waren ungeprueft.
+describe("imapConnect — Randfaelle des Verbindungsaufbaus", () => {
+  it("lehnt ein Greeting ab, das weder OK noch PREAUTH ist", async () => {
+    const fake = new FakeSocketTransport(["* BYE server too busy"], []);
+    const r = await imapConnect(fake, base);
+    expect(r).toMatchObject({ ok: false, code: "protocol" });
+    if (r.ok) throw new Error("unreachable");
+    expect(r.detail).toContain("Greeting nicht OK");
+    // Kein Kommando nach einem abgelehnten Greeting — auch kein CAPABILITY.
+    expect(fake.written).toEqual([]);
+  });
+
+  it("akzeptiert PREAUTH als Greeting", async () => {
+    const fake = new FakeSocketTransport(["* PREAUTH IMAP4rev1 logged in"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+    ]);
+    expect((await imapConnect(fake, base)).ok).toBe(true);
+  });
+
+  it("meldet exists 0, wenn EXAMINE keine EXISTS-Zeile schickt", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      { expect: /^a003 EXAMINE /, send: ["* OK [UIDVALIDITY 42] ok", "a003 OK done"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    const ex = await r.session.examine("Vault");
+    expect(ex).toEqual({ ok: true, uidValidity: 42, exists: 0 });
+  });
+
+  it("schliesst die Verbindung auch dann, wenn LOGOUT scheitert", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], greetingAndAuth);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    // Kein Dialog-Step fuer LOGOUT: das Kommando laeuft ins Leere und wirft.
+    await r.session.logout();
+    expect(fake.closed).toBe(true);
+  });
+});
