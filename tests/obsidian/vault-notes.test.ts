@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { vaultPlanExecutor, findMailNotes } from "../../src/obsidian/vault-notes";
+import { vaultPlanExecutor, findMailNotes, mailIndex } from "../../src/obsidian/vault-notes";
 import { makeApp } from "../helpers/memory-vault";
+import { defaultMailProfile } from "../../src/core/mirror/profile";
 
 describe("vaultPlanExecutor", () => {
   it("create legt .md und .eml an und merkt den Zone-Hash", async () => {
@@ -60,5 +61,15 @@ describe("vaultPlanExecutor", () => {
     await app.vault.create("Mail/z.md", "---\nmail_id: c@x\n---\n");
     const idx = findMailNotes(app, "mail_id");
     expect(idx.get("c@x")?.path).toBe("Mail/z.md");
+  });
+
+  it("mailIndex liest id, state und source aus dem Frontmatter", () => {
+    const app = makeApp([
+      { path: "Mail/2026/a.md", frontmatter: { mail_id: "a@x", mail_state: "live", mail_source: "acc/Vault" } },
+      { path: "Notiz.md", frontmatter: { title: "ohne mail_id" } },
+    ]);
+    const index = mailIndex(app, defaultMailProfile());
+    expect(index.get("a@x")).toEqual({ path: "Mail/2026/a.md", state: "live", source: "acc/Vault" });
+    expect(index.size).toBe(1);
   });
 });

@@ -19,10 +19,17 @@ function isBinary(v: string | ArrayBuffer): v is ArrayBuffer {
 
 // Rueckgabetyp bleibt lose (any), wie makeFakeApp() selbst — Kit-Mock-Konvention;
 // eslint laeuft ohnehin nicht ueber tests/ (siehe eslint.config.mjs ignores).
-export function makeApp(): any {
+export function makeApp(seed?: { path: string; frontmatter: Record<string, FmValue> }[]): any {
   const app = makeFakeApp();
   const files = new Map<string, Entry>();
   const folders = new Set<string>();
+
+  // Synchrones Vorbelegen fuer Tests, die nur das Frontmatter brauchen (z. B. mailIndex) —
+  // ohne den Umweg ueber async app.vault.create.
+  for (const s of seed ?? []) {
+    const content = serializeFrontmatter(s.frontmatter, Object.keys(s.frontmatter));
+    files.set(s.path, { content, file: new TFile(s.path) });
+  }
 
   app.vault.create = async (path: string, content: string): Promise<TFile> => {
     if (files.has(path)) throw new Error(`memory-vault: bereits vorhanden: ${path}`);

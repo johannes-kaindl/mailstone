@@ -4,15 +4,20 @@ import { initI18n } from "./i18n/strings";
 import { t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
 import { importEmlFolder } from "./obsidian/import-eml";
-import { noticeNotifier } from "./obsidian/notifier";
+import { noticeNotifier, type Notifier } from "./obsidian/notifier";
 import { FolderPromptModal } from "./obsidian/modals/folder-prompt";
 import { obsidianSecretStore } from "./obsidian/secrets";
 import { nodeSocketTransport } from "./obsidian/tls-transport";
 import { createSendService, resolveSender, type SendService } from "./core/send/service";
 import { transportAccounts, splitTransportId } from "./core/send/imip";
 import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge } from "./obsidian/calendar-notes-bridge";
+import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
+import { createBusyGuard } from "./core/sync/busy";
+import { createEmitter, type SyncEmitter } from "./core/sync/events";
+import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
+import { mailIndex, vaultPlanExecutor } from "./obsidian/vault-notes";
 
-interface PersistedState { settings: MailstoneSettings; zoneHashes: Record<string, string> }
+interface PersistedState { settings: MailstoneSettings; zoneHashes: Record<string, string>; uidCache: UidCacheData }
 
 interface TransportRow { id: string; address: string; label: string }
 
@@ -61,11 +66,30 @@ class TransportPickerModal extends SuggestModal<TransportRow> {
   }
 }
 
+/** Text fuer die Statusleiste, wenn ein Sync-Lauf zuende ist, aber KEIN Konto erfolgreich war.
+ *  Das `"synced"`-Event (das den Status im Normalfall auf `status.sync.idle` zurueckstellt)
+ *  feuert nur auf dem Erfolgspfad eines Kontos (s. core/sync/service.ts) — ohne diesen Zweig
+ *  bliebe die Anzeige bei "synchronisiert…" haengen, obwohl der Lauf laengst vorbei ist (Fund
+ *  Fix-Runde 1: besonders sichtbar bei "no-secret", das der Passwort-Hinweis in der Kontenzeile
+ *  jetzt haeufiger provoziert). `null`, wenn mindestens ein Konto erfolgreich war (das Event hat
+ *  den Status dann schon aktuell gesetzt) oder `results` leer ist (keine aktivierten Konten).
+ *  Reine Funktion (kein Obsidian-Zugriff) — direkt ohne Mock testbar. */
+export function syncFailureStatus(results: readonly SyncRunResult[]): string | null {
+  if (results.length === 0 || results.some((r) => r.ok)) return null;
+  const failed = results.find((r): r is Extract<SyncRunResult, { ok: false }> => !r.ok);
+  return failed ? `Mailstone: ${t(`error.sync.${failed.code}`)}` : null;
+}
+
 export default class MailstonePlugin extends Plugin {
   settings: MailstoneSettings = loadSettings(undefined);
   zoneHashes: Record<string, string> = {};
   sendService!: SendService;
   bridge!: CalendarNotesBridge;
+  syncService!: SyncService;
+  uidCache!: UidCacheStore;
+  status!: HTMLElement;
+  readonly busy = createBusyGuard();
+  readonly syncEvents: SyncEmitter = createEmitter();
 
   async onload(): Promise<void> {
     const raw = (await this.loadData()) as Partial<PersistedState> | null;
@@ -93,6 +117,38 @@ export default class MailstonePlugin extends Plugin {
       randomId: () => crypto.randomUUID(),
       ...(this.settings.debugLog ? { log: (l: string) => console.debug("[mailstone smtp]", l) } : {}),
     });
+
+    this.uidCache = createUidCache(raw?.uidCache);
+    const hashes = { get: (k: string) => this.zoneHashes[k] ?? null, set: (k: string, v: string) => { this.zoneHashes[k] = v; } };
+    this.syncService = createSyncService({
+      accounts: () => this.settings.accounts,
+      profile: () => this.settings.profile,
+      secret: (id) => secrets.get(id),
+      transport: () => nodeSocketTransport(),
+      index: () => mailIndex(this.app, this.settings.profile),
+      takenPaths: () => new Set(this.app.vault.getFiles().map((f) => f.path)),
+      executor: () => vaultPlanExecutor(this.app, hashes),
+      uidCache: this.uidCache,
+      busy: this.busy,
+      events: this.syncEvents,
+      // window statt nacktem setTimeout: `obsidianmd/prefer-window-timers` verlangt es, und
+      // core/ darf `window` nicht selbst kennen (check:pure) — deshalb hier injiziert.
+      timers: window,
+      now: () => new Date(),
+      ...(this.settings.debugLog ? { log: (l: string) => { console.debug("[mailstone imap]", l); } } : {}),
+    });
+
+    this.status = this.addStatusBarItem();
+    this.syncEvents.on("synced", ({ counts }) => {
+      this.status.setText(t("status.sync.idle", String(counts.created + counts.reattached), new Date().toLocaleTimeString()));
+    });
+
+    this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
+    this.addRibbonIcon("mail", t("ribbon.sync"), () => void this.runSync(notify));
+
+    // registerInterval statt setInterval: Obsidian raeumt den Timer beim Entladen selbst ab.
+    const everyMs = Math.max(1, Math.min(...this.settings.accounts.map((a) => a.sync.intervalMin), 60)) * 60_000;
+    this.registerInterval(window.setInterval(() => { void this.runSync(notify, true); }, everyMs));
 
     this.bridge = createCalendarNotesBridge(
       this.app,
@@ -150,7 +206,45 @@ export default class MailstonePlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
-    await this.saveData({ settings: this.settings, zoneHashes: this.zoneHashes } satisfies PersistedState);
+    // uidCache.data() liefert die interne Referenz, keine Kopie — hier nur lesen, nie
+    // hineinschreiben, sonst umgeht man die Verwerfungslogik des Caches bei UIDVALIDITY-Wechsel.
+    await this.saveData({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data() } satisfies PersistedState);
+  }
+
+  /** `silent` = Intervall-Lauf: kein Notice bei Erfolg, nur bei Fehlern — sonst poppt alle
+   *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste. */
+  private async runSync(notify: Notifier, silent = false): Promise<void> {
+    const enabled = this.settings.accounts.filter((a) => a.sync.enabled);
+    if (enabled.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return; }
+    this.status.setText(t("status.sync.running"));
+    try {
+      const results = await this.syncService.syncAll();
+      for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
+      const ok = results.filter((r): r is Extract<SyncRunResult, { ok: true }> => r.ok);
+      // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
+      // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).
+      const failureStatus = syncFailureStatus(results);
+      if (failureStatus) this.status.setText(failureStatus);
+      if (!silent && ok.length > 0) {
+        const sum = ok.reduce((acc, r) => ({
+          created: acc.created + r.counts.created,
+          reattached: acc.reattached + r.counts.reattached,
+          detached: acc.detached + r.counts.detached,
+          detachSkipped: acc.detachSkipped + r.counts.detachSkipped,
+          errors: acc.errors + r.counts.errors,
+        }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
+        notify.info("notice.sync.done", sum.created, sum.reattached, sum.detached, sum.errors);
+        // Ausgelassene Ablösungen bekommen eine eigene Meldung statt einer weiteren Zahl in der
+        // Zeile oben: sie sind kein Zaehler des Normalfalls, sondern der Hinweis, dass der
+        // Detach-Zweig dieses Laufs stillgelegt war (sonst ununterscheidbar von "nichts zu tun").
+        if (sum.detachSkipped > 0) notify.info("notice.sync.detachSkipped", sum.detachSkipped);
+      }
+    } finally {
+      // Zone-Hashes und UID-Cache muessen auch nach einem Abbruch persistiert sein — sonst
+      // gilt jede geschriebene Notiz beim naechsten Lauf als fremd editiert (dieselbe
+      // Begruendung wie beim Import-Kommando aus M1).
+      await this.saveSettings();
+    }
   }
 
   private async sendTestMail(notify: { info(key: string, ...a: (string | number)[]): void; error(key: string, ...a: (string | number)[]): void }): Promise<void> {

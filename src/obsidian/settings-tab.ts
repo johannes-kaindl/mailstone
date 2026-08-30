@@ -73,17 +73,28 @@ export class MailstoneSettingTab extends PluginSettingTab {
         control: { type: "text", key: "profile.filename" },
       },
       this.accountsGroup(),
+      {
+        name: t("settings.debugLog"),
+        desc: t("settings.debugLog.desc"),
+        control: { type: "toggle", key: "debugLog" },
+      },
     ];
   }
 
   // ── Konten ───────────────────────────────────────────────────────────────
   private accountsGroup(): SettingDefinitionList {
     const accounts = this.host.settings.accounts;
-    const items: SettingGroupItem[] = accounts.map((acc) => ({
-      name: acc.label || acc.id,
-      desc: t("settings.accounts.desc", acc.imap.host || acc.smtp.host || "–", acc.identities.length),
-      render: (setting: Setting) => this.renderAccountRow(setting, acc),
-    }));
+    const items: SettingGroupItem[] = accounts.map((acc) => {
+      const base = t("settings.accounts.desc", acc.imap.host || acc.smtp.host || "–", acc.identities.length);
+      // SecretStore.has() lag seit M2 ungenutzt herum — die Kontenzeile ist die einzige Stelle,
+      // an der ein fehlendes Passwort sichtbar wird, bevor ein Sync-Lauf mit "no-secret" scheitert.
+      const missing = !this.host.secrets.has(acc.secretId);
+      return {
+        name: acc.label || acc.id,
+        desc: missing ? `${base} · ${t("settings.account.noSecret")}` : base,
+        render: (setting: Setting) => this.renderAccountRow(setting, acc),
+      };
+    });
     return {
       type: "list",
       heading: t("settings.accounts"),
@@ -186,6 +197,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         set: (value) => {
           s.profile.filename = typeof value === "string" ? value.trim() || "{date}-{time}-{slug}" : "{date}-{time}-{slug}";
         },
+      },
+      debugLog: {
+        get: () => s.debugLog,
+        set: (value) => { s.debugLog = Boolean(value); },
       },
     };
   }
