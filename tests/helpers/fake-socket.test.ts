@@ -78,17 +78,44 @@ describe("FakeSocketTransport", () => {
     expect(fake.written).toEqual(["DATA", "Subject: hi", "Body line 1", "Body line 2", "."]);
   });
 
-  it("readBytes wirft NetError('protocol') — vom Fake nicht unterstuetzt", async () => {
-    const fake = new FakeSocketTransport(["220 fake ESMTP"], []);
-    await fake.connect(opts);
-    await expect(fake.readBytes(4)).rejects.toMatchObject({ name: "NetError", code: "protocol" });
-  });
-
   it("close() setzt closed=true", async () => {
     const fake = new FakeSocketTransport(["220 fake ESMTP"], []);
     await fake.connect(opts);
     expect(fake.closed).toBe(false);
     await fake.close();
     expect(fake.closed).toBe(true);
+  });
+
+  it("closed ist true vor connect() — wie der echte nodeSocketTransport", () => {
+    const fake = new FakeSocketTransport(["* OK ready"], []);
+    expect(fake.closed).toBe(true);
+  });
+
+  it("readBytes liefert Literal-Bytes und der Rest der Zeile bleibt lesbar", async () => {
+    const literal = new TextEncoder().encode("Message-ID: <a@b>\r\n");
+    const fake = new FakeSocketTransport(
+      ["* OK ready"],
+      [{ expect: /^a001 UID FETCH /, send: [`* 1 FETCH (UID 7 BODY[HEADER] {${String(literal.byteLength)}}`, literal, ")", "a001 OK done"] }],
+    );
+    await fake.connect(opts);
+    expect(await fake.readLine()).toBe("* OK ready");
+    await fake.write("a001 UID FETCH 7 (BODY.PEEK[HEADER])\r\n");
+    expect(await fake.readLine()).toBe("* 1 FETCH (UID 7 BODY[HEADER] {19}");
+    expect(new TextDecoder().decode(await fake.readBytes(literal.byteLength))).toBe("Message-ID: <a@b>\r\n");
+    expect(await fake.readLine()).toBe(")");
+    expect(await fake.readLine()).toBe("a001 OK done");
+  });
+
+  it("readBytes darf ueber eine Zeilengrenze hinweg lesen (Teilzeilen-Modell)", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], []);
+    await fake.connect(opts);
+    expect(new TextDecoder().decode(await fake.readBytes(4))).toBe("* OK");
+    expect(await fake.readLine()).toBe(" ready");
+  });
+
+  it("readBytes wirft NetError('closed'), wenn der Puffer nicht mehr genug Bytes hat", async () => {
+    const fake = new FakeSocketTransport(["ab"], []);
+    await fake.connect(opts);
+    await expect(fake.readBytes(99)).rejects.toMatchObject({ name: "NetError", code: "closed" });
   });
 });

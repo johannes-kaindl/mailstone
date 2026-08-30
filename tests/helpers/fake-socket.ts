@@ -1,42 +1,81 @@
 import type { ConnectOptions, SocketTransport } from "../../src/core/net/types";
 import { NetError } from "../../src/core/net/types";
 
+/** Server-Antwort eines Dialog-Schritts: String = Zeile (CRLF wird angehaengt),
+ *  Uint8Array = rohe Bytes ohne Zusatz (IMAP-Literal-Inhalt). */
+export type SendPart = string | Uint8Array;
+
 /**
  * Ein Skript-Schritt im simulierten SMTP/IMAP-Dialog. `expect` matcht die naechste vollstaendige
- * Client-Zeile (String = exakter Vergleich, RegExp = test()); trifft sie zu, werden `send`-Zeilen
+ * Client-Zeile (String = exakter Vergleich, RegExp = test()); trifft sie zu, werden `send`-Teile
  * in den Lesepuffer gelegt und der Fake ruecht zum naechsten Schritt vor. `upgrade: true` markiert
  * einen STARTTLS-Handshake-Schritt: erst nach dessen Match ist `upgradeTls()` erlaubt.
  */
 export interface DialogStep {
   expect?: RegExp | string;
-  send?: string[];
+  send?: SendPart[];
   upgrade?: boolean;
+}
+
+const CRLF = new TextEncoder().encode("\r\n");
+
+function toBytes(part: SendPart): Uint8Array {
+  if (part instanceof Uint8Array) return part;
+  const line = new TextEncoder().encode(part);
+  const out = new Uint8Array(line.byteLength + CRLF.byteLength);
+  out.set(line, 0);
+  out.set(CRLF, line.byteLength);
+  return out;
 }
 
 /**
  * Node-/obsidian-freier Test-Doppelgaenger fuer SocketTransport. Faehrt ein fest verdrahtetes
- * Skript aus Server-Zeilen ab, die auf passende Client-Zeilen folgen — kein echtes Netzwerk.
+ * Skript aus Server-Bytes ab, die auf passende Client-Zeilen folgen — kein echtes Netzwerk.
+ *
+ * Puffer ist byte-genau statt zeilenweise: `readLine` schneidet bis zum naechsten CRLF, `readBytes`
+ * schneidet n Bytes ab — beide aus demselben Puffer, damit ein IMAP-Literal mitten in einer Zeile
+ * enden darf (`{2048}` am Zeilenende, gefolgt von rohen Bytes, gefolgt vom Rest der Zeile).
  */
 export class FakeSocketTransport implements SocketTransport {
   readonly written: string[] = [];
-  closed = false;
-  secure = false;
   readonly connectCalls: ConnectOptions[] = [];
+  closed = true;
+  secure = false;
 
-  private readonly pending: string[] = [];
-  private lineBuf = "";
+  /** Ungelesene Server-Bytes. readLine schneidet bis CRLF, readBytes schneidet n Bytes ab. */
+  private buffer: Uint8Array = new Uint8Array(0);
   private stepIndex = 0;
   private awaitingUpgrade = false;
+  /** Angefangene Client-Zeile: write() darf mit beliebigen Bruchstuecken aufgerufen werden. */
+  private partial = "";
 
   constructor(
-    private readonly greeting: string[],
+    private readonly greeting: SendPart[],
     private readonly steps: DialogStep[],
   ) {}
 
+  private push(parts: SendPart[]): void {
+    for (const p of parts) {
+      const b = toBytes(p);
+      const next = new Uint8Array(this.buffer.byteLength + b.byteLength);
+      next.set(this.buffer, 0);
+      next.set(b, this.buffer.byteLength);
+      this.buffer = next;
+    }
+  }
+
+  private take(n: number): Uint8Array {
+    const out = this.buffer.slice(0, n);
+    this.buffer = this.buffer.slice(n);
+    return out;
+  }
+
   async connect(opts: ConnectOptions): Promise<void> {
     this.connectCalls.push(opts);
+    this.closed = false;
     this.secure = opts.tls === "implicit";
-    this.pending.push(...this.greeting);
+    this.push(this.greeting);
+    return Promise.resolve();
   }
 
   async upgradeTls(): Promise<void> {
@@ -49,42 +88,47 @@ export class FakeSocketTransport implements SocketTransport {
 
   async write(data: Uint8Array | string): Promise<void> {
     const text = typeof data === "string" ? data : new TextDecoder().decode(data);
-    this.lineBuf += text;
-    let idx = this.lineBuf.indexOf("\r\n");
-    while (idx !== -1) {
-      const line = this.lineBuf.slice(0, idx);
-      this.lineBuf = this.lineBuf.slice(idx + 2);
-      this.consumeLine(line);
-      idx = this.lineBuf.indexOf("\r\n");
+    this.partial += text;
+    for (;;) {
+      const nl = this.partial.indexOf("\r\n");
+      if (nl === -1) break;
+      const line = this.partial.slice(0, nl);
+      this.partial = this.partial.slice(nl + 2);
+      this.written.push(line);
+      this.matchStep(line);
     }
+    return Promise.resolve();
   }
 
-  private consumeLine(line: string): void {
+  private matchStep(line: string): void {
     // Jede vollstaendige Zeile wird protokolliert — auch DATA-Body-Zeilen, die keinen Step matchen,
     // bis der Ende-Marker-Step (expect: /^\.$/) sie mit einsammelt.
-    this.written.push(line);
     const step = this.steps[this.stepIndex];
     if (!step) return;
-    const matches =
-      step.expect === undefined ? false : typeof step.expect === "string" ? line === step.expect : step.expect.test(line);
-    if (!matches) return;
+    const hit =
+      step.expect === undefined ? false : typeof step.expect === "string" ? step.expect === line : step.expect.test(line);
+    if (!hit) return;
     this.stepIndex += 1;
     this.awaitingUpgrade = step.upgrade === true;
-    if (step.send) this.pending.push(...step.send);
+    if (step.send) this.push(step.send);
   }
 
   async readLine(): Promise<string> {
-    const line = this.pending.shift();
-    if (line === undefined) {
-      throw new NetError("closed", "FakeSocketTransport: Skript erschoepft, keine weiteren Zeilen im Lesepuffer");
+    for (let i = 0; i + 1 < this.buffer.byteLength; i++) {
+      if (this.buffer[i] === 13 && this.buffer[i + 1] === 10) {
+        const line = new TextDecoder().decode(this.take(i));
+        this.take(2);
+        return Promise.resolve(line);
+      }
     }
-    return line;
+    throw new NetError("closed", "Fake-Skript zu Ende (keine vollstaendige Zeile mehr im Puffer)");
   }
 
-  // SMTP liest nie binaer/laengenbasiert (nur zeilenbasiert per readLine), deshalb muss der Fake
-  // readBytes nicht simulieren — ein Aufruf hier ist ein Fehler im getesteten Client.
-  async readBytes(_n: number): Promise<Uint8Array> {
-    throw new NetError("protocol", "FakeSocketTransport.readBytes wird nicht unterstuetzt");
+  async readBytes(n: number): Promise<Uint8Array> {
+    if (this.buffer.byteLength < n) {
+      throw new NetError("closed", `Fake-Skript hat nur ${String(this.buffer.byteLength)} von ${String(n)} Bytes`);
+    }
+    return Promise.resolve(this.take(n));
   }
 
   async close(): Promise<void> {
