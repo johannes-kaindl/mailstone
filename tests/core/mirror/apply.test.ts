@@ -57,6 +57,18 @@ describe("planSync", () => {
     expect(plans.some((p) => p.kind === "update")).toBe(false);
   });
 
+  // Invariante "hoechstens ein Plan je Mail-ID": zwei Server-Mails koennen dieselbe normalisierte
+  // Message-ID tragen (zurueckkopierte Mail, Sieve-Kopie) oder ueber fallbackId auf denselben Wert
+  // fallen. Ohne den Riegel entstuenden zwei create-Plaene mit verschiedenen Pfaden und gleichem
+  // mail_id — die zweite Notiz waere im mailIndex dauerhaft unerreichbar.
+  it("plant fuer dieselbe Mail-ID nur einen create-Plan, auch wenn sie zweimal geliefert wird", () => {
+    const a = mail("doppelt@x");
+    const b = { ...mail("doppelt@x"), subject: "Anderer Betreff" };
+    const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(), fetched: [{ mail: a, eml }, { mail: b, eml }], onServer: new Set(["doppelt@x"]) });
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toMatchObject({ kind: "create", mailId: "doppelt@x" });
+  });
+
   it("vergibt kollisionsfreie Pfade fuer zwei Mails desselben Betreffs am selben Zeitpunkt", () => {
     const a = mail("eins@x");
     const b = { ...mail("zwei@x"), subject: a.subject, date: a.date };

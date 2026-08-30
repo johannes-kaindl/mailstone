@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
-import { createSyncService } from "../../../src/core/sync/service";
+import { createSyncService, MAX_FETCH_PER_RUN } from "../../../src/core/sync/service";
 import { createBusyGuard } from "../../../src/core/sync/busy";
 import { createEmitter } from "../../../src/core/sync/events";
 import { createUidCache } from "../../../src/core/sync/uid-cache";
@@ -40,16 +40,19 @@ function recordingExecutor(): { executor: PlanExecutor; seen: NotePlan[] } {
   };
 }
 
-function dialog(extra: DialogStep[]): DialogStep[] {
+/** `exists` ist der EXISTS-Wert der EXAMINE-Antwort. Er muss zur UID-Liste des jeweiligen Tests
+ *  passen: seit dem Quercheck in service.ts bricht ein Lauf mit `exists > 0` und leerer UID-Liste
+ *  bewusst mit code "protocol" ab (das waere sonst ein Total-Detach des Kontos). */
+function dialog(extra: DialogStep[], exists = 1): DialogStep[] {
   return [
-    { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN", "a001 OK done"] },
+    { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
     { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
-    { expect: /^a003 EXAMINE /, send: ["* 1 EXISTS", "* OK [UIDVALIDITY 42] ok", "a003 OK done"] },
+    { expect: /^a003 EXAMINE /, send: [`* ${String(exists)} EXISTS`, "* OK [UIDVALIDITY 42] ok", "a003 OK done"] },
     ...extra,
   ];
 }
 
-function service(steps: DialogStep[], index: MailIndex, exec = recordingExecutor()) {
+function service(steps: DialogStep[], index: MailIndex, exec = recordingExecutor(), uidCache = createUidCache(undefined)) {
   const fake = new FakeSocketTransport(["* OK ready"], steps);
   const svc = createSyncService({
     accounts: () => [account()],
@@ -59,7 +62,7 @@ function service(steps: DialogStep[], index: MailIndex, exec = recordingExecutor
     index: () => index,
     takenPaths: () => new Set<string>(),
     executor: () => exec.executor,
-    uidCache: createUidCache(undefined),
+    uidCache,
     busy: createBusyGuard(),
     events: createEmitter(), timers: testTimers,
     now: () => new Date("2026-08-30T09:00:00Z"),
@@ -107,11 +110,11 @@ describe("createSyncService", () => {
       dialog([
         { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
         { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
-      ]),
+      ], 0),
       index,
     );
     const r = await svc.syncAccount("acc");
-    expect(r).toMatchObject({ ok: true, counts: { detached: 1 } });
+    expect(r).toMatchObject({ ok: true, counts: { detached: 1, detachSkipped: 0 } });
     expect(exec.seen).toEqual([{ kind: "setState", path: "Mail/2026/w.md", mailId: "weg@example.net", state: "detached", stateField: "mail_state" }]);
   });
 
@@ -195,7 +198,7 @@ describe("createSyncService", () => {
     const fake = new FakeSocketTransport(["* OK ready"], dialog([
       { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
       { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
-    ]));
+    ], 0));
     const svc = createSyncService({
       accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
       transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
@@ -227,7 +230,7 @@ describe("createSyncService", () => {
     const fake = new FakeSocketTransport(["* OK ready"], dialog([
       { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
       { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
-    ]));
+    ], 0));
     const svc = createSyncService({
       accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
       transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
@@ -237,6 +240,171 @@ describe("createSyncService", () => {
     const r = await svc.syncAccount("acc");
     expect(r).toMatchObject({ ok: true, counts: { detached: 0, errors: 1 } });
     expect(changed).not.toHaveBeenCalled();
+  });
+
+  // CRITICAL der Abschluss-Runde: zwei UIDs mit derselben normalisierten Message-ID (zurueck-
+  // kopierte Mail, Sieve-Kopie, an sich selbst weitergeleitet) bekamen zwei create-Plaene und
+  // damit zwei Notizen mit identischem mail_id — die zweite waere im mailIndex (Map ueber
+  // mail_id) fuer immer unerreichbar gewesen. Der Header-Fetch liefert hier bewusst KEINE IDs,
+  // damit beide Bodies geholt werden und der Riegel nach dem Parsen greift (nicht schon der
+  // Cache-Zweig davor).
+  it("legt fuer zwei UIDs mit derselben Message-ID nur eine Notiz an", async () => {
+    const mk = (): Uint8Array => new TextEncoder().encode("From: a@example.net\r\nTo: b@example.net\r\nSubject: Zweimal da\r\nMessage-ID: <dup@example.net>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n");
+    const body = mk();
+    const { svc, exec } = service(
+      dialog([
+        { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 7 9", "a004 OK done"] },
+        { expect: /^a005 UID FETCH .*HEADER\.FIELDS/, send: ["a005 OK done"] },
+        { expect: /^a006 UID FETCH 7 \(BODY\.PEEK\[\]\)$/, send: [`* 1 FETCH (UID 7 BODY[] {${String(body.byteLength)}}`, body, ")", "a006 OK done"] },
+        { expect: /^a007 UID FETCH 9 \(BODY\.PEEK\[\]\)$/, send: [`* 2 FETCH (UID 9 BODY[] {${String(body.byteLength)}}`, body, ")", "a007 OK done"] },
+        { expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] },
+      ], 2),
+      new Map(),
+    );
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { created: 1 } });
+    expect(exec.seen.filter((p) => p.kind === "create")).toHaveLength(1);
+  });
+
+  // Nach dem Connect uebersetzt niemand mehr: examine/uidSearchAll/uidFetchBody werfen ihren
+  // NetError bis in den catch von syncAccount. Der meldete pauschal "protocol" — ein Abbruch
+  // mitten im Lauf (haeufigster Fehler beim Intervall-Sync ueber wackliges WLAN) las sich damit
+  // als "Die Antwort des Servers war unverstaendlich".
+  it("reicht den NetError-Code eines Abbruchs nach dem Connect durch", async () => {
+    const { svc } = service(
+      // Der Schritt matcht, sendet aber nichts: der Fake wirft beim naechsten readLine
+      // NetError("closed") — genau wie ein Server, der die Verbindung mittendrin zumacht.
+      dialog([
+        { expect: /^a004 UID SEARCH ALL$/ },
+        { expect: /LOGOUT$/ },
+      ]),
+      new Map(),
+    );
+    expect(await svc.syncAccount("acc")).toMatchObject({ ok: false, code: "closed" });
+  });
+
+  // Ein setState-Plan, dessen Zieldatei zwischen Planung und Ausfuehrung verschwunden ist, landet
+  // im Executor nicht in errors, sondern als "missing-target"-Skip (src/obsidian/vault-notes.ts).
+  it("zaehlt einen vom Executor uebersprungenen setState-Plan nicht als detached und feuert kein changed", async () => {
+    const index: MailIndex = new Map([["weg@example.net", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
+    const changed = vi.fn();
+    const events = createEmitter<{ synced: { accountId: string; counts: { detached: number } }; changed: { path: string } }>();
+    events.on("changed", changed);
+    const skippingExecutor: PlanExecutor = {
+      execute: (plans) => Promise.resolve({
+        created: 0, updated: 0, stateChanged: 0,
+        // Flache Kopie mit anderem kind: der Abgleich laeuft ueber path+mailId, nicht ueber Identitaet.
+        skipped: plans.map((p) => ({ kind: "skip" as const, path: p.path, mailId: p.mailId, reason: "missing-target" as const })),
+        errors: [],
+      }),
+    };
+    const fake = new FakeSocketTransport(["* OK ready"], dialog([
+      { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
+      { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
+    ], 0));
+    const svc = createSyncService({
+      accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim",
+      transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
+      executor: () => skippingExecutor, uidCache: createUidCache(undefined),
+      busy: createBusyGuard(), events: events as never, timers: testTimers, now: () => new Date(),
+    });
+    expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { detached: 0, skipped: 1 } });
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  // Reichweite von `undetermined`: nur eine UID, deren ID dieser Lauf wirklich nicht bestimmen
+  // konnte, darf den Detach-Zweig aussetzen. Steht die ID im Cache, ist onServer fuer diese UID
+  // vollstaendig — ein Fehlschlag beim Body aendert daran nichts.
+  it("setzt detached fort, wenn der Body fehlschlaegt, die ID aber aus dem Cache bekannt ist", async () => {
+    const index: MailIndex = new Map([["weg@example.net", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
+    const cache = createUidCache({ "acc|Vault": { uidValidity: 42, map: { "7": "neu@example.net" } } });
+    const { svc, exec } = service(
+      dialog([
+        { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 7", "a004 OK done"] },
+        { expect: /^a005 UID FETCH 7 \(BODY\.PEEK\[\]\)$/, send: ["a005 OK done"] },
+        { expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] },
+      ]),
+      index,
+      recordingExecutor(),
+      cache,
+    );
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { detached: 1, detachSkipped: 0, errors: 1 } });
+    expect(exec.seen).toEqual([{ kind: "setState", path: "Mail/2026/w.md", mailId: "weg@example.net", state: "detached", stateField: "mail_state" }]);
+  });
+
+  // MAX_FETCH_PER_RUN: der erste Lauf ueber einen hineingezogenen Bestand darf nicht den ganzen
+  // Ordner gleichzeitig im Speicher aufbauen. Entscheidend ist, dass der Abbruch KEINE falschen
+  // Detaches ausloest — onServer wird bis zur letzten UID weiter aus dem Cache befuellt.
+  it("holt hoechstens MAX_FETCH_PER_RUN Bodies und detacht deswegen nichts faelschlich", async () => {
+    const uids = Array.from({ length: MAX_FETCH_PER_RUN + 2 }, (_, i) => i + 1);
+    const map: Record<string, string> = {};
+    for (const uid of uids) map[String(uid)] = `m${String(uid)}@x`;
+    const cache = createUidCache({ "acc|Vault": { uidValidity: 42, map } });
+    // m202 liegt auf dem Server und hat schon eine Notiz — sie steht hinter der Grenze und darf
+    // trotzdem nicht abgeloest werden. weg@x liegt NICHT mehr auf dem Server und muss es werden.
+    const index: MailIndex = new Map([
+      [`m${String(MAX_FETCH_PER_RUN + 2)}@x`, { path: "Mail/2026/letzte.md", state: "live", source: "acc/Vault" }],
+      ["weg@x", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }],
+    ]);
+    const steps: DialogStep[] = [{ expect: /^a004 UID SEARCH ALL$/, send: [`* SEARCH ${uids.join(" ")}`, "a004 OK done"] }];
+    uids.slice(0, MAX_FETCH_PER_RUN).forEach((uid, i) => {
+      const body = new TextEncoder().encode(`From: a@example.net\r\nTo: b@example.net\r\nSubject: Mail ${String(uid)}\r\nMessage-ID: <m${String(uid)}@x>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n`);
+      const tag = `a${String(5 + i).padStart(3, "0")}`;
+      steps.push({
+        expect: new RegExp(`^${tag} UID FETCH ${String(uid)} \\(BODY\\.PEEK\\[\\]\\)$`),
+        send: [`* 1 FETCH (UID ${String(uid)} BODY[] {${String(body.byteLength)}}`, body, ")", `${tag} OK done`],
+      });
+    });
+    steps.push({ expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] });
+
+    const { svc, fake, exec } = service(dialog(steps, uids.length), index, recordingExecutor(), cache);
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { created: MAX_FETCH_PER_RUN, detached: 1, detachSkipped: 0 } });
+    expect(fake.written.filter((l) => l.includes("BODY.PEEK[]"))).toHaveLength(MAX_FETCH_PER_RUN);
+    // Genau ein Detach — und zwar der richtige.
+    expect(exec.seen.filter((p) => p.kind === "setState")).toEqual([
+      { kind: "setState", path: "Mail/2026/w.md", mailId: "weg@x", state: "detached", stateField: "mail_state" },
+    ]);
+  });
+
+  // syncAll ist der einzige Weg, den src/main.ts benutzt, und der sync.enabled-Filter existiert
+  // nur dort. Der Aufruf laeuft bewusst nicht ueber `this`: destrukturiert man den Service, waere
+  // das ein TypeError.
+  it("syncAll filtert auf sync.enabled, haelt die Reihenfolge und ueberlebt Destrukturierung", async () => {
+    const a1 = account(); a1.id = "a1";
+    const a2 = account(); a2.id = "a2"; a2.sync.enabled = false;
+    const a3 = account(); a3.id = "a3";
+    const svc = createSyncService({
+      accounts: () => [a1, a2, a3], profile: () => defaultMailProfile(), secret: () => "geheim",
+      // Jeder Lauf bekommt einen frischen Fake mit demselben Skript (leerer Ordner).
+      transport: () => new FakeSocketTransport(["* OK ready"], dialog([
+        { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
+        { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
+      ], 0)),
+      index: () => new Map(), takenPaths: () => new Set<string>(),
+      executor: () => recordingExecutor().executor, uidCache: createUidCache(undefined),
+      busy: createBusyGuard(), events: createEmitter(), timers: testTimers, now: () => new Date(),
+    });
+    const { syncAll } = svc;
+    const results = await syncAll();
+    expect(results.map((r) => r.accountId)).toEqual(["a1", "a3"]);
+    expect(results.every((r) => r.ok)).toBe(true);
+  });
+
+  // Einziger verfuegbarer Quercheck gegen das teuerste Fehlerbild des Moduls: ohne ihn wuerde ein
+  // Lauf mit gefuelltem Ordner, aber leerer UID-Antwort JEDE Notiz des Kontos detachen.
+  it("bricht ab, wenn EXAMINE Nachrichten meldet und UID SEARCH ALL nichts liefert", async () => {
+    const index: MailIndex = new Map([["da@example.net", { path: "Mail/2026/d.md", state: "live", source: "acc/Vault" }]]);
+    const { svc, exec } = service(
+      dialog([
+        { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
+        { expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] },
+      ], 3),
+      index,
+    );
+    expect(await svc.syncAccount("acc")).toMatchObject({ ok: false, code: "protocol" });
+    expect(exec.seen).toEqual([]);
   });
 
   it("laesst detached aus, wenn eine Server-ID in diesem Lauf nicht bestimmbar war", async () => {
@@ -254,7 +422,9 @@ describe("createSyncService", () => {
       index,
     );
     const r = await svc.syncAccount("acc");
-    expect(r).toMatchObject({ ok: true, counts: { detached: 0, errors: 1 } });
+    // detachSkipped macht den stillgelegten Detach-Durchgang sichtbar — sonst waere er von
+    // "es gab nichts zu tun" nicht zu unterscheiden, der Lauf meldet in beiden Faellen ok: true.
+    expect(r).toMatchObject({ ok: true, counts: { detached: 0, detachSkipped: 1, errors: 1 } });
     expect(exec.seen).toEqual([]);
   });
 

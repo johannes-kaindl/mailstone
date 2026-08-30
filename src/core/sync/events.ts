@@ -46,8 +46,12 @@ export function createEmitter<E extends Record<string, unknown>>(): Emitter<E> {
 }
 
 /** Zaehler eines Sync-Laufs. Liegt hier und nicht in service.ts: sonst importierten sich
- *  events.ts und service.ts gegenseitig, nur um einen Zaehler-Typ zu teilen. */
-export interface SyncCounts { created: number; reattached: number; detached: number; skipped: number; errors: number }
+ *  events.ts und service.ts gegenseitig, nur um einen Zaehler-Typ zu teilen.
+ *  `detachSkipped` = Detach-Plaene, die dieser Lauf bewusst ausgelassen hat, weil er nicht jede
+ *  Mail-ID auf dem Server bestimmen konnte (siehe service.ts, `undetermined`). Ohne diesen
+ *  Zaehler waere ein stillgelegter Detach-Durchgang von "es gab nichts zu tun" nicht zu
+ *  unterscheiden — der Lauf meldet in beiden Faellen ok: true. */
+export interface SyncCounts { created: number; reattached: number; detached: number; skipped: number; detachSkipped: number; errors: number }
 
 /** Events, die `SyncService` ueber `SyncDeps.events` feuert — `synced` nach jedem Lauf
  *  (auch ohne Aenderungen), `changed` je tatsaechlich ausgefuehrtem `NotePlan`. */

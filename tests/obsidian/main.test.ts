@@ -19,7 +19,7 @@ describe("syncFailureStatus", () => {
   it("liefert null, wenn mindestens ein Konto erfolgreich war (das \"synced\"-Event hat den Status schon gesetzt)", () => {
     const results: SyncRunResult[] = [
       { ok: false, accountId: "a1", code: "auth" },
-      { ok: true, accountId: "a2", counts: { created: 1, reattached: 0, detached: 0, skipped: 0, errors: 0 } },
+      { ok: true, accountId: "a2", counts: { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
     ];
     expect(syncFailureStatus(results)).toBeNull();
   });

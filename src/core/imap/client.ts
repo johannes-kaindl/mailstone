@@ -1,5 +1,5 @@
 // IMAP-Client als Zustandsautomat ueber SocketTransport (RFC 3501, Subset): CAPABILITY ->
-// AUTHENTICATE PLAIN (Fallback LOGIN) -> EXAMINE -> UID SEARCH -> UID FETCH -> LOGOUT.
+// AUTHENTICATE PLAIN (nur mit SASL-IR, sonst LOGIN) -> EXAMINE -> UID SEARCH -> UID FETCH -> LOGOUT.
 // Nur lesend: EXAMINE statt SELECT, BODY.PEEK statt BODY — ein Sync-Lauf darf \Seen nie setzen.
 // Kein Node-/Obsidian-Import (siehe scripts/check-pure.mjs).
 import type { SocketTransport, TlsMode } from "../net/types";
@@ -181,7 +181,17 @@ async function runConnect(transport: SocketTransport, opts: ImapConnectOptions):
     if (cap.status !== "OK") return { ok: false, code: "protocol", detail: `CAPABILITY abgelehnt: ${cap.text}` };
     const capabilities = capabilitiesFrom(cap.untagged);
 
-    if (capabilities.includes("LOGINDISABLED") && !capabilities.includes("AUTH=PLAIN")) {
+    // Die Initial-Response-Form `AUTHENTICATE PLAIN <base64>` ist RFC 4959 und setzt die
+    // Capability SASL-IR voraus — AUTH=PLAIN allein sagt nur, dass der Mechanismus existiert.
+    // Ein Server, der PLAIN ohne SASL-IR ankuendigt, antwortet auf diese Form BAD; der Client
+    // meldete dann "auth", der Nutzer gaebe sein Passwort immer wieder neu ein und kaeme nie
+    // hinein. Fehlt SASL-IR, nimmt der Client deshalb LOGIN — die mehrstufige
+    // Continuation-Form von AUTHENTICATE spricht dieses Subset bewusst nicht.
+    const canSaslIr = capabilities.includes("AUTH=PLAIN") && capabilities.includes("SASL-IR");
+
+    // LOGINDISABLED wird an genau dieselbe Bedingung gehaengt: ohne SASL-IR bliebe nur LOGIN,
+    // und das hat der Server hier gerade verboten — es gibt dann kein nutzbares Verfahren.
+    if (capabilities.includes("LOGINDISABLED") && !canSaslIr) {
       return { ok: false, code: "tls-required", detail: "Server erlaubt keine Anmeldung auf dieser Verbindung (LOGINDISABLED)" };
     }
 
@@ -193,7 +203,7 @@ async function runConnect(transport: SocketTransport, opts: ImapConnectOptions):
     }
 
     const authTag = conn.nextTag();
-    const auth = capabilities.includes("AUTH=PLAIN")
+    const auth = canSaslIr
       ? await conn.command(authTag, `AUTHENTICATE PLAIN ${base64Utf8(`\0${opts.username}\0${opts.password}`)}`, `${authTag} AUTHENTICATE PLAIN ****`)
       : await conn.command(authTag, `LOGIN ${quoteArg(opts.username)} ${quoteArg(opts.password)}`, `${authTag} LOGIN **** ****`);
     if (auth.status !== "OK") return { ok: false, code: "auth", detail: auth.text };

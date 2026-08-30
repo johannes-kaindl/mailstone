@@ -11,7 +11,7 @@ function literal(text: string): SendPart[] {
 }
 
 const greetingAndAuth: DialogStep[] = [
-  { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN UIDPLUS MOVE", "a001 OK done"] },
+  { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS MOVE", "a001 OK done"] },
   { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
 ];
 
@@ -35,7 +35,7 @@ describe("imapConnect", () => {
 
   it("liefert code 'auth' bei abgelehnter Anmeldung", async () => {
     const fake = new FakeSocketTransport(["* OK ready"], [
-      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN", "a001 OK done"] },
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
       { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 NO [AUTHENTICATIONFAILED] Invalid credentials"] },
     ]);
     const r = await imapConnect(fake, base);
@@ -50,6 +50,28 @@ describe("imapConnect", () => {
     const r = await imapConnect(fake, base);
     expect(r.ok).toBe(true);
     expect(fake.written.some((l) => l.startsWith("a002 LOGIN"))).toBe(true);
+  });
+
+  // Die Initial-Response-Form von AUTHENTICATE ist RFC 4959 und braucht SASL-IR. Ein Server, der
+  // nur AUTH=PLAIN ankuendigt, antwortet darauf BAD — der Client meldete "auth" und der Nutzer
+  // haette sein Passwort ewig neu eingegeben, ohne je hineinzukommen.
+  it("nimmt LOGIN, wenn der Server AUTH=PLAIN ohne SASL-IR ankuendigt", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN UIDPLUS", "a001 OK done"] },
+      { expect: /^a002 LOGIN /, send: ["a002 OK logged in"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    expect(r.ok).toBe(true);
+    expect(fake.written.some((l) => l.startsWith("a002 LOGIN"))).toBe(true);
+    expect(fake.written.some((l) => l.includes("AUTHENTICATE"))).toBe(false);
+  });
+
+  it("weist LOGINDISABLED auch mit AUTH=PLAIN ab, solange SASL-IR fehlt (kein nutzbares Verfahren)", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 LOGINDISABLED AUTH=PLAIN", "a001 OK done"] },
+    ]);
+    expect(await imapConnect(fake, base)).toMatchObject({ ok: false, code: "tls-required" });
+    expect(fake.written.some((l) => /^a\d+ (AUTHENTICATE|LOGIN)/.test(l))).toBe(false);
   });
 
   it("weist LOGINDISABLED ohne Verbindungsaufbau zum Postfach ab", async () => {

@@ -44,7 +44,9 @@ function handleLine(socket, line) {
   const cmd = rest.join(" ").toUpperCase();
 
   if (cmd === "CAPABILITY") {
-    socket.write("* CAPABILITY IMAP4rev1 AUTH=PLAIN UIDPLUS\r\n");
+    // SASL-IR gehoert dazu, weil dieser Fake genau die Initial-Response-Form von AUTHENTICATE
+    // PLAIN annimmt (RFC 4959) — ohne die Capability nutzt der Client korrekterweise LOGIN.
+    socket.write("* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS\r\n");
     socket.write(`${tag} OK done\r\n`);
   } else if (cmd.startsWith("AUTHENTICATE PLAIN")) {
     socket.write(`${tag} OK authenticated\r\n`);

@@ -230,9 +230,14 @@ export default class MailstonePlugin extends Plugin {
           created: acc.created + r.counts.created,
           reattached: acc.reattached + r.counts.reattached,
           detached: acc.detached + r.counts.detached,
+          detachSkipped: acc.detachSkipped + r.counts.detachSkipped,
           errors: acc.errors + r.counts.errors,
-        }), { created: 0, reattached: 0, detached: 0, errors: 0 });
+        }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
         notify.info("notice.sync.done", sum.created, sum.reattached, sum.detached, sum.errors);
+        // Ausgelassene Ablösungen bekommen eine eigene Meldung statt einer weiteren Zahl in der
+        // Zeile oben: sie sind kein Zaehler des Normalfalls, sondern der Hinweis, dass der
+        // Detach-Zweig dieses Laufs stillgelegt war (sonst ununterscheidbar von "nichts zu tun").
+        if (sum.detachSkipped > 0) notify.info("notice.sync.detachSkipped", sum.detachSkipped);
       }
     } finally {
       // Zone-Hashes und UID-Cache muessen auch nach einem Abbruch persistiert sein — sonst

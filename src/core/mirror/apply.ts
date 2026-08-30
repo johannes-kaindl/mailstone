@@ -26,9 +26,22 @@ export function planSync(input: ApplyInput): NotePlan[] {
   const { profile, index } = input;
   const plans: NotePlan[] = [];
   const taken = input.takenPaths;
+  // Invariante "hoechstens ein Plan je Mail-ID". Zwei Mails im selben Ordner koennen dieselbe
+  // normalisierte Message-ID tragen (zurueckkopierte Mail, Sieve-Kopie, an sich selbst
+  // weitergeleitete Nachricht) oder — ohne Message-ID-Header — ueber fallbackId auf denselben
+  // Wert fallen. Ohne diesen Riegel vergaebe freePaths() zwei verschiedene Pfade und es
+  // entstuenden zwei Notizen mit identischem mail_id; die zweite waere im mailIndex (eine Map
+  // ueber mail_id) dauerhaft unerreichbar, also eine Waise im Vault. Der Aufrufer filtert
+  // ebenfalls, die Zusage haengt aber bewusst nicht an ihm: planKey() im SyncService beruft
+  // sich ausdruecklich darauf. Die zweite Schleife braucht keinen Riegel — sie laeuft ueber die
+  // Schluessel von `index` (je Mail-ID genau einer) und ist zur ersten disjunkt, weil dort nur
+  // Mail-IDs geplant werden, die `index` NICHT kennt.
+  const planned = new Set<string>();
 
   for (const { mail, eml } of input.fetched) {
     if (index.has(mail.id)) continue; // bekannt -> Zustand entscheidet unten, nie neu rendern
+    if (planned.has(mail.id)) continue; // dieselbe Mail-ID zweimal geliefert, s. o.
+    planned.add(mail.id);
     const plan = planMailNote({
       mail, eml, profile,
       source: input.source,
