@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### M3 — IMAP-Sync (2026-08-30)
+- IMAP-Client (`core/imap/client.ts`): Zustandsautomat CAPABILITY -> AUTHENTICATE PLAIN
+  (Fallback LOGIN) -> EXAMINE (read-only) -> UID SEARCH ALL -> UID FETCH -> LOGOUT, nur
+  lesende Kommandos (`BODY.PEEK` statt `BODY`), jeder Netzwerkschritt unter `withTimeout`
+- Message-ID-Abgleich statt ENVELOPE (`BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`), bewusste
+  Abweichung von der Spec (Begründung siehe Task-Brief), UID→Message-ID-Cache pro
+  `<konto>/<ordner>/<UIDVALIDITY>` (`core/sync/uid-cache.ts`)
+- `planSync` (`core/mirror/apply.ts`): `create`/`reattach`/`detach` aus Server- gegen
+  Vault-Stand, `SyncService` (`core/sync/service.ts`) fährt einen Lauf pro Konto über
+  Busy-Guard, Emitter (`synced`/`changed`) und `PlanExecutor`
+- Verdrahtung ins Plugin: Kommando, Ribbon, Intervall-Trigger und Statusleiste; Passwort-
+  fehlt-Hinweis in der Konten-Zeile, Debug-Schalter für den IMAP-Dialog
+- Fake-IMAP-Server + Integrationstest (`scripts/fake-imap.mjs`,
+  `tests/integration/fake-imap.test.ts`) gegen den echten Node-Socket-Transport — spricht nur
+  das vom Client benutzte Kommando-Subset, kein TLS, ausschließlich `127.0.0.1`
+- `IDLE` bleibt V1.1, nicht Teil dieses Meilensteins
+- **Live-Probe gegen ein echtes Postfach steht noch aus** — Sync ist gegen den Fake-IMAP-
+  Server über einen echten Socket getestet (Kindprozess, echtes TCP), aber noch nicht gegen
+  einen echten mailbox.org-Server gefahren; folgt separat
+
 ### M2 — Transport (2026-08-23)
 - SMTP-Client (`core/smtp/client.ts`): EHLO/AUTH/MAIL/RCPT/DATA, `smtpProbe` für den Verbindungstest
 - `tls-transport.ts`: echter Node-TCP/TLS-Socket hinter `Platform.isDesktop`, STARTTLS-Upgrade mit
