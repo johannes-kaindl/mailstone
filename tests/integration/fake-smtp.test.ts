@@ -83,7 +83,11 @@ describe("SendService gegen scripts/fake-smtp.mjs (echter Socket, echter Kindpro
       text: "Mailstone test 2026-08-23T13:00:00.000Z",
     });
 
-    expect(result).toEqual({ ok: true, messageId: "fake-smtp-integration@example.net" });
+    // `sentCopy: "skipped"` gehoert zur Aussage: dieses Konto hat keinen IMAP-Zugang, also legt
+    // der Versand keine Kopie ab — und der Versand gilt trotzdem als gelungen. Der Nachtrag aus
+    // fix/sent-kopie (1454f1c) hatte das Feld eingefuehrt, ohne diesen Test mitzuziehen; er faellt
+    // seither, wird aber von `npm test` nicht gefahren (--exclude "tests/integration/**").
+    expect(result).toEqual({ ok: true, messageId: "fake-smtp-integration@example.net", sentCopy: "skipped" });
 
     const eml = readFileSync(join(outDir, "1.eml"), "utf8");
     expect(eml).toContain("Subject: Mailstone test");

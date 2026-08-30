@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
-import { createSyncService, MAX_FETCH_PER_RUN } from "../../../src/core/sync/service";
+import { createSyncService, MAX_FETCH_PER_RUN, MAX_HEADER_FETCH_PER_RUN } from "../../../src/core/sync/service";
 import { createBusyGuard } from "../../../src/core/sync/busy";
 import { createEmitter } from "../../../src/core/sync/events";
 import { createUidCache } from "../../../src/core/sync/uid-cache";
@@ -431,5 +431,90 @@ describe("createSyncService", () => {
   it("meldet no-account fuer eine unbekannte Konto-ID", async () => {
     const { svc } = service([], new Map());
     expect(await svc.syncAccount("gibtsnicht")).toMatchObject({ ok: false, code: "no-account" });
+  });
+});
+
+// MAX_HEADER_FETCH_PER_RUN: die FETCH-Kommandos selbst waren nie unbegrenzt — client.ts schickt
+// den Header-Abgleich seit jeher in Baendern von HEADER_BATCH (200). Unbegrenzt war die MENGE je
+// LAUF: alle Baender landen in EINER Map, und bei einem hineingezogenen Grossbestand zieht ein
+// einziger Lauf so den ganzen Ordner durch. Der Body-Fetch ist seit M3 gedeckelt, der Header-Weg
+// blieb es nicht. Entscheidend wie beim Body-Deckel: was der Deckel abschneidet, bleibt unbestimmt
+// — und unbestimmte UIDs muessen den Detach-Zweig aussetzen, sonst loest die Grenze Abloesungen aus.
+describe("createSyncService — Header-Fetch-Obergrenze", () => {
+  const HEADER_BATCH = 200; // Bandbreite in client.ts; hier gespiegelt, um die Baender zu zaehlen
+
+  it("holt hoechstens MAX_HEADER_FETCH_PER_RUN Header je Lauf und setzt Detaches deswegen aus", async () => {
+    const uids = Array.from({ length: MAX_HEADER_FETCH_PER_RUN + 2 }, (_, i) => i + 1);
+    // "weg@x" liegt nicht mehr auf dem Server. Ohne Deckel waere sie abgeloest worden; mit ihm
+    // bleiben die abgeschnittenen UIDs unbestimmt, also darf der Lauf sie NICHT anfassen.
+    const index: MailIndex = new Map([["weg@x", { path: "Mail/2026/w.md", state: "live", source: "acc/Vault" }]]);
+
+    let tagNr = 5;
+    const nextTag = () => `a${String(tagNr++).padStart(3, "0")}`;
+    const steps: DialogStep[] = [{ expect: /^a004 UID SEARCH ALL$/, send: [`* SEARCH ${uids.join(" ")}`, "a004 OK done"] }];
+    // Genau MAX_HEADER_FETCH_PER_RUN / HEADER_BATCH Baender — ein elftes waere der Befund.
+    // Leere Antworten: dann bleibt jede ID unbestimmt, was den Detach-Zweig pruefbar macht.
+    for (let from = 1; from <= MAX_HEADER_FETCH_PER_RUN; from += HEADER_BATCH) {
+      const tag = nextTag();
+      steps.push({
+        expect: new RegExp(`^${tag} UID FETCH ${String(from)}:${String(from + HEADER_BATCH - 1)} \\(BODY\\.PEEK\\[HEADER\\.FIELDS \\(MESSAGE-ID\\)\\]\\)$`),
+        send: [`${tag} OK done`],
+      });
+    }
+    uids.slice(0, MAX_FETCH_PER_RUN).forEach((uid) => {
+      const body = new TextEncoder().encode(`From: a@example.net\r\nTo: b@example.net\r\nSubject: Mail ${String(uid)}\r\nMessage-ID: <m${String(uid)}@x>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n`);
+      const tag = nextTag();
+      steps.push({
+        expect: new RegExp(`^${tag} UID FETCH ${String(uid)} \\(BODY\\.PEEK\\[\\]\\)$`),
+        send: [`* 1 FETCH (UID ${String(uid)} BODY[] {${String(body.byteLength)}}`, body, ")", `${tag} OK done`],
+      });
+    });
+    steps.push({ expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] });
+
+    const { svc, fake, exec } = service(dialog(steps, uids.length), index);
+    const r = await svc.syncAccount("acc");
+
+    expect(r).toMatchObject({ ok: true, counts: { created: MAX_FETCH_PER_RUN, detached: 0, detachSkipped: 1 } });
+    expect(fake.written.filter((l) => l.includes("HEADER.FIELDS"))).toHaveLength(MAX_HEADER_FETCH_PER_RUN / HEADER_BATCH);
+    // Keine einzige Abloesung — die Notiz ueberlebt den Lauf unangetastet.
+    expect(exec.seen.filter((p) => p.kind === "setState")).toEqual([]);
+  });
+});
+
+// Review-Befund zur Header-Obergrenze (2026-08-30): der Deckel darf den BODY-Deckel nicht
+// aushebeln. `fetched` waechst nur fuer Mails, die NOCH KEINE Notiz haben — eine bereits
+// gespiegelte Mail jenseits des Header-Deckels hat keine gecachte ID mehr, faellt deshalb bis
+// zum Body-Fetch durch und laesst den 200er-Zaehler unberuehrt. Ohne Riegel holt ein Lauf so
+// JEDEN restlichen Body. Vor dem Header-Deckel gab es diesen Weg nicht: der billige Header
+// erkannte die Mail, `index.has` sprang, kein Body.
+describe("createSyncService — Header-Deckel hebelt den Body-Deckel nicht aus", () => {
+  it("holt keinen einzigen Body fuer laengst gespiegelte Mails jenseits des Header-Deckels", async () => {
+    const ueberhang = 100;
+    const uids = Array.from({ length: MAX_HEADER_FETCH_PER_RUN + ueberhang }, (_, i) => i + 1);
+    // Jede dieser Mails hat schon eine Notiz — es gibt nichts zu holen, fuer keine einzige.
+    const index: MailIndex = new Map(uids.map((uid) => [`m${String(uid)}@x`, { path: `Mail/2026/${String(uid)}.md`, state: "live" as const, source: "acc/Vault" }]));
+
+    let tagNr = 5;
+    const nextTag = () => `a${String(tagNr++).padStart(3, "0")}`;
+    const steps: DialogStep[] = [{ expect: /^a004 UID SEARCH ALL$/, send: [`* SEARCH ${uids.join(" ")}`, "a004 OK done"] }];
+    for (let from = 1; from <= MAX_HEADER_FETCH_PER_RUN; from += 200) {
+      const tag = nextTag();
+      const bis = from + 199;
+      const lines: (string | Uint8Array)[] = [];
+      for (let uid = from; uid <= bis; uid++) {
+        const h = new TextEncoder().encode(`Message-ID: <m${String(uid)}@x>\r\n\r\n`);
+        lines.push(`* ${String(uid)} FETCH (UID ${String(uid)} BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(h.byteLength)}}`, h, ")");
+      }
+      lines.push(`${tag} OK done`);
+      steps.push({ expect: new RegExp(`^${tag} UID FETCH ${String(from)}:${String(bis)} \\(BODY\\.PEEK\\[HEADER\\.FIELDS \\(MESSAGE-ID\\)\\]\\)$`), send: lines });
+    }
+    steps.push({ expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] });
+
+    const { svc, fake } = service(dialog(steps, uids.length), index);
+    const r = await svc.syncAccount("acc");
+
+    expect(r).toMatchObject({ ok: true, counts: { created: 0 } });
+    // Der Kern: kein einziger Body. Vor der Reparatur waren es `ueberhang` viele.
+    expect(fake.written.filter((l) => l.includes("BODY.PEEK[]"))).toHaveLength(0);
   });
 });

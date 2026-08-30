@@ -55,6 +55,16 @@ export interface SyncService {
  *  UID-Cache befuellt, der Abbruch loest also keine falschen Detaches aus. */
 export const MAX_FETCH_PER_RUN = 200;
 
+/** Obergrenze fuer den Header-Abgleich je Lauf. Derselbe Gedanke wie bei MAX_FETCH_PER_RUN, nur
+ *  eine Groessenordnung hoeher: ein Message-ID-Header wiegt ein paar Dutzend Bytes, ein Body
+ *  schnell ein Megabyte. Die FETCH-Kommandos selbst waren nie unbegrenzt — client.ts schickt den
+ *  Abgleich in Baendern von HEADER_BATCH (200). Unbegrenzt war die MENGE je Lauf: alle Baender
+ *  landen in einer Map, ein einziger Lauf zog also den ganzen Ordner durch. 2000 haelt einen
+ *  Erstbestand von 10.000 Mails bei fuenf Laeufen — statt fuenfzig, wenn man den Body-Deckel
+ *  wiederverwendete. Was die Grenze abschneidet, bleibt UNBESTIMMT — genau wie beim
+ *  Body-Deckel setzt der Lauf dann Detaches aus, statt sie faelschlich auszuloesen. */
+export const MAX_HEADER_FETCH_PER_RUN = 2000;
+
 export function createSyncService(deps: SyncDeps): SyncService {
   async function run(account: Account): Promise<SyncRunResult> {
     const profile = deps.profile();
@@ -95,7 +105,14 @@ export function createSyncService(deps: SyncDeps): SyncService {
       }
 
       const known = deps.uidCache.known(account.id, folder, examined.uidValidity);
-      const unknownUids = uids.filter((u) => !known.has(u));
+      const unknownAll = uids.filter((u) => !known.has(u));
+      const unknownUids = unknownAll.slice(0, MAX_HEADER_FETCH_PER_RUN);
+      // Was der Header-Deckel abschneidet, wird unten AUSDRUECKLICH uebersprungen und als
+      // `undetermined` gezaehlt. Das ist kein Schoenheitsfehler, sondern der Grund, warum der
+      // Deckel den Body-Deckel nicht aushebelt: `fetched` waechst nur fuer Mails ohne Notiz, eine
+      // laengst gespiegelte Mail ohne gecachte ID fiele also bis zum Body-Fetch durch, ohne den
+      // 200er-Zaehler zu bewegen — ein Lauf holte auf diesem Weg JEDEN restlichen Body.
+      const deferredUids = new Set(unknownAll.slice(MAX_HEADER_FETCH_PER_RUN));
       if (unknownUids.length > 0) {
         for (const [uid, mailId] of await session.uidFetchMessageIds(unknownUids)) {
           if (mailId === null) continue; // ohne Message-ID-Header: ID entsteht erst beim Parsen
@@ -127,6 +144,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
         if (cachedId !== undefined) {
           onServer.add(cachedId);
           if (index.has(cachedId) || fetchedIds.has(cachedId)) continue; // Notiz existiert/ist geplant — kein Body noetig
+        }
+        if (cachedId === undefined && deferredUids.has(uid)) {
+          // Header dieses Laufs nicht mehr geholt (s. MAX_HEADER_FETCH_PER_RUN): ID unbestimmt,
+          // kein Body. Der naechste Lauf nimmt sie sich vor.
+          undetermined += 1;
+          continue;
         }
         if (fetched.length >= MAX_FETCH_PER_RUN) {
           // Obergrenze erreicht (s. MAX_FETCH_PER_RUN): keine Bodies mehr, die Schleife laeuft
