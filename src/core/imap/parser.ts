@@ -61,7 +61,7 @@ export function tokenize(text: string, literals: Uint8Array[]): ImapItem[] {
       v += c;
       i++;
     }
-    return { kind: "string", value: v };
+    throw new NetError("protocol", "unterminierter quoted string (kein schließendes Anführungszeichen)");
   }
 
   function readAtom(): ImapItem {

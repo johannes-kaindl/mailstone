@@ -63,6 +63,10 @@ describe("tokenize", () => {
     if (list?.kind !== "list") throw new Error("unreachable");
     expect(list.items).toEqual([{ kind: "literal", bytes: a }, { kind: "literal", bytes: b }]);
   });
+
+  it("weist einen unterminierten quoted string ab, statt ihn abzuschneiden", () => {
+    expect(() => tokenize('* 1 FETCH (SUBJECT "kaputt', [])).toThrow(/NetError|protocol|unterminiert/i);
+  });
 });
 
 describe("parseResponse / Helfer", () => {
