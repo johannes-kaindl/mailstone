@@ -66,6 +66,18 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
   };
 }
 
+/** Legt eine Anlage im Vault an und stellt den Zielordner sicher. Eigene Pfadzerlegung
+ *  statt des modulinternen `dirOf`: ein Anhangordner auf Vault-Ebene liefert einen Pfad
+ *  ohne "/", und `dirOf` schnitte dann das letzte Zeichen des Dateinamens ab. */
+export function writeAttachment(app: App): (path: string, data: Uint8Array) => Promise<void> {
+  return async (path, data) => {
+    const p = normalizePath(path);
+    const cut = p.lastIndexOf("/");
+    if (cut > 0) await ensureFolder(app, p.slice(0, cut));
+    await app.vault.createBinary(p, new Uint8Array(data).buffer);
+  };
+}
+
 export function findMailNotes(app: App, idField: string): Map<string, TFile> {
   const out = new Map<string, TFile>();
   for (const f of app.vault.getMarkdownFiles()) {

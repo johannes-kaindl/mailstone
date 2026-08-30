@@ -1,6 +1,6 @@
 import { defineStrings, pickLang, setLang } from "../vendor/code-kit/i18n";
 
-const en = {
+export const en = {
   "cmd.importEml.name": "Import .eml files from a vault folder",
   "cmd.sendTest.name": "Send a test mail to myself",
   "notice.sendTest.ok": "Test mail sent (message id {0}).",
@@ -91,8 +91,44 @@ const en = {
   "error.send.tls": "The TLS handshake failed.",
   "error.send.timeout": "The connection timed out.",
   "error.send.closed": "The connection was closed unexpectedly.",
+
+  "cmd.mail.rerender.title": "Re-render mail note from its .eml",
+  "cmd.mail.rerender.desc": "Rebuilds the message section and the derived front matter keys from the .eml stored next to the note. Anything you wrote outside the managed section stays untouched.",
+  "cmd.mail.relink.title": "Relink mail threads",
+  "cmd.mail.relink.desc": "Turns the message ids in in_reply_to and references into wikilinks wherever the target note exists. Runs across all mail notes.",
+  "cmd.mail.extractAttachment.title": "Extract an attachment from a mail note",
+  "cmd.mail.extractAttachment.desc": "Copies one attachment out of the .eml into the vault's attachment folder and links it from the note. The .eml keeps its own copy.",
+  "cmd.mail.extractAttachment.field.name": "Which attachment to copy into the vault.",
+  "cmd.mail.replyExternal.title": "Reply to a mail in the external mail client",
+  "cmd.mail.replyExternal.desc": "Opens your system mail client with recipient, subject and thread reference filled in. Mailstone does not send this reply itself.",
+
+  "plan.heading": "Review before writing",
+  "plan.col.field": "Field", "plan.col.before": "Before", "plan.col.after": "After",
+  "plan.execute": "Apply", "plan.cancel": "Cancel",
+  "plan.field.attachment": "Attachment",
+  "plan.mail.rerender.summary": "Rebuild this note from its .eml: {0} front matter key(s) change, message section is rewritten.",
+  "plan.mail.relink.summary": "{0} note(s) get new wikilinks in in_reply_to or references.",
+  "plan.mail.extractAttachment.summary": "Copy {0} into the vault as {1} and link it from this note.",
+  "plan.mail.replyExternal.summary": "Open your mail client with a reply to {0}.",
+
+  "notice.command.done": "Done: {0} note(s) written, {1} skipped.",
+  "notice.command.attachment": "Attachment saved as {0}.",
+
+  "error.command.busy": "A synchronisation or another command is running. Try again in a moment.",
+  "error.command.invalid-input": "The values you entered are not valid.",
+  "error.command.not-applicable": "This command does not apply to the note you have open.",
+  "error.command.eml-missing": "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link.",
+  "error.command.eml-unparseable": "The .eml belonging to this note could not be read.",
+  "error.command.eml-mismatch": "The .eml next to this note belongs to a different message. Nothing was changed.",
+  "error.command.fences-missing": "This note has no managed message section (the %% mailstone:begin %% … %% mailstone:end %% markers). Mailstone will not guess where its content belongs.",
+  "error.command.zone-edited": "The message section of this note was edited by hand. Re-rendering would discard those edits, so nothing was written.",
+  "error.command.frontmatter-unparseable": "A front matter key managed by Mailstone is written as a multi-line block, which cannot be rewritten safely.",
+  "error.command.attachment-missing": "That attachment is not in the .eml.",
+  "error.command.no-recipient": "This note has no sender address to reply to.",
+  "error.command.nothing-to-do": "Nothing to change.",
+  "error.command.write-failed": "Writing failed. Nothing or only part of it was saved — check the note.",
 };
-const de: typeof en = {
+export const de: typeof en = {
   "cmd.importEml.name": ".eml-Dateien aus einem Vault-Ordner importieren",
   "cmd.sendTest.name": "Test-Mail an mich selbst senden",
   "notice.sendTest.ok": "Test-Mail gesendet (Message-ID {0}).",
@@ -183,6 +219,42 @@ const de: typeof en = {
   "error.send.tls": "Der TLS-Handshake ist fehlgeschlagen.",
   "error.send.timeout": "Zeitüberschreitung bei der Verbindung.",
   "error.send.closed": "Die Verbindung wurde unerwartet geschlossen.",
+
+  "cmd.mail.rerender.title": "Mail-Notiz aus ihrer .eml neu aufbauen",
+  "cmd.mail.rerender.desc": "Baut den Nachrichtenabschnitt und die abgeleiteten Frontmatter-Felder aus der .eml neu, die neben der Notiz liegt. Was du außerhalb des verwalteten Abschnitts geschrieben hast, bleibt unberührt.",
+  "cmd.mail.relink.title": "Mail-Threads neu verknüpfen",
+  "cmd.mail.relink.desc": "Macht aus den Message-IDs in in_reply_to und references Wikilinks, wo die Zielnotiz existiert. Läuft über alle Mail-Notizen.",
+  "cmd.mail.extractAttachment.title": "Anhang aus einer Mail-Notiz herausholen",
+  "cmd.mail.extractAttachment.desc": "Kopiert einen Anhang aus der .eml in den Anhangordner des Vaults und verlinkt ihn in der Notiz. Die .eml behält ihre eigene Kopie.",
+  "cmd.mail.extractAttachment.field.name": "Welcher Anhang in den Vault kopiert werden soll.",
+  "cmd.mail.replyExternal.title": "Auf eine Mail im externen Mailprogramm antworten",
+  "cmd.mail.replyExternal.desc": "Öffnet dein Mailprogramm mit Empfänger, Betreff und Thread-Bezug. Mailstone verschickt diese Antwort nicht selbst.",
+
+  "plan.heading": "Vor dem Schreiben prüfen",
+  "plan.col.field": "Feld", "plan.col.before": "Vorher", "plan.col.after": "Nachher",
+  "plan.execute": "Anwenden", "plan.cancel": "Abbrechen",
+  "plan.field.attachment": "Anhang",
+  "plan.mail.rerender.summary": "Diese Notiz aus ihrer .eml neu aufbauen: {0} Frontmatter-Felder ändern sich, der Nachrichtenabschnitt wird neu geschrieben.",
+  "plan.mail.relink.summary": "{0} Notizen bekommen neue Wikilinks in in_reply_to oder references.",
+  "plan.mail.extractAttachment.summary": "{0} als {1} in den Vault kopieren und in dieser Notiz verlinken.",
+  "plan.mail.replyExternal.summary": "Mailprogramm mit einer Antwort an {0} öffnen.",
+
+  "notice.command.done": "Fertig: {0} Notizen geschrieben, {1} übersprungen.",
+  "notice.command.attachment": "Anhang gespeichert als {0}.",
+
+  "error.command.busy": "Es läuft gerade eine Synchronisation oder ein anderes Kommando. Bitte gleich noch einmal versuchen.",
+  "error.command.invalid-input": "Die eingegebenen Werte sind ungültig.",
+  "error.command.not-applicable": "Dieses Kommando passt nicht zur geöffneten Notiz.",
+  "error.command.eml-missing": "Die .eml zu dieser Notiz wurde nicht gefunden. Sie wird im Unterordner _eml neben der Notiz erwartet — wer die Notiz verschiebt oder umbenennt, trennt diese Verbindung.",
+  "error.command.eml-unparseable": "Die .eml zu dieser Notiz konnte nicht gelesen werden.",
+  "error.command.eml-mismatch": "Die .eml neben dieser Notiz gehört zu einer anderen Nachricht. Es wurde nichts geändert.",
+  "error.command.fences-missing": "Diese Notiz hat keinen verwalteten Nachrichtenabschnitt (die Markierungen %% mailstone:begin %% … %% mailstone:end %%). Mailstone rät nicht, wohin sein Inhalt gehört.",
+  "error.command.zone-edited": "Der Nachrichtenabschnitt dieser Notiz wurde von Hand geändert. Ein Neuaufbau würde diese Änderungen verwerfen, deshalb wurde nichts geschrieben.",
+  "error.command.frontmatter-unparseable": "Ein von Mailstone verwaltetes Frontmatter-Feld steht als mehrzeiliger Block, der sich nicht gefahrlos ersetzen lässt.",
+  "error.command.attachment-missing": "Dieser Anhang steckt nicht in der .eml.",
+  "error.command.no-recipient": "In dieser Notiz steht keine Absenderadresse, an die geantwortet werden könnte.",
+  "error.command.nothing-to-do": "Es gibt nichts zu ändern.",
+  "error.command.write-failed": "Das Schreiben ist fehlgeschlagen. Es wurde nichts oder nur ein Teil gespeichert — sieh in der Notiz nach.",
 };
 
 export function initI18n(raw: string): void { defineStrings({ en, de }); setLang(pickLang(raw)); }

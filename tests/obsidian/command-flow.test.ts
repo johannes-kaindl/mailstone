@@ -1,0 +1,82 @@
+import { describe, it, expect, vi } from "vitest";
+import { mailTargetFor, buildContext } from "../../src/obsidian/command-flow";
+import { makeApp } from "../helpers/memory-vault";
+import { defaultMailProfile } from "../../src/core/mirror/profile";
+import { RERENDER_COMMAND } from "../../src/core/commands/rerender";
+import { RELINK_COMMAND } from "../../src/core/commands/relink";
+
+const profile = defaultMailProfile();
+const ZONE = "%% mailstone:begin %%\n## Nachricht\nHallo\n%% mailstone:end %%\n";
+const EML = "Message-ID: <a@x>\r\nFrom: Erika <erika@example.org>\r\nSubject: Termin\r\nDate: Sat, 29 Aug 2026 10:00:00 +0200\r\n\r\nHallo\r\n";
+
+async function vaultWithNote(emlBody = EML) {
+  const app = makeApp();
+  await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\nmail_source: acc/Vault\nmail_state: live\n---\n## Notizen\n\n${ZONE}`);
+  await app.vault.createBinary("Mail/2026/_eml/x.eml", new TextEncoder().encode(emlBody).buffer);
+  return app;
+}
+
+function deps(app: unknown) {
+  return {
+    app: app as never,
+    profile: () => profile,
+    hashes: { get: () => null, set: () => {} },
+    now: () => new Date("2026-08-30T22:00:00Z"),
+  };
+}
+
+describe("mailTargetFor", () => {
+  it("erkennt eine Mail-Notiz am idField", () => {
+    expect(mailTargetFor(profile, "Mail/2026/x.md", { mail_id: "a@x", mail_source: "acc/Vault", mail_state: "live" }))
+      .toEqual({ mailId: "a@x", path: "Mail/2026/x.md", source: "acc/Vault", state: "live" });
+  });
+  it("liefert null ohne mail_id", () => {
+    expect(mailTargetFor(profile, "Notiz.md", { titel: "x" })).toBeNull();
+  });
+  it("vertraegt eine Notiz ohne Herkunft und ohne Zustand (Altbestand)", () => {
+    expect(mailTargetFor(profile, "x.md", { mail_id: "a@x" })).toEqual({ mailId: "a@x", path: "x.md", source: "", state: null });
+  });
+});
+
+describe("buildContext", () => {
+  it("laedt und prueft die .eml fuer ein Kommando mit needs.eml", async () => {
+    const app = await vaultWithNote();
+    const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.ctx.mail?.id).toBe("a@x");
+  });
+
+  it("meldet eml-missing, wenn am Konventionspfad nichts liegt", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\n---\n${ZONE}`);
+    const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r).toEqual({ ok: false, code: "eml-missing" });
+  });
+
+  it("meldet eml-mismatch, wenn die .eml zu einer anderen Mail gehoert", async () => {
+    const app = await vaultWithNote(EML.replace("<a@x>", "<fremd@x>"));
+    const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r).toEqual({ ok: false, code: "eml-mismatch" });
+  });
+
+  it("laedt fuer needs.allNotes alle Mail-Notizen samt Frontmatter und Inhalt", async () => {
+    const app = await vaultWithNote();
+    await app.vault.create("Mail/2026/y.md", `---\nmail_id: b@x\n---\n${ZONE}`);
+    const r = await buildContext(deps(app), RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok && r.ctx.notes?.map((n) => n.mailId).sort()).toEqual(["a@x", "b@x"]);
+    expect(r.ok && r.ctx.notes?.[0]?.frontmatter["mail_id"]).toBeDefined();
+  });
+
+  it("laedt KEINE .eml fuer ein Kommando ohne needs.eml", async () => {
+    const app = await vaultWithNote();
+    const spy = vi.spyOn(app.vault, "readBinary");
+    await buildContext(deps(app), RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("loest die Anhangpfade vorab auf, damit attachmentPathFor synchron bleibt", async () => {
+    const app = await vaultWithNote(EML.replace("\r\n\r\nHallo\r\n", "\r\nContent-Type: text/plain; name=\"a.txt\"\r\nContent-Disposition: attachment; filename=\"a.txt\"\r\n\r\nInhalt\r\n"));
+    const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok && r.ctx.attachmentPathFor("a.txt")).toBe("Anhaenge/a.txt");
+  });
+});

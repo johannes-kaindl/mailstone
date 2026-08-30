@@ -16,7 +16,12 @@ import { dueAccounts, TICK_MS } from "./core/sync/schedule";
 import { createBusyGuard } from "./core/sync/busy";
 import { createEmitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
-import { mailIndex, vaultPlanExecutor } from "./obsidian/vault-notes";
+import { mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
+import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
+import type { CommandDescriptor } from "./core/commands/types";
+import type { CommandExecuteDeps } from "./core/commands/execute";
+import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
+import { trTitle } from "./obsidian/command-i18n";
 
 interface PersistedState { settings: MailstoneSettings; zoneHashes: Record<string, string>; uidCache: UidCacheData }
 
@@ -225,6 +230,26 @@ export default class MailstonePlugin extends Plugin {
     this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
     this.addRibbonIcon("mail", t("ribbon.sync"), () => void this.runSync(notify));
 
+    // Ohne diesen Aufruf bliebe die Registry leer und jedes Kommando waere unauffindbar —
+    // genau der Fehler, den calendar-notes erst im GUI-Smoke bemerkte.
+    ensureDefaultCommands();
+    for (const descriptor of commandRegistry()) {
+      this.addCommand({
+        // Obsidian-Kommando-IDs tragen keine Punkte; die Deskriptor-ID bleibt unberuehrt.
+        id: descriptor.id.replace(/\./g, "-"),
+        name: trTitle(descriptor),
+        // checkCallback statt callback: ein Kommando, das zur geoeffneten Notiz nicht passt,
+        // steht gar nicht erst in der Palette — statt dort zu stehen und eine Fehlermeldung
+        // zu zeigen.
+        checkCallback: (checking: boolean): boolean => {
+          const probe = probeFor(this.app, this.settings.profile);
+          if (!probe || !descriptor.appliesTo(probe)) return false;
+          if (!checking) void this.runMailCommand(descriptor, notify);
+          return true;
+        },
+      });
+    }
+
     // registerInterval statt setInterval: Obsidian raeumt den Timer beim Entladen selbst ab.
     // Fester Takt statt einer beim Laden berechneten Kadenz — welche Konten faellig sind,
     // entscheidet `dueAccounts` bei jedem Schlag neu (s. core/sync/schedule.ts).
@@ -298,6 +323,44 @@ export default class MailstonePlugin extends Plugin {
     // uidCache.data() liefert die interne Referenz, keine Kopie — hier nur lesen, nie
     // hineinschreiben, sonst umgeht man die Verwerfungslogik des Caches bei UIDVALIDITY-Wechsel.
     await this.persist({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data() } satisfies PersistedState);
+  }
+
+  private hashStore(): ZoneHashStore {
+    return { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } };
+  }
+
+  private commandExecuteDeps(): CommandExecuteDeps {
+    return {
+      // Derselbe Guard wie der SyncService: ein laufender Sync und ein Kommando schliessen
+      // einander aus.
+      busy: this.busy,
+      notes: vaultPlanExecutor(this.app, this.hashStore()),
+      writeAttachment: writeAttachment(this.app),
+      openExternal: (url: string) => { window.open(url); },
+    };
+  }
+
+  /** Faehrt ein Kommando und meldet das Ergebnis. Ein Abbruch durch den Nutzer meldet
+   *  nichts — er weiss, dass er abgebrochen hat. Die Zone-Hashes werden auch nach einem
+   *  Fehlschlag persistiert (dieselbe Begruendung wie beim Import- und beim Sync-Kommando:
+   *  sonst gilt eine geschriebene Notiz beim naechsten Lauf als fremd editiert). */
+  private async runMailCommand(descriptor: CommandDescriptor, notify: Notifier): Promise<void> {
+    let outcome: RunResult;
+    try {
+      outcome = await runCommand(
+        { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
+        this.commandExecuteDeps(),
+        descriptor,
+      );
+    } finally {
+      await this.saveSettings();
+    }
+    if (outcome.kind === "cancelled") return;
+    if (outcome.kind === "error") { notify.error(`error.command.${outcome.code}`); return; }
+    const r = outcome.result;
+    if (!r.ok) { notify.error(`error.command.${r.code}`); return; }
+    notify.info("notice.command.done", r.created + r.updated, r.skipped.length);
+    if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
   }
 
   /** Ein Takt des Weckers: nur die faelligen Konten, und die Faelligkeit wird bei jedem Schlag

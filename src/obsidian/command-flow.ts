@@ -1,0 +1,142 @@
+import { TFile, normalizePath, type App } from "obsidian";
+import { parseEml } from "../core/mime/parse";
+import { emlPathFor, verifyEml } from "../core/commands/eml";
+import { executeCommandPlan, type CommandExecuteDeps, type CommandExecuteResult } from "../core/commands/execute";
+import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type MailNoteRef, type MailTarget } from "../core/commands/types";
+import type { MailProfile } from "../core/mirror/profile";
+import { SchemaFormModal } from "./modals/schema-form-modal";
+import { PlanPreviewModal } from "./modals/plan-preview-modal";
+import { trTitle } from "./command-i18n";
+import type { ZoneHashStore } from "./vault-notes";
+
+export interface CommandFlowDeps {
+  app: App;
+  profile: () => MailProfile;
+  hashes: ZoneHashStore;
+  now: () => Date;
+}
+
+export type RunResult =
+  | { kind: "cancelled" }
+  | { kind: "done"; result: CommandExecuteResult }
+  | { kind: "error"; code: CommandErrorCode };
+
+/** Die Notiz als Kommando-Ziel — oder null, wenn sie keine Mail-Notiz ist. Herkunft und
+ *  Zustand duerfen fehlen (Altbestand aus einem Import vor M3); die Kommandos reichen dann
+ *  weiter, was dasteht, und erfinden nichts. */
+export function mailTargetFor(profile: MailProfile, path: string, frontmatter: Record<string, unknown>): MailTarget | null {
+  const id = frontmatter[profile.idField];
+  if (typeof id !== "string" || id === "") return null;
+  const source = frontmatter[profile.sourceField];
+  const state = frontmatter[profile.stateField];
+  return {
+    mailId: id,
+    path,
+    source: typeof source === "string" ? source : "",
+    state: typeof state === "string" ? state : null,
+  };
+}
+
+/** Synchrone Vorpruefung fuer `checkCallback` — s. Task-Kommentar im Plan. */
+export function probeFor(app: App, profile: MailProfile): CommandProbe | null {
+  const file = app.workspace.getActiveFile();
+  if (!file || file.extension !== "md") return null;
+  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+  const target = mailTargetFor(profile, file.path, frontmatter);
+  return target ? { profile, target, frontmatter } : null;
+}
+
+async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore): Promise<MailNoteRef[]> {
+  const out: MailNoteRef[] = [];
+  for (const f of app.vault.getMarkdownFiles()) {
+    const frontmatter = app.metadataCache.getFileCache(f)?.frontmatter ?? {};
+    const id: unknown = frontmatter[profile.idField];
+    if (typeof id !== "string" || id === "") continue;
+    out.push({ mailId: id, path: f.path, content: await app.vault.cachedRead(f), frontmatter, zoneHash: hashes.get(id) });
+  }
+  return out;
+}
+
+export async function buildContext(
+  deps: CommandFlowDeps,
+  descriptor: CommandDescriptor,
+  file: TFile | null,
+): Promise<{ ok: true; ctx: CommandContext } | { ok: false; code: CommandErrorCode }> {
+  const { app } = deps;
+  const profile = deps.profile();
+  if (!(file instanceof TFile)) return { ok: false, code: "not-applicable" };
+  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+  const target = mailTargetFor(profile, file.path, frontmatter);
+  if (!target) return { ok: false, code: "not-applicable" };
+
+  const index = new Map<string, string>();
+  for (const f of app.vault.getMarkdownFiles()) {
+    const id: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.[profile.idField];
+    if (typeof id === "string" && id) index.set(id, f.path.replace(/\.md$/, ""));
+  }
+
+  const attachmentPaths = new Map<string, string>();
+  let mail: Awaited<ReturnType<typeof parseEml>> | undefined;
+  if (descriptor.needs?.eml) {
+    const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
+    if (!(emlFile instanceof TFile)) return { ok: false, code: "eml-missing" };
+    let parsed: Awaited<ReturnType<typeof parseEml>>;
+    try {
+      parsed = await parseEml(new Uint8Array(await app.vault.readBinary(emlFile)));
+    } catch {
+      return { ok: false, code: "eml-unparseable" };
+    }
+    const check = verifyEml(parsed, target.mailId);
+    if (!check.ok) return { ok: false, code: check.code };
+    mail = parsed;
+    // getAvailablePathForAttachment ist async, `plan()` ist synchron — also hier aufloesen.
+    for (const a of parsed.attachments.filter((x) => !x.inline)) {
+      attachmentPaths.set(a.name, await app.fileManager.getAvailablePathForAttachment(a.name, file.path));
+    }
+  }
+
+  const notes = descriptor.needs?.allNotes ? await loadNotes(app, profile, deps.hashes) : undefined;
+
+  return {
+    ok: true,
+    ctx: {
+      now: deps.now(),
+      profile,
+      target,
+      frontmatter,
+      content: await app.vault.read(file),
+      zoneHash: deps.hashes.get(target.mailId),
+      linkFor: (id) => index.get(id) ?? null,
+      attachmentPathFor: (name) => attachmentPaths.get(name) ?? `${name}`,
+      ...(mail ? { mail } : {}),
+      ...(notes ? { notes } : {}),
+    },
+  };
+}
+
+/**
+ * Die volle Kette: Kontext bauen → (Formular, falls das Schema Felder hat) → Plan →
+ * Vorschau → ausfuehren. Jeder Abbruch durch den Nutzer ist `cancelled`, kein Fehler.
+ */
+export async function runCommand(deps: CommandFlowDeps, execute: CommandExecuteDeps, descriptor: CommandDescriptor): Promise<RunResult> {
+  const built = await buildContext(deps, descriptor, deps.app.workspace.getActiveFile());
+  if (!built.ok) return { kind: "error", code: built.code };
+  const ctx = built.ctx;
+  if (!descriptor.appliesTo(ctx)) return { kind: "error", code: "not-applicable" };
+
+  const schema = schemaOf(descriptor, ctx);
+  let input: Record<string, unknown> = {};
+  if (Object.keys(schema.properties).length > 0) {
+    const picked = await new SchemaFormModal(deps.app, trTitle(descriptor), schema).pick();
+    if (!picked) return { kind: "cancelled" };
+    input = picked;
+  }
+
+  const planned = descriptor.plan(input, ctx);
+  if (!planned.ok) return { kind: "error", code: planned.code };
+
+  const go = await new PlanPreviewModal(deps.app, planned.plan).confirm();
+  if (!go) return { kind: "cancelled" };
+
+  return { kind: "done", result: await executeCommandPlan(planned.plan, execute) };
+}
