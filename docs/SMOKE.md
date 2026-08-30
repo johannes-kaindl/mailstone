@@ -101,3 +101,47 @@ die Settings-Reparatur), ein leerer Wert schaltet die Kopie ab.
   antwortet mit `+`, und erst dann folgt die Nachricht. Lehnt er stattdessen sofort ab (fehlender
   Ordner, volles Postfach), bleiben die Bytes ungeschrieben — sonst lägen sie herrenlos auf einer
   Leitung, die schon auf das nächste Kommando wartet. Drei Unit-Tests decken genau diese drei Wege ab.
+
+## iMIP-Probe mit DMARC-Kontrolle (Echt-Versandtest ④, Punkt 3) — 2026-08-30
+
+Letzter offener Punkt des Echt-Versandtests: eine Einladung (`METHOD:REQUEST`) an einen **fremden**
+Empfänger schicken und prüfen, wie dessen Mailserver die Absender-Authentifizierung bewertet. Bis
+zum 2026-09-05 steht DMARC für `jkaindl.de` auf `p=quarantine`; ein Fehlschlag wäre also sichtbar
+im Spam gelandet statt stumm abgewiesen zu werden — deshalb das Zeitfenster.
+
+Gefahren per CDP gegen ein laufendes Obsidian 1.13.7 (Staging-Vault `$STAGING_VAULTS_DIR/mailstone`,
+deployter Stand byte-identisch mit dem frisch gebauten Repo-Stand). Empfänger war ein Google-Konto
+des Maintainers — fremd im relevanten Sinn: eigene Domain, eigene DMARC-Auswertung, eigener
+Spam-Filter. Das Passwort wurde nicht ausgelesen, es blieb im Renderer.
+
+Der Versand lief über dieselbe Abbildung, die `buildMailTransport.send()` intern nimmt
+(`imipToOutgoing` → `sendService.send`); der registrierte Transport selbst liegt in einer Closure
+und ist von außen nicht greifbar. Übersprungen wurde damit nur `splitTransportId` (unit-getestet);
+MIME-Bau, DKIM-Signatur durch den Server und SMTP-Einlieferung sind identisch.
+
+**Ergebnis: bestanden.**
+
+| Prüfpunkt | Beobachtung |
+|---|---|
+| Versand | `{ok: true, messageId: …@jkaindl.de, sentCopy: "ok"}` — die Sent-Kopie greift auch auf diesem Weg |
+| Zustellung | Mail landete in der **INBOX**, nicht im Spam |
+| SPF | `spf=pass` — `mail@jkaindl.de` über `mout-p-202.mailbox.org` (`2001:67c:2050:0:465::202`) als zulässiger Absender |
+| DKIM | `dkim=pass header.i=@jkaindl.de header.s=MBO0001` — mailbox.org signiert die von mailstone gebaute Nachricht unverändert durch |
+| DMARC | `dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=jkaindl.de` |
+| Bridge | `bridge.registered === true` gegen echtes calendar-notes 0.1.3 am laufenden System |
+
+Maßgeblich ist der `ARC-Authentication-Results: i=1`-Block — die direkte Einlieferung von
+mailbox.org an `mx.google.com`. Das Postfach leitet intern weiter, die späteren `i=2`/`i=3`-Blöcke
+beschreiben diese Weiterleitung und nicht mehr den Versand.
+
+**Der MIME-Bau übersteht den Transport unverfälscht.** Das ICS liegt zweimal in der Nachricht — als
+`text/calendar; method=REQUEST` (quoted-printable) im `multipart/alternative` und als
+`application/ics`-Anhang (base64). Beide dekodieren zum eingespeisten Original: CRLF-Zeilenenden
+erhalten, keine Quoted-Printable-Doppelkodierung (`CN=Johannes Kaindl`, nicht `CN=3DJohannes`),
+Parameter (`RSVP=TRUE`, `PARTSTAT=NEEDS-ACTION`) intakt. Das ist der Punkt, an dem ein selbst
+gebauter MIME-Encoder üblicherweise scheitert.
+
+**Was diese Probe nicht misst:** ob der Empfänger die Einladung als Kalender-Einladung *darstellt*
+(Google zeigt bei `method=REQUEST` normalerweise eine Antwort-Karte) — geprüft wurde die
+Authentifizierung, nicht die Darstellung. Und der `LOGIN`-Fallback bleibt weiter ungeprüft, weil
+dieser Server `SASL-IR` kann (s. M3-Live-Probe).
