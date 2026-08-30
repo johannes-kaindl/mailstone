@@ -58,6 +58,21 @@ describe("imapConnect", () => {
     ]);
     expect(await imapConnect(fake, base)).toMatchObject({ ok: false, code: "tls-required" });
   });
+
+  it("verweigert Authentifizierung ohne TLS, wenn allowInsecureAuth nicht gesetzt ist", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN", "a001 OK done"] },
+    ]);
+    const r = await imapConnect(fake, { ...base, tls: "none" });
+    expect(r).toMatchObject({ ok: false, code: "tls-required" });
+    expect(fake.written.some((l) => /^a\d+ (AUTHENTICATE|LOGIN)/.test(l))).toBe(false);
+  });
+
+  it("erlaubt Klartext-Authentifizierung mit allowInsecureAuth (lokaler Fake-Server)", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], greetingAndAuth);
+    const r = await imapConnect(fake, { ...base, tls: "none", allowInsecureAuth: true });
+    expect(r.ok).toBe(true);
+  });
 });
 
 describe("ImapSession", () => {

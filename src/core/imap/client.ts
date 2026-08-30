@@ -23,6 +23,11 @@ export interface ImapConnectOptions {
   timers: TimeoutTimers;
   timeoutMs?: number;
   log?: (line: string) => void;
+  /** Erlaubt AUTHENTICATE PLAIN/LOGIN ueber eine unverschluesselte Verbindung
+   *  (transport.secure === false). NUR vom Aufrufer gesetzt, und dort ausschliesslich fuer
+   *  tls==="none" auf einem Loopback-Host (lokaler Fake-IMAP-Server ohne TLS, z. B. im
+   *  Integrationstest). Nie aus der Settings-UI erreichbar, nie fuer echte Server. */
+  allowInsecureAuth?: boolean;
 }
 
 export interface ImapSession {
@@ -137,7 +142,22 @@ function messageIdFromHeader(bytes: Uint8Array): string | null {
   return m?.[1] ? normalizeMessageId(m[1].trim()) : null;
 }
 
+/** Oeffentlicher Einstieg: faehrt den Dialog (runConnect) und schliesst den Transport auf jedem
+ *  Fehlerpfad — der Aufrufer bekommt bei `ok:false` kein Session-Handle und kann selbst nicht
+ *  schliessen. Im Erfolgsfall bleibt die Verbindung bewusst offen, die Session braucht sie noch.
+ *  `result` bleibt undefined, wenn runConnect einen NICHT-NetError wirft (Programmierfehler) —
+ *  auch dann wird aufgeraeumt, statt den Socket offenzulassen. */
 export async function imapConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectResult> {
+  let result: ImapConnectResult | undefined;
+  try {
+    result = await runConnect(transport, opts);
+    return result;
+  } finally {
+    if ((!result || !result.ok) && !transport.closed) await transport.close().catch(() => undefined);
+  }
+}
+
+async function runConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const conn = new Connection(transport, timeoutMs, opts.timers, opts.log);
   try {
@@ -163,6 +183,13 @@ export async function imapConnect(transport: SocketTransport, opts: ImapConnectO
 
     if (capabilities.includes("LOGINDISABLED") && !capabilities.includes("AUTH=PLAIN")) {
       return { ok: false, code: "tls-required", detail: "Server erlaubt keine Anmeldung auf dieser Verbindung (LOGINDISABLED)" };
+    }
+
+    // Klartext-Zugangsdaten nie ohne TLS auf die Leitung — weder bei tls:"none" noch wenn ein
+    // STARTTLS-Upgrade nicht tatsaechlich griff (transport.secure spiegelt genau das, nicht die
+    // angeforderte opts.tls). Nur der Aufrufer darf das fuer einen lokalen Fake-Server aufheben.
+    if (!transport.secure && !opts.allowInsecureAuth) {
+      return { ok: false, code: "tls-required", detail: "keine Klartext-Authentifizierung ohne TLS" };
     }
 
     const authTag = conn.nextTag();
