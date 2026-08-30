@@ -40,6 +40,27 @@ describe("smtpSend", () => {
     expect(t.closed).toBe(true);
   });
 
+  it("mehrzeiliges Greeting (220-/220 ) wird als eine Antwort gelesen, EHLO folgt korrekt", async () => {
+    const t = new FakeSocketTransport(
+      ["220-mail.example.org ESMTP", "220 mail.example.org ready"],
+      [
+        { expect: /^EHLO /, send: ["250-mail.example.org", "250 AUTH PLAIN"] },
+        { expect: "AUTH PLAIN AHVzZXIAcGFzcw==", send: ["235 2.7.0 ok"] },
+        { expect: "MAIL FROM:<mail@example.net>", send: ["250 ok"] },
+        { expect: "RCPT TO:<gast@example.org>", send: ["250 ok"] },
+        { expect: "DATA", send: ["354 go"] },
+        { expect: /^\.$/, send: ["250 2.0.0 queued as abc"] },
+        { expect: "QUIT", send: ["221 bye"] },
+      ],
+    );
+    const result = await smtpSend(t, baseOpts());
+    // Waere die "220-"-Zeile faelschlich schon als vollstaendige Antwort behandelt worden, haette
+    // EHLO die uebrig gebliebene zweite Greeting-Zeile ("220 ready") als eigene Antwort gelesen und
+    // waere mit code:"protocol" ("EHLO abgelehnt") gescheitert statt hier durchzulaufen.
+    expect(result).toEqual({ ok: true, response: "250 2.0.0 queued as abc" });
+    expect(t.written.some((l) => l.startsWith("EHLO "))).toBe(true);
+  });
+
   it("STARTTLS-Pfad: upgraded vor AUTH und wiederholt EHLO", async () => {
     const t = new FakeSocketTransport(
       ["220 smtp.example.net ESMTP"],

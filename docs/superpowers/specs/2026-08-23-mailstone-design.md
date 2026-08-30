@@ -169,7 +169,7 @@ Trigger: Intervall (`intervalMin`, Default 5) + Kommando/Ribbon „Synchronisier
 
 ### 3.2 Kommandos (`core/commands/mail-commands.ts`)
 
-Deskriptoren `{id, kind, title/titleKey, description/descriptionKey, schema, appliesTo(ctx), plan(input, ctx)}`; Ausführung `executeCommandPlan(plan)` mit Busy-Guard; UI-Kette `SchemaFormModal → PlanPreviewModal → execute` (calendar-notes).
+Deskriptoren `{id, kind, title/titleKey, description/descriptionKey, schema, appliesTo(ctx), plan(input, ctx)}`; Ausführung `executeCommandPlan(plan)` mit Busy-Guard; UI-Kette `SchemaFormModal → PlanPreviewModal → execute` (calendar-notes). ⚠️ **Ergänzt in M3b (2026-08-31):** `CommandDescriptor` trägt zusätzlich ein optionales `schemaFor(ctx)` — eine Abweichung von der calendar-notes-Vorlage, die nur das statische `schema` kennt. Gebraucht wird es für `mail.extractAttachment`: die Anhangliste existiert erst, nachdem die `.eml` geparst wurde, ist beim Erstellen eines festen `schema` also noch nicht bekannt; `schemaFor(ctx)` liefert sie kontextabhängig als `enum` nach — und genau das macht aus dem Formularfeld ein Dropdown statt eines Freitextfelds. Ohne `schemaFor` gilt weiterhin `schema` (`schemaOf()` in `core/commands/types.ts` wählt zwischen beiden).
 
 | Kommando | Ziel | Server | Vault |
 |---|---|---|---|
@@ -182,6 +182,8 @@ Deskriptoren `{id, kind, title/titleKey, description/descriptionKey, schema, app
 | `mail.createTask` | Notiz/View, nur wenn TaskNotes-API erreichbar | — | TaskNotes legt die Aufgabe an (§ 4.2) |
 
 Kein `mail.delete`, keine Massenaktion mit Vorauswahl. Kommandos öffnen mit `SELECT`; Sync nur mit `EXAMINE`. Server-Kommandos laufen über eine kurze eigene Verbindung (connect → Aktion → logout), nicht über die Sync-Verbindung. Ein MOVE, dessen Quell-UID nicht mehr existiert (Mail wurde anderswo verschoben) → `{ok:false, code:"gone"}` mit Hinweis „erneut synchronisieren".
+
+⚠️ **Nachgetragen (2026-08-31):** `mail.replyExternal` stand in der Tabelle oben von Anfang an als Vault-Kommando, war aber nie einem Meilenstein zugeordnet — § 6 führt es unter M4. Tatsächlich gebaut wurde es in M3b, zusammen mit `mail.rerender`, `mail.relink` und `mail.extractAttachment` auf demselben Deskriptor-Rahmen. `mail.createTask` bleibt wie geplant M5.
 
 ### 3.3 Versand (`core/send`, `core/smtp`, `core/mime/build.ts`)
 
