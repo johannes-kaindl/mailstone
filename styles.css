@@ -1,1 +1,7 @@
 /* mailstone — nur Theme-Variablen, keine Farben (UI-STANDARD) */
+
+.mailstone-diff-table { width: 100%; border-collapse: collapse; margin: var(--size-4-2) 0; }
+.mailstone-diff-table th,
+.mailstone-diff-table td { text-align: left; padding: var(--size-4-1) var(--size-4-2); border-bottom: 1px solid var(--background-modifier-border); vertical-align: top; }
+.mailstone-diff-table th { color: var(--text-muted); font-weight: var(--font-medium); }
+.mailstone-form-errors { color: var(--text-error); margin-top: var(--size-4-2); }
