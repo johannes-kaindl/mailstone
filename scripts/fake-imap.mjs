@@ -23,6 +23,15 @@ const MAILS = [
     id: "<zwei@example.net>",
     raw: "From: a@example.net\r\nTo: b@example.net\r\nSubject: Zweite Testmail\r\nMessage-ID: <zwei@example.net>\r\nDate: Sat, 29 Aug 2026 09:00:00 +0000\r\n\r\nHallo zwei\r\n",
   },
+  // Dritte Mail bewusst mit Nicht-ASCII: IMAP-Literale zaehlen BYTES, nicht Zeichen. Hier fallen
+  // beide Laengen weit auseinander (Umlaute 2 Bytes, das Emoji 4) — liest der Client Zeichen
+  // statt Bytes, bleibt der Rest des Literals im Strom stehen, die Antwort desynchronisiert und
+  // die folgenden Mails gehen verloren. Bis 2026-08-30 war das nur per Codelektuere belegt.
+  {
+    uid: 11,
+    id: "<drei@example.net>",
+    raw: "From: a@example.net\r\nTo: b@example.net\r\nSubject: Dritte Testmail mit Umlauten\r\nMessage-ID: <drei@example.net>\r\nDate: Sat, 29 Aug 2026 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nGrüße aus München: Äpfel, Öl, Füße – und ein Gruß 🚀\r\n",
+  },
 ];
 
 function handleConnection(socket) {
