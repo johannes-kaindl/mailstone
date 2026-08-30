@@ -1,24 +1,10 @@
 import { normalizePath, TFile, type App } from "obsidian";
 import type { NotePlan } from "../core/mirror/plan";
+import type { PlanExecutionResult, PlanExecutor, ZoneHashStore } from "../core/mirror/execute";
+import type { MailIndex } from "../core/mirror/apply";
+import type { MailProfile } from "../core/mirror/profile";
 
-export interface PlanExecutionResult {
-  created: number;
-  updated: number;
-  skipped: NotePlan[];
-  stateChanged: number;
-  /** Ein gescheiterter Plan beendet den Lauf nicht — die uebrigen werden ausgefuehrt und der
-   *  Fehlschlag wird als Wert gemeldet (Spec § 5: Fehler sind Werte, kein Stacktrace-Spam). */
-  errors: { plan: NotePlan; message: string }[];
-}
-
-export interface PlanExecutor {
-  execute(plans: NotePlan[]): Promise<PlanExecutionResult>;
-}
-
-export interface ZoneHashStore {
-  get(mailId: string): string | null;
-  set(mailId: string, hash: string): void;
-}
+export type { PlanExecutionResult, PlanExecutor, ZoneHashStore };
 
 async function ensureFolder(app: App, path: string): Promise<void> {
   const parts = normalizePath(path).split("/");
@@ -85,6 +71,21 @@ export function findMailNotes(app: App, idField: string): Map<string, TFile> {
   for (const f of app.vault.getMarkdownFiles()) {
     const id: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.[idField];
     if (typeof id === "string" && id) out.set(id, f);
+  }
+  return out;
+}
+
+/** Wie findMailNotes, liefert aber zusaetzlich Zustand und Herkunft — der Sync braucht beide,
+ *  um fremde Notizen (anderes Konto, Import ohne mail_source) nicht anzufassen. */
+export function mailIndex(app: App, profile: MailProfile): MailIndex {
+  const out: MailIndex = new Map();
+  for (const f of app.vault.getMarkdownFiles()) {
+    const fm = app.metadataCache.getFileCache(f)?.frontmatter;
+    const id: unknown = fm?.[profile.idField];
+    if (typeof id !== "string" || !id) continue;
+    const state: unknown = fm?.[profile.stateField];
+    const source: unknown = fm?.[profile.sourceField];
+    out.set(id, { path: f.path, state: typeof state === "string" ? state : null, source: typeof source === "string" ? source : null });
   }
   return out;
 }
