@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeMessageId, splitReferences, formatAddress, encodeHeaderWord, foldHeader, fallbackId } from "../../../src/core/mime/headers";
+import { normalizeMessageId, splitReferences, formatAddress, encodeHeaderWord, foldHeader, fallbackId, addressOf } from "../../../src/core/mime/headers";
 
 describe("normalizeMessageId", () => {
   it("entfernt spitze Klammern und Whitespace", () => {
@@ -69,5 +69,23 @@ describe("fallbackId", () => {
     const a = fallbackId("2026-08-19T12:32:00Z", "e@example.org", "Hi");
     expect(a).toMatch(/^noid-[0-9a-f]{32}$/);
     expect(fallbackId("2026-08-19T12:32:00Z", "e@example.org", "Hi")).toBe(a);
+  });
+});
+
+describe("addressOf", () => {
+  it("holt die Adresse aus einer Anzeigeform", () => {
+    expect(addressOf("Erika Beispiel <erika@example.org>")).toBe("erika@example.org");
+  });
+  it("nimmt eine nackte Adresse unveraendert", () => {
+    expect(addressOf("erika@example.org")).toBe("erika@example.org");
+  });
+  it("kommt mit Anfuehrungszeichen im Namen zurecht", () => {
+    expect(addressOf("\"Beispiel, Erika\" <erika@example.org>")).toBe("erika@example.org");
+  });
+  it("liefert null ohne @", () => {
+    expect(addressOf("Erika Beispiel")).toBeNull();
+  });
+  it("liefert null bei leerem Wert", () => {
+    expect(addressOf("")).toBeNull();
   });
 });
