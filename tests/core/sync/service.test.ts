@@ -480,3 +480,41 @@ describe("createSyncService — Header-Fetch-Obergrenze", () => {
     expect(exec.seen.filter((p) => p.kind === "setState")).toEqual([]);
   });
 });
+
+// Review-Befund zur Header-Obergrenze (2026-08-30): der Deckel darf den BODY-Deckel nicht
+// aushebeln. `fetched` waechst nur fuer Mails, die NOCH KEINE Notiz haben — eine bereits
+// gespiegelte Mail jenseits des Header-Deckels hat keine gecachte ID mehr, faellt deshalb bis
+// zum Body-Fetch durch und laesst den 200er-Zaehler unberuehrt. Ohne Riegel holt ein Lauf so
+// JEDEN restlichen Body. Vor dem Header-Deckel gab es diesen Weg nicht: der billige Header
+// erkannte die Mail, `index.has` sprang, kein Body.
+describe("createSyncService — Header-Deckel hebelt den Body-Deckel nicht aus", () => {
+  it("holt keinen einzigen Body fuer laengst gespiegelte Mails jenseits des Header-Deckels", async () => {
+    const ueberhang = 100;
+    const uids = Array.from({ length: MAX_HEADER_FETCH_PER_RUN + ueberhang }, (_, i) => i + 1);
+    // Jede dieser Mails hat schon eine Notiz — es gibt nichts zu holen, fuer keine einzige.
+    const index: MailIndex = new Map(uids.map((uid) => [`m${String(uid)}@x`, { path: `Mail/2026/${String(uid)}.md`, state: "live" as const, source: "acc/Vault" }]));
+
+    let tagNr = 5;
+    const nextTag = () => `a${String(tagNr++).padStart(3, "0")}`;
+    const steps: DialogStep[] = [{ expect: /^a004 UID SEARCH ALL$/, send: [`* SEARCH ${uids.join(" ")}`, "a004 OK done"] }];
+    for (let from = 1; from <= MAX_HEADER_FETCH_PER_RUN; from += 200) {
+      const tag = nextTag();
+      const bis = from + 199;
+      const lines: (string | Uint8Array)[] = [];
+      for (let uid = from; uid <= bis; uid++) {
+        const h = new TextEncoder().encode(`Message-ID: <m${String(uid)}@x>\r\n\r\n`);
+        lines.push(`* ${String(uid)} FETCH (UID ${String(uid)} BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(h.byteLength)}}`, h, ")");
+      }
+      lines.push(`${tag} OK done`);
+      steps.push({ expect: new RegExp(`^${tag} UID FETCH ${String(from)}:${String(bis)} \\(BODY\\.PEEK\\[HEADER\\.FIELDS \\(MESSAGE-ID\\)\\]\\)$`), send: lines });
+    }
+    steps.push({ expect: /LOGOUT$/, send: ["* BYE", "a999 OK done"] });
+
+    const { svc, fake } = service(dialog(steps, uids.length), index);
+    const r = await svc.syncAccount("acc");
+
+    expect(r).toMatchObject({ ok: true, counts: { created: 0 } });
+    // Der Kern: kein einziger Body. Vor der Reparatur waren es `ueberhang` viele.
+    expect(fake.written.filter((l) => l.includes("BODY.PEEK[]"))).toHaveLength(0);
+  });
+});

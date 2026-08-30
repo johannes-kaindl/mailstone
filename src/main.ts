@@ -75,9 +75,15 @@ class TransportPickerModal extends SuggestModal<TransportRow> {
  *  jetzt haeufiger provoziert). `null`, wenn mindestens ein Konto erfolgreich war (das Event hat
  *  den Status dann schon aktuell gesetzt) oder `results` leer ist (keine aktivierten Konten).
  *  Reine Funktion (kein Obsidian-Zugriff) — direkt ohne Mock testbar. */
-export function syncFailureStatus(results: readonly SyncRunResult[]): string | null {
+export function syncFailureStatus(results: readonly SyncRunResult[], silent = false): string | null {
   if (results.length === 0 || results.some((r) => r.ok)) return null;
-  const failed = results.find((r): r is Extract<SyncRunResult, { ok: false }> => !r.ok);
+  const failures = results.filter((r): r is Extract<SyncRunResult, { ok: false }> => !r.ok);
+  // `busy` heisst: ein anderer Lauf arbeitet gerade — kein Fehler dieses Kontos. Im
+  // unbeaufsichtigten Takt darf das die Statusleiste nicht uebernehmen, sonst zeigt sie
+  // "Es laeuft bereits eine Synchronisation", WAEHREND der manuelle Lauf, der die Sperre haelt,
+  // noch arbeitet und seinen eigenen Status dorthin schreiben will.
+  const relevant = silent ? failures.filter((r) => r.code !== "busy") : failures;
+  const failed = relevant[0];
   return failed ? `Mailstone: ${t(`error.sync.${failed.code}`)}` : null;
 }
 
@@ -122,9 +128,13 @@ export function syncIdleStatus(counts: { created: number; reattached: number }, 
  *  Abloesungen gehoeren beiden.** Sie sind kein Zaehler des Normalfalls, sondern der Hinweis,
  *  dass der Detach-Zweig dieses Laufs stillgelegt war — und der Fall tritt gerade im
  *  unbeaufsichtigten Intervall-Lauf auf, wo ihn vorher niemand zu sehen bekam (M3-Nachlese). */
-export function syncNotices(results: readonly SyncRunResult[], silent: boolean): SyncNotice[] {
+export function syncNotices(
+  results: readonly SyncRunResult[],
+  silent: boolean,
+  prevDetachSkipped: number | null = null,
+): { notices: SyncNotice[]; detachSkipped: number } {
   const ok = results.filter((r): r is Extract<SyncRunResult, { ok: true }> => r.ok);
-  if (ok.length === 0) return [];
+  if (ok.length === 0) return { notices: [], detachSkipped: prevDetachSkipped ?? 0 };
   const sum = ok.reduce((acc, r) => ({
     created: acc.created + r.counts.created,
     reattached: acc.reattached + r.counts.reattached,
@@ -134,8 +144,13 @@ export function syncNotices(results: readonly SyncRunResult[], silent: boolean):
   }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
   const out: SyncNotice[] = [];
   if (!silent) out.push({ key: "notice.sync.done", args: [sum.created, sum.reattached, sum.detached, sum.errors] });
-  if (sum.detachSkipped > 0) out.push({ key: "notice.sync.detachSkipped", args: [sum.detachSkipped] });
-  return out;
+  // Im stillen Lauf nur bei VERAENDERTEM Stand: `undetermined > 0` haelt sich von Natur aus ueber
+  // viele Laeufe (ein Erstbestand braucht Dutzende, eine Mail ohne bestimmbare ID bleibt es
+  // dauerhaft). Bei einem Takt von einer Minute waere die Meldung sonst ein Popup pro Minute —
+  // schlimmer als der Befund, der sie ueberhaupt in den stillen Lauf gebracht hat.
+  const meldenswert = sum.detachSkipped > 0 && (!silent || sum.detachSkipped !== prevDetachSkipped);
+  if (meldenswert) out.push({ key: "notice.sync.detachSkipped", args: [sum.detachSkipped] });
+  return { notices: out, detachSkipped: sum.detachSkipped };
 }
 
 export default class MailstonePlugin extends Plugin {
@@ -147,6 +162,8 @@ export default class MailstonePlugin extends Plugin {
   uidCache!: UidCacheStore;
   status!: HTMLElement;
   readonly busy = createBusyGuard();
+  /** Zuletzt gemeldeter Stand ausgelassener Abloesungen — Wiederholungssperre im stillen Lauf. */
+  private lastDetachSkipped: number | null = null;
   readonly syncEvents: SyncEmitter = createEmitter();
 
   async onload(): Promise<void> {
@@ -290,18 +307,28 @@ export default class MailstonePlugin extends Plugin {
   private async runDueSyncs(notify: Notifier, lastRun: Record<string, number>): Promise<void> {
     const due = dueAccounts(this.settings.accounts, lastRun, Date.now());
     if (due.length === 0) return;
+    const vorher = new Map(due.map((id) => [id, lastRun[id]]));
     const now = Date.now();
     for (const id of due) lastRun[id] = now;
-    await this.runSync(notify, true, due);
+    const results = await this.runSync(notify, true, due);
+    // `busy` heisst, dass ein anderer Lauf die Sperre hielt — dieses Konto wurde also gar nicht
+    // synchronisiert. Es als "gerade gelaufen" zu buchen kostete es ein volles Intervall, obwohl
+    // nichts geschehen ist; der Stempel wird deshalb zurueckgenommen.
+    for (const r of results) {
+      if (r.ok || r.code !== "busy") continue;
+      const alt = vorher.get(r.accountId);
+      if (alt === undefined) delete lastRun[r.accountId];
+      else lastRun[r.accountId] = alt;
+    }
   }
 
   /** `silent` = Intervall-Lauf: kein Notice bei Erfolg, nur bei Fehlern — sonst poppt alle
    *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste.
    *  `only` schraenkt auf bestimmte Konten ein (der Wecker uebergibt die faelligen); ohne
    *  Angabe laufen alle aktivierten. */
-  private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<void> {
+  private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<SyncRunResult[]> {
     const enabled = this.settings.accounts.filter((a) => a.sync.enabled);
-    if (enabled.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return; }
+    if (enabled.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return []; }
     this.status.setText(t("status.sync.running"));
     try {
       // Nacheinander, nie parallel gegen denselben Vault — dieselbe Zusage wie in syncAll.
@@ -311,9 +338,12 @@ export default class MailstonePlugin extends Plugin {
       for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
       // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
       // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).
-      const failureStatus = syncFailureStatus(results);
+      const failureStatus = syncFailureStatus(results, silent);
       if (failureStatus) this.status.setText(failureStatus);
-      for (const n of syncNotices(results, silent)) notify.info(n.key, ...n.args);
+      const { notices, detachSkipped } = syncNotices(results, silent, this.lastDetachSkipped);
+      for (const n of notices) notify.info(n.key, ...n.args);
+      this.lastDetachSkipped = detachSkipped;
+      return results;
     } finally {
       // Zone-Hashes und UID-Cache muessen auch nach einem Abbruch persistiert sein — sonst
       // gilt jede geschriebene Notiz beim naechsten Lauf als fremd editiert (dieselbe

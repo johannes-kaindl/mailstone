@@ -105,9 +105,14 @@ export function createSyncService(deps: SyncDeps): SyncService {
       }
 
       const known = deps.uidCache.known(account.id, folder, examined.uidValidity);
-      // slice NACH dem Filter: was hier abgeschnitten wird, bleibt ohne bekannte Mail-ID und
-      // zaehlt unten als `undetermined` — der Lauf setzt Detaches dann aus (s. MAX_HEADER_FETCH_PER_RUN).
-      const unknownUids = uids.filter((u) => !known.has(u)).slice(0, MAX_HEADER_FETCH_PER_RUN);
+      const unknownAll = uids.filter((u) => !known.has(u));
+      const unknownUids = unknownAll.slice(0, MAX_HEADER_FETCH_PER_RUN);
+      // Was der Header-Deckel abschneidet, wird unten AUSDRUECKLICH uebersprungen und als
+      // `undetermined` gezaehlt. Das ist kein Schoenheitsfehler, sondern der Grund, warum der
+      // Deckel den Body-Deckel nicht aushebelt: `fetched` waechst nur fuer Mails ohne Notiz, eine
+      // laengst gespiegelte Mail ohne gecachte ID fiele also bis zum Body-Fetch durch, ohne den
+      // 200er-Zaehler zu bewegen — ein Lauf holte auf diesem Weg JEDEN restlichen Body.
+      const deferredUids = new Set(unknownAll.slice(MAX_HEADER_FETCH_PER_RUN));
       if (unknownUids.length > 0) {
         for (const [uid, mailId] of await session.uidFetchMessageIds(unknownUids)) {
           if (mailId === null) continue; // ohne Message-ID-Header: ID entsteht erst beim Parsen
@@ -139,6 +144,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
         if (cachedId !== undefined) {
           onServer.add(cachedId);
           if (index.has(cachedId) || fetchedIds.has(cachedId)) continue; // Notiz existiert/ist geplant — kein Body noetig
+        }
+        if (cachedId === undefined && deferredUids.has(uid)) {
+          // Header dieses Laufs nicht mehr geholt (s. MAX_HEADER_FETCH_PER_RUN): ID unbestimmt,
+          // kein Body. Der naechste Lauf nimmt sie sich vor.
+          undetermined += 1;
+          continue;
         }
         if (fetched.length >= MAX_FETCH_PER_RUN) {
           // Obergrenze erreicht (s. MAX_FETCH_PER_RUN): keine Bodies mehr, die Schleife laeuft

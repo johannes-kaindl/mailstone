@@ -38,17 +38,17 @@ function okRun(counts: Partial<Extract<SyncRunResult, { ok: true }>["counts"]>):
 
 describe("syncNotices", () => {
   it("meldet ausgelassene Abloesungen AUCH im stillen Lauf", () => {
-    expect(syncNotices([okRun({ detachSkipped: 2 })], true)).toEqual([
+    expect(syncNotices([okRun({ detachSkipped: 2 })], true).notices).toEqual([
       { key: "notice.sync.detachSkipped", args: [2] },
     ]);
   });
 
   it("schweigt im stillen Lauf, wenn es nichts Ausgelassenes gab", () => {
-    expect(syncNotices([okRun({ created: 3 })], true)).toEqual([]);
+    expect(syncNotices([okRun({ created: 3 })], true).notices).toEqual([]);
   });
 
   it("meldet im lauten Lauf die Zusammenfassung und die Abloesungen getrennt", () => {
-    expect(syncNotices([okRun({ created: 1, reattached: 2, detached: 3, errors: 4, detachSkipped: 5 })], false)).toEqual([
+    expect(syncNotices([okRun({ created: 1, reattached: 2, detached: 3, errors: 4, detachSkipped: 5 })], false).notices).toEqual([
       { key: "notice.sync.done", args: [1, 2, 3, 4] },
       { key: "notice.sync.detachSkipped", args: [5] },
     ]);
@@ -56,14 +56,14 @@ describe("syncNotices", () => {
 
   it("summiert ueber mehrere Konten und ignoriert fehlgeschlagene", () => {
     const results: SyncRunResult[] = [okRun({ created: 1, detachSkipped: 1 }), { ok: false, accountId: "a2", code: "auth" }, okRun({ created: 2, detachSkipped: 3 })];
-    expect(syncNotices(results, false)).toEqual([
+    expect(syncNotices(results, false).notices).toEqual([
       { key: "notice.sync.done", args: [3, 0, 0, 0] },
       { key: "notice.sync.detachSkipped", args: [4] },
     ]);
   });
 
   it("meldet nichts, wenn kein Konto erfolgreich war (der Fehlertext kommt aus syncFailureStatus)", () => {
-    expect(syncNotices([{ ok: false, accountId: "a1", code: "auth" }], false)).toEqual([]);
+    expect(syncNotices([{ ok: false, accountId: "a1", code: "auth" }], false).notices).toEqual([]);
   });
 });
 
@@ -125,5 +125,49 @@ describe("createPersister", () => {
     fail = false;
     expect(await persist({ a: 1 })).toBe(true);
     expect(seen).toHaveLength(1);
+  });
+});
+
+// Review-Befunde (2026-08-30) zur Fix-Welle selbst:
+describe("syncNotices — Wiederholungssperre im stillen Lauf", () => {
+  function okRun2(detachSkipped: number): SyncRunResult {
+    return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped, errors: 0 } };
+  }
+
+  // `undetermined > 0` haelt sich von Natur aus ueber viele Laeufe: ein Erstbestand braucht
+  // Dutzende, und eine Mail ohne bestimmbare ID bleibt es dauerhaft. Bei einem Takt von einer
+  // Minute waere das ein Popup pro Minute, stundenlang — schlimmer als der Befund, der die
+  // Meldung ueberhaupt in den stillen Lauf gebracht hat.
+  it("meldet denselben Stand im stillen Lauf nur einmal", () => {
+    const erst = syncNotices([okRun2(3)], true, null);
+    expect(erst.notices).toEqual([{ key: "notice.sync.detachSkipped", args: [3] }]);
+    expect(erst.detachSkipped).toBe(3);
+    expect(syncNotices([okRun2(3)], true, 3).notices).toEqual([]);
+  });
+
+  it("meldet erneut, sobald sich die Zahl aendert", () => {
+    expect(syncNotices([okRun2(5)], true, 3).notices).toEqual([{ key: "notice.sync.detachSkipped", args: [5] }]);
+  });
+
+  it("meldet im lauten Lauf immer, auch bei unveraendertem Stand", () => {
+    expect(syncNotices([okRun2(3)], false, 3).notices).toContainEqual({ key: "notice.sync.detachSkipped", args: [3] });
+  });
+});
+
+// `busy` heisst: ein anderer Lauf arbeitet gerade. Das ist kein Fehler des Kontos und darf im
+// unbeaufsichtigten Takt nicht die Statusleiste uebernehmen — schon gar nicht, WAEHREND der
+// manuelle Lauf, der die Sperre haelt, noch laeuft.
+describe("syncFailureStatus — busy im stillen Lauf", () => {
+  it("schweigt, wenn im stillen Lauf alle Fehler nur 'busy' sind", () => {
+    expect(syncFailureStatus([{ ok: false, accountId: "a1", code: "busy" }], true)).toBeNull();
+  });
+
+  it("meldet weiterhin, wenn im stillen Lauf ein echter Fehler dabei ist", () => {
+    const results: SyncRunResult[] = [{ ok: false, accountId: "a1", code: "busy" }, { ok: false, accountId: "a2", code: "auth" }];
+    expect(syncFailureStatus(results, true)).toBe(`Mailstone: ${t("error.sync.auth")}`);
+  });
+
+  it("meldet busy im beaufsichtigten Lauf unveraendert", () => {
+    expect(syncFailureStatus([{ ok: false, accountId: "a1", code: "busy" }], false)).toBe(`Mailstone: ${t("error.sync.busy")}`);
   });
 });

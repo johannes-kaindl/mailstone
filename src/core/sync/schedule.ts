@@ -26,7 +26,13 @@ export function dueAccounts(
   const out: string[] = [];
   for (const a of accounts) {
     if (!a.sync.enabled) continue;
-    const everyMs = Math.max(TICK_MS, a.sync.intervalMin * TICK_MS);
+    // `repairAccount` uebernimmt `sync` ungeprueft aus data.json — der Wert kann NaN, Infinity
+    // oder eine Zeichenkette sein. Ohne diesen Riegel waere `everyMs` NaN, und weil JEDER
+    // Vergleich mit NaN false ist, waere das Konto nie wieder faellig: kein Fehler, keine Notice,
+    // keine Spur in der Statusleiste. Ein stiller Ausfall ist der schlechtere Ausgang als der
+    // Dauerlauf, den die alte Fassung produzierte — also faellt Unbrauchbares auf einen Takt.
+    const wert = Number(a.sync.intervalMin);
+    const everyMs = Number.isFinite(wert) && wert > 0 ? Math.max(TICK_MS, wert * TICK_MS) : TICK_MS;
     const last = lastRun[a.id];
     if (last === undefined || nowMs - last >= everyMs) out.push(a.id);
   }
