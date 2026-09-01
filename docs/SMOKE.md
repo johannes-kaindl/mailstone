@@ -219,12 +219,17 @@ der i18n-Paritätstest ab, nicht dieser Lauf.
 
 ## M5-Handprobe — Verdrahtung (Ribbon, View-Registrierung, Startup-Gate, Register-Persistenz)
 
-Nach Ruling A im SDD-Ledger (`task-5-brief.md`) ist die Verdrahtung selbst — `registerView`,
-Ribbon-Umstellung, `onLayoutReady`-Gate — per Unit-Test in diesem Repo nicht belegbar (der
-vendorte `Plugin`-Mock verwirft Ribbon-Titel und -Callback). Die sieben Prüfpunkte unten sind
-deshalb der **einzige** Beleg dafür, nicht Beiwerk. Punkte 3–7 schließen zugleich die
-Unit-Lücke aus Ruling A — der GUI-Smoke-Treiber aus M4 übernimmt sie später in einen
-getrackten Lauf.
+**Was hier steht und warum — Stand nach der Abschluss-Fix-Welle (2026-09-02).** Ursprünglich
+galt die ganze Verdrahtung als unit-untestbar. Das war zu weit gegriffen: nicht die
+Plugin-Instanz ist unerreichbar, sondern nur `onload()`. Konstruktor plus direkt gesetzte
+Felder genügen, und `tests/obsidian/main-cockpit.test.ts` belegt seither die Persistenz-Rundreise,
+den manuellen Lauf, den Lauf-Zustand und `openSettings` **im Gate**.
+
+Nicht unit-belegbar bleiben genau drei Dinge, und sie sind der Grund für diese Tabelle:
+`registerView` und die Ribbon-Umstellung (der vendorte `Plugin`-Mock verwirft Titel und
+Callback von `addRibbonIcon`), das `onLayoutReady`-Gate, und alles Sichtbare — ob ein Element
+Pixel hat, wo es sitzt, ob eine Animation läuft. Für diese Punkte ist die Tabelle der
+**einzige** Beleg; der GUI-Smoke-Treiber aus M4 überführt sie später in einen getrackten Lauf.
 
 | # | Prüfpunkt | Erwartung | Ergebnis |
 |---|---|---|---|
