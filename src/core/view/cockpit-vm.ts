@@ -5,8 +5,13 @@ import type { RunState } from "../sync/run-state";
 /** Zustandsvokabel des §8-Bausteins „Status-Indikator" ohne `is-`-Praefix — die
  *  Klassenschreibweise ist Sache der Darstellung. `never` ist bewusst KEIN
  *  Indikatorzustand: fuer „noch nie gelaufen" gibt es keine Vokabel, und einen der vier
- *  zu behaupten waere falsch. Das Panel zeigt dafuer nur Text. */
-export type CockpitState = "checking" | "ok" | "warning" | "error" | "never";
+ *  zu behaupten waere falsch. Das Panel zeigt dafuer nur Text.
+ *
+ *  `checking` fehlt hier ebenso bewusst: es ist ein Zustand der KOPFZEILE, nicht einer Zeile
+ *  (Spec „Status-Indikator", Bekannte Grenze). Der BusyGuard ist global und weiss nicht, welches
+ *  Konto laeuft — eine Zeile auf `checking` zu setzen behauptete etwas Falsches, bei zwei Konten
+ *  zwei Spinner fuer einen Lauf. Die Zeilen behalten waehrend eines Laufs ihren letzten Stand. */
+export type CockpitState = "ok" | "warning" | "error" | "never";
 
 export interface CockpitRow {
   accountId: string;
@@ -58,29 +63,36 @@ function condenseCounts(c: SyncCounts): { key: string; args: (string | number)[]
   return keys.length === 0 ? { key: "cockpit.counts.none", args: [] } : { key: keys.join(" "), args };
 }
 
+/** Was in der Zeile steht, wenn das Konto keinen Namen hat. Ein leeres Label ist ein
+ *  VORGESEHENER Zustand: `addAccount()` setzt es auf "", das Konto-Modal erzwingt nichts.
+ *  Ohne diesen Rueckfall traegt die Zeile nur Indikator und Knopf, und bei zwei Konten ist
+ *  nicht erkennbar, welches man synchronisiert. Dieselbe Konvention wie im Settings-Tab
+ *  (`acc.label || acc.id`) — ein zweiter Erklaertext waere §10-widrig. */
+function anzeigename(a: Account): string {
+  return a.label || a.id;
+}
+
 export function buildCockpitViewModel(input: CockpitInput): CockpitViewModel {
   const rows: CockpitRow[] = input.accounts.map((a) => {
     const run = input.runState[a.id];
     const disabled = !a.sync.enabled;
+    const label = anzeigename(a);
 
-    // busy schlaegt alles: der Guard ist global und weiss nicht, WELCHES Konto laeuft —
-    // solange er haelt, ist jede Zeilenaussage ueber „gerade" ungedeckt.
-    if (input.busy) {
-      return { accountId: a.id, label: a.label, state: "checking", lastRunAt: run?.at ?? null,
-        nextRunAt: input.nextDue(a.id), countsKey: null, countsArgs: [], errorKey: null, disabled };
-    }
+    // KEIN busy-Zweig: waehrend eines Laufs behaelt die Zeile ihren Zustand samt Zaehlern und
+    // Fehler (Spec, Bekannte Grenze). Der Lauf-Indikator sitzt in der Kopfzeile, weil der
+    // Guard global ist und nicht sagt, welches Konto gerade dran ist.
     if (!run) {
-      return { accountId: a.id, label: a.label, state: "never", lastRunAt: null,
+      return { accountId: a.id, label, state: "never", lastRunAt: null,
         nextRunAt: input.nextDue(a.id), countsKey: null, countsArgs: [], errorKey: null, disabled };
     }
     if (!run.ok) {
-      return { accountId: a.id, label: a.label, state: "error", lastRunAt: run.at,
+      return { accountId: a.id, label, state: "error", lastRunAt: run.at,
         nextRunAt: input.nextDue(a.id), countsKey: null, countsArgs: [],
         errorKey: `error.sync.${run.code ?? "protocol"}`, disabled };
     }
     const auffaellig = run.counts.errors > 0 || run.counts.detachSkipped > 0;
     const { key, args } = condenseCounts(run.counts);
-    return { accountId: a.id, label: a.label, state: auffaellig ? "warning" : "ok", lastRunAt: run.at,
+    return { accountId: a.id, label, state: auffaellig ? "warning" : "ok", lastRunAt: run.at,
       nextRunAt: input.nextDue(a.id), countsKey: key, countsArgs: args, errorKey: null, disabled };
   });
 

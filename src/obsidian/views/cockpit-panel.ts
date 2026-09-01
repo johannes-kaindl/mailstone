@@ -18,20 +18,35 @@ export interface CockpitHost {
   onChange(cb: () => void): Unsubscribe;
 }
 
-/** Icon-Vokabel des §8-Bausteins. `never` fehlt bewusst — dafuer gibt es keinen Zustand. */
+/** Icon-Vokabel des §8-Bausteins. `never` fehlt bewusst — dafuer gibt es keinen Zustand,
+ *  `checking` fehlt, weil es kein Zeilenzustand ist (s. CockpitState). */
 const ICONS: Record<Exclude<CockpitState, "never">, string> = {
-  checking: "loader",
   ok: "circle-check",
   error: "circle-x",
   warning: "alert-triangle",
 };
 
 const ARIA: Record<Exclude<CockpitState, "never">, string> = {
-  checking: "cockpit.aria.checking",
   ok: "cockpit.aria.ok",
   error: "cockpit.aria.error",
   warning: "cockpit.aria.warning",
 };
+
+/** Die vollstaendige Vokabel des §8-Indikators: die drei Zeilenzustaende plus `checking`, das
+ *  nur die Kopfzeile kennt. Geschlossen getippt, damit hier keine vierte Schreibweise entsteht. */
+type IndikatorZustand = Exclude<CockpitState, "never"> | "checking";
+
+/** Zeichnet einen Status-Indikator: Klasse UND Icon UND aria-label, nie eines ohne die anderen.
+ *  `checking` gehoert genau einmal auf die Seite und in die Kopfzeile — der BusyGuard ist global,
+ *  ein Spinner je Zeile behauptete ein Konto-genaues „laeuft gerade", das es nicht gibt (Spec,
+ *  Bekannte Grenze). */
+function statusSpan(parent: HTMLElement, zustand: IndikatorZustand, icon: string, ariaKey: string): void {
+  const el = parent.createSpan({
+    cls: `mailstone-cockpit-status is-${zustand}`,
+    attr: { "aria-label": t(ariaKey) },
+  });
+  setIcon(el, icon);
+}
 
 function uhrzeit(ms: number): string {
   return new Date(ms).toLocaleTimeString();
@@ -85,6 +100,8 @@ export class CockpitPanel {
     // in jeder Seitenleiste aus (`.mod-right-split .view-header { display: none }`), eine
     // Kopf-Aktion waere dort null Pixel hoch. Siehe REGISTRY §UI.
     const kopf = root.createDiv({ cls: "mailstone-cockpit-head" });
+    // Der EINE is-checking-Indikator der Ansicht — in der Kopfzeile, nicht in den Zeilen.
+    if (vm.busy) statusSpan(kopf, "checking", "loader", "cockpit.aria.checking");
     kopf.createEl("h3", { text: t("cockpit.title") });
     const alle = kopf.createEl("button", { cls: "mailstone-cockpit-sync-all", text: t("cockpit.syncAll") });
     // Auch im Empty-State gesperrt: ohne Konto kann der Knopf nichts tun, und ein Knopf, der
@@ -108,13 +125,7 @@ export class CockpitPanel {
     const zeile = root.createDiv({ cls: "mailstone-cockpit-row" });
     const kopf = zeile.createDiv({ cls: "mailstone-cockpit-row-head" });
 
-    if (row.state !== "never") {
-      const ind = kopf.createSpan({
-        cls: `mailstone-cockpit-status is-${row.state}`,
-        attr: { "aria-label": t(ARIA[row.state]) },
-      });
-      setIcon(ind, ICONS[row.state]);
-    }
+    if (row.state !== "never") statusSpan(kopf, row.state, ICONS[row.state], ARIA[row.state]);
     kopf.createSpan({ cls: "mailstone-cockpit-label", text: row.label });
 
     const knopf = kopf.createEl("button", { cls: "mailstone-cockpit-sync", text: t("cockpit.syncOne") });

@@ -10,10 +10,10 @@ initI18n("de");
 
 const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
 
-function acc(id: string, label = id): Account {
+function acc(id: string, label = id, enabled = true): Account {
   const a = newAccount(id);
   a.label = label;
-  a.sync = { enabled: true, intervalMin: 5 };
+  a.sync = { enabled, intervalMin: 5 };
   return a;
 }
 
@@ -65,14 +65,75 @@ describe("CockpitPanel — Status-Indikator (UI-STANDARD §8)", () => {
     const el = makeFakeEl();
     new CockpitPanel(fakeHost({ accounts: () => [acc("a")], runState: () => rs })).mount(el);
     expect(String(findAll(el, "mailstone-cockpit-status")[0].className).split(" ")).toContain("is-error");
-    const zeile = findAll(el, "mailstone-cockpit-row")[0];
-    expect(JSON.stringify(zeile)).toContain("Anmeldung");
+    // Gezielt auf das Fehler-Element, nicht auf den serialisierten Teilbaum: `JSON.stringify`
+    // traf den Text ueberall, auch in einem aria-label — der Test waere gruen geblieben, wenn
+    // die Fehlerzeile gar nicht gezeichnet wird.
+    const fehler = findAll(el, "mailstone-cockpit-error");
+    expect(fehler).toHaveLength(1);
+    expect(String(fehler[0].textContent)).toContain("Anmeldung");
   });
 
   it("zeigt fuer ein nie gelaufenes Konto KEINEN Indikator", () => {
     const el = makeFakeEl();
     new CockpitPanel(fakeHost({ accounts: () => [acc("a")] })).mount(el);
     expect(findAll(el, "mailstone-cockpit-status")).toHaveLength(0);
+  });
+
+  it("malt is-checking in die KOPFZEILE — genau einmal, egal wie viele Konten", () => {
+    // Spec, Bekannte Grenze: der BusyGuard ist global. Zwei Spinner fuer einen Lauf behaupten
+    // ein konto-genaues „laeuft gerade", das es nicht gibt.
+    const rs: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 4 } } };
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a"), acc("b")], runState: () => rs, isBusy: () => true })).mount(el);
+    const checking = findAll(el, "mailstone-cockpit-status").filter((s: any) => String(s.className).split(" ").includes("is-checking"));
+    expect(checking).toHaveLength(1);
+    expect(checking[0].getAttribute("aria-label")).toBeTruthy();
+    const kopf = findAll(el, "mailstone-cockpit-head")[0];
+    expect(kopf.children).toContain(checking[0]);
+  });
+
+  it("die Kontozeile behaelt waehrend eines Laufs ihren Zustand UND ihre Zaehler", () => {
+    const rs: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 4 } } };
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")], runState: () => rs, isBusy: () => true })).mount(el);
+    const zeile = findAll(el, "mailstone-cockpit-row")[0];
+    const ind = findAll(zeile, "mailstone-cockpit-status");
+    expect(ind).toHaveLength(1);
+    expect(String(ind[0].className).split(" ")).toContain("is-ok");
+    expect(String(findAll(zeile, "mailstone-cockpit-counts")[0].textContent)).toContain("4 neu");
+  });
+
+  it("GEGENPROBE: ohne laufenden Sync gibt es keinen is-checking-Indikator", () => {
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")], isBusy: () => false })).mount(el);
+    expect(findAll(el, "mailstone-cockpit-status").filter((s: any) => String(s.className).split(" ").includes("is-checking"))).toHaveLength(0);
+  });
+});
+
+describe("CockpitPanel — Zeileninhalt", () => {
+  it("verdichtet die Zaehler am DOM: nur die von null verschiedenen, mit ihrer Zahl", () => {
+    // Die Verdichtung entsteht im ViewModel als Schluesselkette, das Panel loest sie Stueck
+    // fuer Stueck auf (`countsKey.split(" ")` gegen `countsArgs`). Dass die Paarung stimmt,
+    // sagt kein ViewModel-Test — dort ist beides noch getrennt.
+    const rs: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 3, detached: 7 } } };
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")], runState: () => rs })).mount(el);
+    const text = String(findAll(el, "mailstone-cockpit-counts")[0].textContent);
+    expect(text).toBe("3 neu · 7 abgelöst");
+  });
+
+  it("sagt bei abgeschaltetem Auto-Abgleich, dass er aus ist — statt eine Uhrzeit zu erfinden", () => {
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a", "Konto", false)], nextDueAt: () => null })).mount(el);
+    expect(String(findAll(el, "mailstone-cockpit-row")[0].textContent)).toContain("Automatischer Abgleich ist aus");
+  });
+
+  it("GEGENPROBE: ein aktives Konto zeigt stattdessen den naechsten Lauf", () => {
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")], nextDueAt: () => 3_600_000 })).mount(el);
+    const text = String(findAll(el, "mailstone-cockpit-row")[0].textContent);
+    expect(text).toContain("Nächster Lauf");
+    expect(text).not.toContain("Automatischer Abgleich ist aus");
   });
 });
 
