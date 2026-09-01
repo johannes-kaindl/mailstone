@@ -14,8 +14,9 @@ import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge
 import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
 import { dueAccounts, TICK_MS } from "./core/sync/schedule";
 import { createBusyGuard } from "./core/sync/busy";
-import { createEmitter, type SyncEmitter } from "./core/sync/events";
+import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
+import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
 import { mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import type { CommandDescriptor } from "./core/commands/types";
@@ -23,8 +24,13 @@ import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/e
 import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
 import { trTitle } from "./obsidian/command-i18n";
+import { createCockpitHost } from "./obsidian/views/cockpit-host";
+import type { CockpitHost } from "./obsidian/views/cockpit-panel";
+import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "./obsidian/views/mailstone-view";
 
-interface PersistedState { settings: MailstoneSettings; zoneHashes: Record<string, string>; uidCache: UidCacheData }
+// runState ist Laufzeitzustand wie zoneHashes und uidCache, keine Einstellung — s.
+// Task-Brief M5: bewusst NICHT in MailstoneSettings.
+interface PersistedState { settings: MailstoneSettings; zoneHashes: Record<string, string>; uidCache: UidCacheData; runState: RunState }
 
 interface TransportRow { id: string; address: string; label: string }
 
@@ -195,6 +201,8 @@ export function syncNotices(
 export default class MailstonePlugin extends Plugin {
   settings: MailstoneSettings = loadSettings(undefined);
   zoneHashes: Record<string, string> = {};
+  runState: RunState = {};
+  private lastRun: Record<string, number> = {};
   sendService!: SendService;
   bridge!: CalendarNotesBridge;
   syncService!: SyncService;
@@ -204,11 +212,15 @@ export default class MailstonePlugin extends Plugin {
   /** Zuletzt gemeldeter Stand ausgelassener Abloesungen — Wiederholungssperre im stillen Lauf. */
   private lastDetachSkipped: number | null = null;
   readonly syncEvents: SyncEmitter = createEmitter();
+  /** Eigener Emitter statt eine Wiederverwendung von syncEvents: das ist die Flaeche, an der
+   *  Fremdplugins per api.on(...) haengen — die Cockpit-View soll dort nicht mitlauschen. */
+  private readonly cockpitChanged: Emitter<{ changed: undefined }> = createEmitter();
 
   async onload(): Promise<void> {
     const raw = (await this.loadData()) as Partial<PersistedState> | null;
     this.settings = loadSettings(raw?.settings ?? raw);
     this.zoneHashes = raw?.zoneHashes ?? {};
+    this.runState = parseRunState(raw?.runState);
     initI18n(this.settings.language === "auto" ? getLanguage() : this.settings.language);
     const secrets = obsidianSecretStore(this.app);
     // Objektreferenz statt Kopie: this.settings wird nach dieser Stelle im onload() nicht mehr
@@ -262,7 +274,17 @@ export default class MailstonePlugin extends Plugin {
     });
 
     this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
-    this.addRibbonIcon("mail", t("ribbon.sync"), () => void this.runSync(notify));
+
+    // Genau ein registerView-Type (UI-STANDARD §1): das Ribbon-Symbol OEFFNET die Ansicht,
+    // es startet keinen Lauf mehr — "sync-mailbox" in der Befehlspalette bleibt der Weg fuer
+    // einen direkten Sync ohne die Seitenleiste zu oeffnen.
+    this.registerView(VIEW_TYPE_MAILSTONE, (leaf) => new MailstoneView(leaf, this.cockpitHost(notify)));
+    this.addRibbonIcon("mail", t("cockpit.title"), () => { void activateMailstoneView(this.app); });
+    this.addCommand({ id: "open-cockpit", name: t("cockpit.title"), callback: () => { void activateMailstoneView(this.app); } });
+    // Auto-Oeffnen ist Opt-in, Default aus (REGISTRY: Opt-in-Gate fuer Startup-Seiteneffekt).
+    this.app.workspace.onLayoutReady(() => {
+      if (this.settings.openViewOnStartup) void activateMailstoneView(this.app);
+    });
 
     // Ohne diesen Aufruf bliebe die Registry leer und jedes Kommando waere unauffindbar —
     // genau der Fehler, den calendar-notes erst im GUI-Smoke bemerkte.
@@ -290,10 +312,9 @@ export default class MailstonePlugin extends Plugin {
     // Beim Laden gilt jedes vorhandene Konto als gerade gelaufen, sonst synchronisierte der erste
     // Takt unmittelbar nach dem Start. Ein spaeter angelegtes Konto hat keinen Eintrag und ist
     // damit sofort faellig — genau das erwartet man nach dem Einrichten.
-    const lastRun: Record<string, number> = {};
     const startedAt = Date.now();
-    for (const a of this.settings.accounts) lastRun[a.id] = startedAt;
-    this.registerInterval(window.setInterval(() => { void this.runDueSyncs(notify, lastRun); }, TICK_MS));
+    for (const a of this.settings.accounts) this.lastRun[a.id] = startedAt;
+    this.registerInterval(window.setInterval(() => { void this.runDueSyncs(notify, this.lastRun); }, TICK_MS));
 
     this.bridge = createCalendarNotesBridge(
       this.app,
@@ -356,7 +377,19 @@ export default class MailstonePlugin extends Plugin {
   async saveSettings(): Promise<void> {
     // uidCache.data() liefert die interne Referenz, keine Kopie — hier nur lesen, nie
     // hineinschreiben, sonst umgeht man die Verwerfungslogik des Caches bei UIDVALIDITY-Wechsel.
-    await this.persist({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data() } satisfies PersistedState);
+    await this.persist({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data(), runState: this.runState } satisfies PersistedState);
+  }
+
+  private cockpitHost(notify: Notifier): CockpitHost {
+    return createCockpitHost({
+      accounts: () => this.settings.accounts,
+      runState: () => this.runState,
+      lastRun: () => this.lastRun,
+      isBusy: () => this.busy.isBusy(),
+      syncNow: (accountId) => { void this.runSync(notify, false, accountId ? [accountId] : undefined); },
+      openSettings: () => { (this.app as unknown as { setting: { open(): void } }).setting.open(); },
+      onChange: (cb) => this.cockpitChanged.on("changed", cb),
+    });
   }
 
   private hashStore(): ZoneHashStore {
@@ -442,6 +475,8 @@ export default class MailstonePlugin extends Plugin {
       const { notices, detachSkipped } = syncNotices(results, silent, this.lastDetachSkipped);
       for (const n of notices) notify.info(n.key, ...n.args);
       this.lastDetachSkipped = detachSkipped;
+      this.runState = recordRun(this.runState, results, Date.now());
+      this.cockpitChanged.emit("changed", undefined);
       return results;
     } finally {
       // Zone-Hashes und UID-Cache muessen auch nach einem Abbruch persistiert sein — sonst

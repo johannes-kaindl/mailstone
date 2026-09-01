@@ -216,3 +216,22 @@ direkte Belegen des Guards). Ob `mail.replyExternal` tatsächlich ein Mailprogra
 nicht geprüft — `window.open` war abgefangen, um die URL zu messen; das Öffnen selbst ist
 Betriebssystemsache. Die Oberfläche lief auf Englisch (`language: auto`); die deutschen Texte deckt
 der i18n-Paritätstest ab, nicht dieser Lauf.
+
+## M5-Handprobe — Verdrahtung (Ribbon, View-Registrierung, Startup-Gate, Register-Persistenz)
+
+Nach Ruling A im SDD-Ledger (`task-5-brief.md`) ist die Verdrahtung selbst — `registerView`,
+Ribbon-Umstellung, `onLayoutReady`-Gate — per Unit-Test in diesem Repo nicht belegbar (der
+vendorte `Plugin`-Mock verwirft Ribbon-Titel und -Callback). Die sieben Prüfpunkte unten sind
+deshalb der **einzige** Beleg dafür, nicht Beiwerk. Punkte 3–7 schließen zugleich die
+Unit-Lücke aus Ruling A — der GUI-Smoke-Treiber aus M4 übernimmt sie später in einen
+getrackten Lauf.
+
+| # | Prüfpunkt | Erwartung | Ergebnis |
+|---|---|---|---|
+| 1 | Sichtbarkeit beim Erstöffnen: rechte Seitenleiste einklappen, Obsidian neu laden, Ribbon-Symbol klicken | Leiste klappt auf, Cockpit ist sichtbar (kein 0×0-Blatt, REGISTRY §UI) | |
+| 2 | Knopf-Position: „Alle synchronisieren" per `getBoundingClientRect()` prüfen | Knopf steht im Inhalt und ist sichtbar, nicht nur im DOM vorhanden | |
+| 3 | Ribbon-Klick öffnet die Ansicht, startet **keinen** Lauf; Gegenprobe `sync-mailbox` in der Befehlspalette | Ribbon öffnet nur, Befehlspalette startet weiterhin einen Sync | |
+| 4 | Genau ein View-Type prüfen (Konsole/Sidebar-Menü) | Nur `mailstone-cockpit` taucht auf (UI-STANDARD §1) | |
+| 5 | Startup-Gate, beide Hälften: mit `openViewOnStartup: false` neu laden, dann in den Einstellungen einschalten und erneut neu laden | Ansicht bleibt zu (aus) / Ansicht öffnet sich (an) — beide Hälften gefahren | |
+| 6 | Register überlebt den Neustart: Sync fahren, Zähler merken, Obsidian neu laden, Cockpit öffnen, danach `data.json` ansehen | Derselbe Stand steht da; `runState` liegt neben `settings`, `zoneHashes`, `uidCache` | |
+| 7 | Kaputtes Register kippt den Start nicht: in `data.json` `"runState": "kaputt"` eintragen, neu laden | Plugin lädt, Cockpit zeigt „Noch nicht gelaufen", kein Fehler in der Konsole | |

@@ -74,6 +74,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
       },
       this.accountsGroup(),
       {
+        name: t("settings.openViewOnStartup"),
+        desc: t("settings.openViewOnStartup.desc"),
+        control: { type: "toggle", key: "openViewOnStartup" },
+      },
+      {
         name: t("settings.debugLog"),
         desc: t("settings.debugLog.desc"),
         control: { type: "toggle", key: "debugLog" },
@@ -197,6 +202,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         set: (value) => {
           s.profile.filename = typeof value === "string" ? value.trim() || "{date}-{time}-{slug}" : "{date}-{time}-{slug}";
         },
+      },
+      openViewOnStartup: {
+        get: () => s.openViewOnStartup,
+        set: (value) => { s.openViewOnStartup = Boolean(value); },
       },
       debugLog: {
         get: () => s.debugLog,
