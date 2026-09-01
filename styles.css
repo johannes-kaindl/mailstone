@@ -8,15 +8,19 @@
 
 /* Cockpit — Listen-Zeile (vertikale Grammatik, UI-STANDARD §8) */
 .mailstone-cockpit-head { display: flex; align-items: center; gap: var(--size-4-2); flex-wrap: wrap; margin-bottom: var(--size-4-3); }
-.mailstone-cockpit-head h3 { margin: 0; flex: 1 1 auto; min-width: 0; }
+/* Groesse explizit: ein <h3> traegt in Obsidian Editor-Typografie und wirkt in einer schmalen
+ * Seitenleiste massiv. Das Referenz-Exemplar (vault-crews/styles.css) setzt sie an jeder
+ * Metazeile; `tools/ui_adoption_check.py` prueft Typografie NICHT (Dach-AGENTS, 2026-09-02). */
+.mailstone-cockpit-head h3 { margin: 0; flex: 1 1 auto; min-width: 0; font-size: var(--font-ui-small); }
 .mailstone-cockpit-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); flex-basis: 100%; }
 .mailstone-cockpit-row { display: flex; flex-direction: column; gap: var(--size-4-1); padding: var(--size-4-2) 0; border-bottom: 1px solid var(--background-modifier-border); }
 .mailstone-cockpit-row-head { display: flex; align-items: center; gap: var(--size-4-2); }
-.mailstone-cockpit-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-medium); }
+.mailstone-cockpit-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-medium); font-size: var(--font-ui-small); }
 .mailstone-cockpit-meta { color: var(--text-muted); font-size: var(--font-ui-smaller); display: flex; flex-direction: column; gap: 2px; }
 .mailstone-cockpit-error { color: var(--text-error); }
 .mailstone-cockpit-counts { color: var(--text-muted); }
-.mailstone-cockpit-empty { color: var(--text-muted); display: flex; flex-direction: column; gap: var(--size-4-2); align-items: flex-start; }
+.mailstone-cockpit-empty { color: var(--text-muted); font-size: var(--font-ui-small); display: flex; flex-direction: column; gap: var(--size-4-2); align-items: flex-start; }
+.mailstone-cockpit-empty p { margin: 0; }
 
 /* Status-Indikator: Form UND Farbe UND Klasse UND aria-label (WCAG 1.4.1) */
 .mailstone-cockpit-status { display: inline-flex; align-items: center; }
