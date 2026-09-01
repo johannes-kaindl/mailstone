@@ -257,7 +257,7 @@ export function nextDueAt(account: Account, lastRunMs: number | undefined): numb
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/core/sync/run-state.test.ts`
-Expected: PASS (16 Tests)
+Expected: PASS (13 Tests)
 
 - [ ] **Step 5: Mutation als Gegenprobe**
 
@@ -579,7 +579,7 @@ export function buildCockpitViewModel(input: CockpitInput): CockpitViewModel {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run tests/core/view/cockpit-vm.test.ts`
-Expected: PASS (12 Tests)
+Expected: PASS (13 Tests)
 
 - [ ] **Step 6: Mutation als Gegenprobe**
 
@@ -716,6 +716,12 @@ describe("CockpitPanel — Empty-State (UI-STANDARD §8)", () => {
     new CockpitPanel(fakeHost({ openSettings })).mount(el);
     findAll(el, "mod-cta")[0].dispatchEvent({ type: "click" });
     expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("sperrt den Alle-Knopf ohne Konto — er koennte nichts tun", () => {
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost()).mount(el);
+    expect(findAll(el, "mailstone-cockpit-sync-all")[0].disabled).toBe(true);
   });
 });
 
@@ -881,7 +887,9 @@ export class CockpitPanel {
     const kopf = root.createDiv({ cls: "mailstone-cockpit-head" });
     kopf.createEl("h3", { text: t("cockpit.title") });
     const alle = kopf.createEl("button", { cls: "mailstone-cockpit-sync-all", text: t("cockpit.syncAll") });
-    alle.disabled = vm.busy;
+    // Auch im Empty-State gesperrt: ohne Konto kann der Knopf nichts tun, und ein Knopf, der
+    // nichts tun kann, darf nicht bedienbar aussehen.
+    alle.disabled = vm.busy || vm.empty;
     alle.addEventListener("click", () => this.host.syncNow(undefined));
     if (vm.busy) kopf.createDiv({ cls: "mailstone-cockpit-hint", text: t("cockpit.running") });
 
@@ -958,7 +966,7 @@ An `styles.css` anhängen — nur Theme-Variablen, keine festen Farben:
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run tests/obsidian/cockpit-panel.test.ts`
-Expected: PASS (11 Tests)
+Expected: PASS (13 Tests)
 
 - [ ] **Step 6: Mutation als Gegenprobe**
 
@@ -970,8 +978,11 @@ Expected: PASS (11 Tests)
 | `knopf.disabled = busy` durch `knopf.disabled = true` ersetzen | **die Gegenprobe** — „bei freiem Guard ist derselbe Knopf bedienbar" |
 | `this.unsub?.()` in `destroy()` entfernen | „meldet sich bei destroy() ab" |
 | `this.host.syncNow(row.accountId)` durch `syncNow(undefined)` ersetzen | „loest den Sync fuer genau das geklickte Konto aus" |
+| `alle.disabled = vm.busy \|\| vm.empty` auf `= vm.busy` zurücknehmen | „sperrt den Alle-Knopf ohne Konto" |
 
 Die vierte Zeile ist der Grund für die Gegenprobe: ohne sie bestünde ein *immer* gesperrter Knopf den Sperr-Test genauso.
+
+⚠️ **Wenn eine dieser Mutationen grün bleibt, ist der zugehörige Test zu schwach — nicht die Mutation falsch.** In Task 1 traf ein geplanter Testfall den Nachbarzweig statt den Fall selbst (er prüfte „Feld fehlt", während die Mutation „Feld vorhanden, aber unbrauchbar" betraf). Dann den Test nachschärfen, belegen dass die Original-Implementierung weiter grün ist, und beides berichten.
 
 - [ ] **Step 7: Commit**
 
@@ -1162,69 +1173,127 @@ git commit -m "feat(cockpit): die eine ItemView - oeffnet sichtbar statt mit 0x0
 ## Task 5: Verdrahtung in main.ts
 
 **Files:**
+- Create: `src/obsidian/views/cockpit-host.ts`
 - Modify: `src/main.ts` (`PersistedState` in Zeile 27; Felder ab Zeile 195; `onload` ab 208; `saveSettings` bei 356; `runSync` bei 428; Ribbon bei 265; `lastRun` bei 293)
 - Modify: `src/obsidian/settings-tab.ts` (Toggle „Beim Start öffnen")
 - Modify: `src/core/settings.ts` (`openViewOnStartup` in `MailstoneSettings` und `DEFAULT_SETTINGS`)
-- Test: `tests/obsidian/main.test.ts` (bestehende Datei erweitern)
+- Test: `tests/obsidian/cockpit-host.test.ts`
 
 **Interfaces:**
 - Consumes: `recordRun`, `parseRunState`, `nextDueAt`, `RunState` (Task 1); `CockpitHost` (Task 3); `MailstoneView`, `VIEW_TYPE_MAILSTONE`, `activateMailstoneView` (Task 4)
-- Produces: nichts für spätere Tasks — das ist die letzte
+- Produces: `createCockpitHost(deps: CockpitHostDeps): CockpitHost` — nichts für spätere Tasks, das ist die letzte
+
+> **Umgeschnitten nach dem Pre-Flight-Scan (Ruling A im SDD-Ledger).** Die erste Fassung dieser Task wollte eine Plugin-Instanz laden und Ribbon-Titel, `registerView` und das Startup-Gate am Mock prüfen. Gemessen geht das nicht: `tests/obsidian/main.test.ts` instanziiert das Plugin nirgends — es testet ausschließlich **pure, aus `main.ts` exportierte Helfer** (`syncFailureStatus`, `syncNotices`, `createPersister`, `safeRunCommand`) —, und der vendorte `Plugin`-Mock verwirft in `addRibbonIcon(_icon, _title, _cb)` Titel **und** Callback.
+>
+> Statt den Mock aufzubohren (er ist vendort, `tools/sync-kit.sh` überschreibt ihn, und ein selbstgebauter Ribbon-Mock beweist ohnehin nichts über Obsidian) wandert die **einzige Stelle mit echter Logik** aus der Plugin-Methode heraus: `createCockpitHost` wird eine freie Funktion und ist ohne Plugin-Instanz testbar. Das folgt dem Muster, das `main.ts` hier schon hat, und erfüllt UI-STANDARD §6.
+>
+> Die verbleibende Verdrahtung — `registerView`, Ribbon-Umstellung, `onLayoutReady`-Gate — ist per Unit-Test in diesem Repo **nicht** belegbar. Sie wandert vollständig in die Handprobe (Step 9), und der GUI-Smoke-Treiber aus M4 holt sie später ins Gate. Das ehrlich zu benennen ist besser, als einen Test zu schreiben, der einen selbstgebauten Mock prüft statt Obsidian.
 
 - [ ] **Step 1: Write the failing test**
 
-An `tests/obsidian/main.test.ts` anhängen (die vorhandenen Importe und Helfer der Datei mitbenutzen; `MailstonePlugin` ist dort bereits importiert):
-
 ```ts
-describe("Cockpit-Verdrahtung", () => {
-  it("liest ein kaputtes runState-Feld, ohne den Start zu kippen", async () => {
-    const plugin = await ladePlugin({ settings: {}, runState: "kaputt" });
-    expect(plugin.runState).toEqual({});
+// tests/obsidian/cockpit-host.test.ts
+import { describe, it, expect, vi } from "vitest";
+import { createCockpitHost } from "../../src/obsidian/views/cockpit-host";
+import { newAccount, type Account } from "../../src/core/settings";
+import type { RunState } from "../../src/core/sync/run-state";
+import type { SyncCounts } from "../../src/core/sync/events";
+
+const MIN = 60_000;
+const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+
+function acc(id: string, intervalMin = 5, enabled = true): Account {
+  const a = newAccount(id);
+  a.sync = { enabled, intervalMin };
+  return a;
+}
+
+function host(over: Partial<Parameters<typeof createCockpitHost>[0]> = {}) {
+  return createCockpitHost({
+    accounts: () => [],
+    runState: () => ({}),
+    lastRun: () => ({}),
+    isBusy: () => false,
+    syncNow: () => undefined,
+    openSettings: () => undefined,
+    onChange: () => () => undefined,
+    ...over,
+  });
+}
+
+describe("createCockpitHost — nextDueAt", () => {
+  it("loest die Konto-Id ueber die Kontoliste auf und rechnet das Intervall darauf", () => {
+    const h = host({ accounts: () => [acc("a", 5)], lastRun: () => ({ a: 10 * MIN }) });
+    expect(h.nextDueAt("a")).toBe(15 * MIN);
   });
 
-  it("uebernimmt ein gueltiges runState-Feld aus data.json", async () => {
-    const gespeichert = { a: { at: 5, ok: true, counts: { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } } };
-    const plugin = await ladePlugin({ settings: {}, runState: gespeichert });
-    expect(plugin.runState["a"]?.at).toBe(5);
+  it("liefert null fuer eine Id, die es nicht (mehr) gibt — statt zu werfen", () => {
+    // Ein geloeschtes Konto kann noch im Register stehen; die View fragt dann nach einer Id,
+    // zu der kein Account mehr existiert.
+    const h = host({ accounts: () => [acc("a")], lastRun: () => ({ weg: 10 * MIN }) });
+    expect(h.nextDueAt("weg")).toBeNull();
   });
 
-  it("schreibt runState in dieselbe data.json wie zoneHashes und uidCache", async () => {
-    const plugin = await ladePlugin({ settings: {} });
-    plugin.runState = { a: { at: 7, ok: true, counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } } };
-    await plugin.saveSettings();
-    expect(gespeicherteDaten()?.runState?.["a"]?.at).toBe(7);
+  it("liefert null fuer ein abgeschaltetes Konto", () => {
+    const h = host({ accounts: () => [acc("a", 5, false)], lastRun: () => ({ a: 10 * MIN }) });
+    expect(h.nextDueAt("a")).toBeNull();
   });
 
-  it("registriert genau einen View-Type (UI-STANDARD §1)", async () => {
-    const plugin = await ladePlugin({ settings: {} });
-    expect(registrierteViewTypes(plugin)).toEqual([VIEW_TYPE_MAILSTONE]);
+  it("liefert null, solange kein Lauf des Kontos bekannt ist", () => {
+    const h = host({ accounts: () => [acc("a")], lastRun: () => ({}) });
+    expect(h.nextDueAt("a")).toBeNull();
   });
 
-  it("das Ribbon-Symbol oeffnet die Ansicht, statt zu synchronisieren", async () => {
-    const plugin = await ladePlugin({ settings: {} });
-    expect(ribbonTitel(plugin)).toBe(t("cockpit.title"));
+  it("liest lastRun bei JEDEM Aufruf frisch — der Wecker schreibt waehrend die View offen ist", () => {
+    let lastRun: Record<string, number> = {};
+    const h = host({ accounts: () => [acc("a", 5)], lastRun: () => lastRun });
+    expect(h.nextDueAt("a")).toBeNull();
+    lastRun = { a: 10 * MIN };
+    expect(h.nextDueAt("a")).toBe(15 * MIN);
+  });
+});
+
+describe("createCockpitHost — Durchreichen", () => {
+  it("reicht accounts, runState und isBusy als lebende Sicht durch, nicht als Kopie", () => {
+    let busy = false;
+    let rs: RunState = {};
+    const h = host({ accounts: () => [acc("a")], runState: () => rs, isBusy: () => busy });
+    expect(h.isBusy()).toBe(false);
+    expect(h.runState()).toEqual({});
+    busy = true;
+    rs = { a: { at: 1, ok: true, counts: NIX } };
+    expect(h.isBusy()).toBe(true);
+    expect(h.runState()["a"]?.at).toBe(1);
+    expect(h.accounts()).toHaveLength(1);
   });
 
-  it("oeffnet die Ansicht beim Start NICHT, solange das Opt-in aus ist", async () => {
-    const plugin = await ladePlugin({ settings: { openViewOnStartup: false } });
-    await layoutReady(plugin);
-    expect(geoeffneteViews(plugin)).toEqual([]);
+  it("reicht syncNow mit und ohne Konto-Id weiter", () => {
+    const syncNow = vi.fn();
+    const h = host({ syncNow });
+    h.syncNow("a");
+    h.syncNow();
+    expect(syncNow).toHaveBeenNthCalledWith(1, "a");
+    expect(syncNow).toHaveBeenNthCalledWith(2, undefined);
   });
 
-  it("GEGENPROBE: mit gesetztem Opt-in oeffnet sie beim Start", async () => {
-    const plugin = await ladePlugin({ settings: { openViewOnStartup: true } });
-    await layoutReady(plugin);
-    expect(geoeffneteViews(plugin)).toEqual([VIEW_TYPE_MAILSTONE]);
+  it("reicht openSettings und onChange samt Abmeldung weiter", () => {
+    const openSettings = vi.fn();
+    const unsub = vi.fn();
+    const onChange = vi.fn().mockReturnValue(unsub);
+    const h = host({ openSettings, onChange });
+    h.openSettings();
+    const cb = (): void => undefined;
+    expect(h.onChange(cb)).toBe(unsub);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(cb);
   });
 });
 ```
 
-Die Helfer `ladePlugin`, `gespeicherteDaten`, `registrierteViewTypes`, `ribbonTitel`, `geoeffneteViews` und `layoutReady` gehören in denselben Testdateikopf. Sie kapseln den Mock-Zugriff; die bestehende `main.test.ts` hat bereits ein Lademuster — dieses wiederverwenden und nur um die fehlenden Zugriffe ergänzen.
-
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run tests/obsidian/main.test.ts`
-Expected: FAIL — `plugin.runState is undefined`
+Run: `npx vitest run tests/obsidian/cockpit-host.test.ts`
+Expected: FAIL — `Failed to resolve import "../../src/obsidian/views/cockpit-host"`
 
 - [ ] **Step 3: `openViewOnStartup` in die Settings aufnehmen**
 
@@ -1298,19 +1367,59 @@ Der Host als eigene Methode neben `commandExecuteDeps()`:
 
 ```ts
   private cockpitHost(notify: Notifier): CockpitHost {
-    return {
+    return createCockpitHost({
       accounts: () => this.settings.accounts,
       runState: () => this.runState,
-      nextDueAt: (id) => {
-        const a = this.settings.accounts.find((x) => x.id === id);
-        return a ? nextDueAt(a, this.lastRun[id]) : null;
-      },
+      lastRun: () => this.lastRun,
       isBusy: () => this.busy.isBusy(),
       syncNow: (accountId) => { void this.runSync(notify, false, accountId ? [accountId] : undefined); },
-      openSettings: () => { (this.app as unknown as { setting: { open(): void; openTabById(id: string): void } }).setting.open(); },
+      openSettings: () => { (this.app as unknown as { setting: { open(): void } }).setting.open(); },
       onChange: (cb) => this.cockpitChanged.on("changed", cb),
-    };
+    });
   }
+```
+
+Die Methode bleibt eine dünne Hülle: alles, was eine Entscheidung trifft, steckt in
+`createCockpitHost` und ist dort ohne Plugin-Instanz getestet. Die Datei dazu:
+
+```ts
+// src/obsidian/views/cockpit-host.ts
+import type { Account } from "../../core/settings";
+import type { Unsubscribe } from "../../core/sync/events";
+import { nextDueAt as berechneFaelligkeit, type RunState } from "../../core/sync/run-state";
+import type { CockpitHost } from "./cockpit-panel";
+
+/** Die Zugaenge, die das Plugin beisteuert. Alles Funktionen, damit der Host eine LEBENDE
+ *  Sicht ist und keine Momentaufnahme: waehrend die Ansicht offen steht, schreibt der Wecker
+ *  weiter in `lastRun` und ein Lauf ins Register. */
+export interface CockpitHostDeps {
+  accounts: () => readonly Account[];
+  runState: () => RunState;
+  lastRun: () => Readonly<Record<string, number>>;
+  isBusy: () => boolean;
+  syncNow: (accountId?: string) => void;
+  openSettings: () => void;
+  onChange: (cb: () => void) => Unsubscribe;
+}
+
+/** Baut den Vertrag, den das Panel sieht. Die einzige Stelle mit eigener Logik ist
+ *  `nextDueAt`: die Ansicht kennt nur Konto-Ids, die Berechnung braucht das Konto und den
+ *  Zeitstempel des Weckers. Eine Id ohne Konto liefert `null` statt zu werfen — ein
+ *  geloeschtes Konto kann im Register noch stehen. */
+export function createCockpitHost(deps: CockpitHostDeps): CockpitHost {
+  return {
+    accounts: () => deps.accounts(),
+    runState: () => deps.runState(),
+    nextDueAt: (id) => {
+      const konto = deps.accounts().find((a) => a.id === id);
+      return konto ? berechneFaelligkeit(konto, deps.lastRun()[id]) : null;
+    },
+    isBusy: () => deps.isBusy(),
+    syncNow: (accountId) => deps.syncNow(accountId),
+    openSettings: () => deps.openSettings(),
+    onChange: (cb) => deps.onChange(cb),
+  };
+}
 ```
 
 Dazu das Änderungs-Signal als Feld neben `syncEvents` (Zeile 206) — ein eigener Emitter, damit `SyncEvents` unberührt bleibt: das ist die Fläche, an der Fremdplugins per `api.on(...)` hängen.
@@ -1335,17 +1444,21 @@ In `src/obsidian/settings-tab.ts` bei den übrigen allgemeinen Schaltern:
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `npx vitest run tests/obsidian/main.test.ts`
-Expected: PASS
+Run: `npx vitest run tests/obsidian/cockpit-host.test.ts`
+Expected: PASS (8 Tests)
 
 - [ ] **Step 7: Mutation als Gegenprobe**
 
 | Mutation | erwartet rot |
 |---|---|
-| `parseRunState(raw?.runState)` durch `(raw?.runState ?? {}) as RunState` ersetzen | „liest ein kaputtes runState-Feld, ohne den Start zu kippen" |
-| `runState` aus dem `persist`-Aufruf entfernen | „schreibt runState in dieselbe data.json" |
-| das `if (this.settings.openViewOnStartup)` im `onLayoutReady` entfernen | „oeffnet die Ansicht beim Start NICHT" |
-| die `onLayoutReady`-Zeile ganz entfernen | **die Gegenprobe** — „mit gesetztem Opt-in oeffnet sie beim Start" |
+| in `createCockpitHost` das `find` durch `deps.accounts()[0]` ersetzen | „liefert null fuer eine Id, die es nicht (mehr) gibt" |
+| `nextDueAt(a, deps.lastRun()[id])` durch `nextDueAt(a, Date.now())` ersetzen | „loest die Konto-Id ueber die Kontoliste auf" |
+| `deps.lastRun()` einmalig in eine Konstante ziehen statt bei jedem Aufruf zu rufen | „liest lastRun bei JEDEM Aufruf frisch" |
+| `runState: () => ({ ...deps.runState() })` als Kopie statt lebender Sicht | keiner — **das ist der Punkt:** eine flache Kopie fällt hier nicht auf, weil der Test die Sicht nach dem Ersetzen der Referenz abfragt. Notiere es als bewusste Grenze; die lebende Sicht ist Design, nicht Test-Gegenstand |
+
+Die Verdrahtungs-Mutationen der ersten Fassung (`parseRunState` aushebeln, `runState` aus dem
+`persist`-Aufruf werfen, das `onLayoutReady`-Gate entfernen) sind nach Ruling A **nicht**
+unit-prüfbar — sie stehen als Prüfpunkte in der Handprobe (Step 9).
 
 - [ ] **Step 8: Volles Gate**
 
@@ -1357,17 +1470,22 @@ Erwartet: grün. `check:pure` muss bestätigen, dass `src/core/sync/run-state.ts
 
 - [ ] **Step 9: Handprobe im Staging-Vault**
 
-Zwei Dinge sieht kein Unit-Test — beide sind anderswo im Workspace vom GUI-Smoke gefunden worden, mailstone hat noch keinen Treiber (M4):
+**Diese Probe ist nach Ruling A der einzige Beleg für die Verdrahtung** — sie ist kein Beiwerk. Zwei der Punkte sind Sichtbarkeitsfragen, die anderswo im Workspace erst der GUI-Smoke gefunden hat; mailstone hat noch keinen Treiber (M4).
 
 1. **Sichtbarkeit beim Erstöffnen.** Rechte Seitenleiste einklappen, Obsidian neu laden, Ribbon-Symbol klicken. Erwartet: Leiste klappt auf, Cockpit ist sichtbar. Ein Blatt mit 0×0 px wäre der Defekt aus REGISTRY §UI.
 2. **Knopf-Position.** Der „Alle synchronisieren"-Knopf muss im Inhalt stehen und sichtbar sein. Prüfen mit `getBoundingClientRect()` — Existenz im DOM ist grün, während niemand ihn sieht.
+3. **Ribbon öffnet, statt zu synchronisieren.** Klick aufs Symbol öffnet die Ansicht; es startet **keinen** Lauf. Gegenprobe: `sync-mailbox` in der Befehlspalette startet weiterhin einen.
+4. **Genau ein View-Type.** In der Konsole `app.viewRegistry.typeByExtension` bzw. das Sidebar-Menü prüfen: nur `mailstone-cockpit` taucht auf (UI-STANDARD §1).
+5. **Startup-Gate, beide Hälften.** Mit `openViewOnStartup: false` neu laden — Ansicht bleibt zu. Dann in den Einstellungen einschalten, neu laden — Ansicht öffnet sich. **Beide** Hälften fahren: ein nie öffnendes Gate bestünde die erste allein.
+6. **Register überlebt den Neustart.** Einen Sync fahren, Zähler merken, Obsidian neu laden, Cockpit öffnen. Erwartet: derselbe Stand steht da. Danach `data.json` ansehen — `runState` liegt neben `settings`, `zoneHashes` und `uidCache`.
+7. **Kaputtes Register kippt den Start nicht.** In `data.json` `"runState": "kaputt"` eintragen, neu laden. Erwartet: Plugin lädt, Cockpit zeigt „Noch nicht gelaufen" — kein Fehler in der Konsole.
 
-Ergebnis in `docs/SMOKE.md` protokollieren, wie die bisherigen Proben.
+Ergebnis in `docs/SMOKE.md` protokollieren, wie die bisherigen Proben. Punkte 3–7 tragen einen Vermerk, dass sie die Unit-Lücke aus Ruling A schließen — der GUI-Smoke-Treiber aus M4 übernimmt sie später.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/main.ts src/core/settings.ts src/obsidian/settings-tab.ts tests/obsidian/main.test.ts
+git add src/main.ts src/core/settings.ts src/obsidian/settings-tab.ts src/obsidian/views/cockpit-host.ts tests/obsidian/cockpit-host.test.ts docs/SMOKE.md
 git commit -m "feat(cockpit): Verdrahtung - Register persistiert, Ribbon oeffnet die Ansicht, Opt-in beim Start"
 ```
 
