@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.2.0] — 2026-09-01
 
-### Sidebar-Cockpit — Betriebsansicht je Konto (2026-09-02)
+### Sidebar-Cockpit — Betriebsansicht je Konto (2026-09-01)
 - Neue Ansicht in der rechten Seitenleiste: pro Konto ein Status-Indikator, der letzte Lauf mit
   Uhrzeit, der nächste Lauf, die Zähler des letzten Laufs und der Fehler im Klartext, dazu
   „Jetzt synchronisieren" je Konto und für alle. Bisher blitzte all das nur in der Statusleiste
