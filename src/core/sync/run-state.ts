@@ -4,9 +4,9 @@
 // Millisekunden statt ISO (dueAccounts/nextDueAt rechnen in ms).
 import type { Account } from "../settings";
 import type { SyncCounts } from "./events";
-import type { SyncErrorCode } from "./errors";
+import { SYNC_ERROR_CODES, type SyncErrorCode } from "./errors";
 import type { SyncRunResult } from "./service";
-import { TICK_MS } from "./schedule";
+import { intervalMs } from "./schedule";
 
 /** Der letzte Lauf eines Kontos — das, was die Statusleiste heute nur fluechtig zeigt. */
 export interface RunInfo {
@@ -19,6 +19,9 @@ export interface RunInfo {
 export type RunState = Record<string, RunInfo>;
 
 const COUNT_KEYS = ["created", "reattached", "detached", "skipped", "detachSkipped", "errors"] as const;
+
+/** Aus der Code-Liste gebaut, nicht danebengeschrieben — s. SYNC_ERROR_CODES. */
+const GUELTIGE_CODES: ReadonlySet<string> = new Set<string>(SYNC_ERROR_CODES);
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -67,19 +70,26 @@ export function parseRunState(raw: unknown): RunState {
     const ok = v["ok"];
     const counts = parseCounts(v["counts"]);
     if (typeof at !== "number" || !Number.isFinite(at) || typeof ok !== "boolean" || !counts) continue;
+    // Nur ein BEKANNTER Code wird uebernommen. Die Anzeige baut daraus `error.sync.<code>`,
+    // und `t()` gibt bei unbekanntem Schluessel den Schluessel selbst zurueck — ein
+    // hand-editiertes data.json zeigte dem Nutzer sonst rohes "error.sync.xyz". Ein
+    // unbekannter Code faellt weg wie ein fehlender; die Anzeige nimmt dann ihren
+    // `?? "protocol"`-Rueckfall ("Antwort des Servers war unverstaendlich"), was fuer einen
+    // nicht deutbaren Registereintrag genau die richtige Aussage ist.
     const code = v["code"];
-    out[id] = typeof code === "string" ? { at, ok, code: code as SyncErrorCode, counts } : { at, ok, counts };
+    out[id] = typeof code === "string" && GUELTIGE_CODES.has(code)
+      ? { at, ok, code: code as SyncErrorCode, counts }
+      : { at, ok, counts };
   }
   return out;
 }
 
 /** Wann das Konto fruehestens wieder laeuft — `null`, wenn die Frage nicht beantwortbar ist
- *  (Konto aus, oder in dieser Sitzung noch kein Lauf bekannt). Die Klemmung auf einen Takt
- *  ist dieselbe wie in `dueAccounts`, damit Anzeige und Wecker nicht auseinanderlaufen. */
+ *  (Konto aus, oder in dieser Sitzung noch kein Lauf bekannt). Die Klemmung kommt aus
+ *  `intervalMs` in schedule.ts, also aus DERSELBEN Funktion wie beim Wecker — Anzeige und
+ *  Wecker koennen so nicht mehr auseinanderlaufen. */
 export function nextDueAt(account: Account, lastRunMs: number | undefined): number | null {
   if (!account.sync.enabled) return null;
   if (lastRunMs === undefined) return null;
-  const wert = Number(account.sync.intervalMin);
-  const everyMs = Number.isFinite(wert) && wert > 0 ? Math.max(TICK_MS, wert * TICK_MS) : TICK_MS;
-  return lastRunMs + everyMs;
+  return lastRunMs + intervalMs(account);
 }

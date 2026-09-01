@@ -15,7 +15,13 @@ export interface ConnectOptions {
   extraCa?: string;
 }
 
-export type NetErrorCode = "connect" | "tls" | "timeout" | "closed" | "protocol";
+/** Die Codes als LISTE, der Typ daraus abgeleitet — nicht umgekehrt. Grund: `parseRunState`
+ *  muss einen Code aus `data.json` zur Laufzeit gegen die gueltigen Werte pruefen, und eine
+ *  von Hand gepflegte zweite Aufzaehlung liefe beim naechsten neuen Code auseinander. So
+ *  ergaenzt, wer den Typ erweitert, zwangslaeufig auch die Pruefung. */
+export const NET_ERROR_CODES = ["connect", "tls", "timeout", "closed", "protocol"] as const;
+
+export type NetErrorCode = (typeof NET_ERROR_CODES)[number];
 
 export class NetError extends Error {
   constructor(

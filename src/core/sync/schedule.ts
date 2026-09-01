@@ -8,6 +8,22 @@ import type { Account } from "../settings";
  *  Kontowert und damit die Untergrenze jedes Intervalls. */
 export const TICK_MS = 60_000;
 
+/** Wie lange ein Konto zwischen zwei Laeufen wartet, in Millisekunden.
+ *
+ *  `repairAccount` uebernimmt `sync` ungeprueft aus data.json — der Wert kann NaN, Infinity
+ *  oder eine Zeichenkette sein. Ohne diesen Riegel waere `everyMs` NaN, und weil JEDER
+ *  Vergleich mit NaN false ist, waere das Konto nie wieder faellig: kein Fehler, keine Notice,
+ *  keine Spur in der Statusleiste. Ein stiller Ausfall ist der schlechtere Ausgang als der
+ *  Dauerlauf, den die alte Fassung produzierte — also faellt Unbrauchbares auf einen Takt.
+ *
+ *  EINE Funktion fuer Wecker (`dueAccounts`) und Anzeige (`nextDueAt` in run-state.ts): die
+ *  Formel stand bis zum Abschluss-Review byte-gleich an beiden Orten, mit dem Kommentar „damit
+ *  Anzeige und Wecker nicht auseinanderlaufen" — genau dagegen sicherte nichts. */
+export function intervalMs(account: Account): number {
+  const wert = Number(account.sync.intervalMin);
+  return Number.isFinite(wert) && wert > 0 ? Math.max(TICK_MS, wert * TICK_MS) : TICK_MS;
+}
+
 /** IDs der Konten, die bei `nowMs` synchronisiert werden sollen — in der Reihenfolge der
  *  Kontoliste, damit ein Lauf reproduzierbar bleibt.
  *
@@ -26,13 +42,7 @@ export function dueAccounts(
   const out: string[] = [];
   for (const a of accounts) {
     if (!a.sync.enabled) continue;
-    // `repairAccount` uebernimmt `sync` ungeprueft aus data.json — der Wert kann NaN, Infinity
-    // oder eine Zeichenkette sein. Ohne diesen Riegel waere `everyMs` NaN, und weil JEDER
-    // Vergleich mit NaN false ist, waere das Konto nie wieder faellig: kein Fehler, keine Notice,
-    // keine Spur in der Statusleiste. Ein stiller Ausfall ist der schlechtere Ausgang als der
-    // Dauerlauf, den die alte Fassung produzierte — also faellt Unbrauchbares auf einen Takt.
-    const wert = Number(a.sync.intervalMin);
-    const everyMs = Number.isFinite(wert) && wert > 0 ? Math.max(TICK_MS, wert * TICK_MS) : TICK_MS;
+    const everyMs = intervalMs(a);
     const last = lastRun[a.id];
     if (last === undefined || nowMs - last >= everyMs) out.push(a.id);
   }

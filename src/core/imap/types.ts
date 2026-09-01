@@ -1,6 +1,10 @@
-import type { NetErrorCode } from "../net/types";
+import { NET_ERROR_CODES } from "../net/types";
 
-export type ImapErrorCode = "auth" | "folder-missing" | "tls-required" | NetErrorCode;
+/** Liste zuerst, Typ daraus — s. NET_ERROR_CODES. Der Spread haelt die Schichtung: ein neuer
+ *  Netz-Code ist automatisch auch ein IMAP-Code, ohne zweite Nennung. */
+export const IMAP_ERROR_CODES = ["auth", "folder-missing", "tls-required", ...NET_ERROR_CODES] as const;
+
+export type ImapErrorCode = (typeof IMAP_ERROR_CODES)[number];
 
 /** Obergrenze fuer ein einzelnes Literal (64 MiB). Ein groesserer Wert ist kein
  *  Postfach-Inhalt mehr, sondern ein defekter oder feindlicher Server. */
