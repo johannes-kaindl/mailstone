@@ -93,7 +93,7 @@ Der öffentliche Vertrag bleibt unangetastet.
 
 ### Host-Interface
 
-Sechs Methoden, lesend oder `void`, kein Rückkanal (UI-STANDARD §4: die View kennt weder
+Sieben Methoden, lesend oder `void`, kein Rückkanal (UI-STANDARD §4: die View kennt weder
 Plugin noch Ports):
 
 ```ts
@@ -103,9 +103,13 @@ export interface CockpitHost {
   nextDueAt(accountId: string): number | null;
   isBusy(): boolean;
   syncNow(accountId?: string): void;
+  openSettings(): void;
   onChange(cb: () => void): Unsubscribe;
 }
 ```
+
+`openSettings` trägt den einen `mod-cta` des Empty-State — ohne sie endete der Weg vom
+„noch kein Konto" ins Nichts.
 
 ### Schale
 
@@ -128,8 +132,13 @@ Auswahlkriterium aus §4 greift also eindeutig, und das ViewModel ist ohne DOM t
 
 ## Eingriffe in bestehenden Code
 
-1. `MailstoneSettings` bekommt `runState`. `mergeSettings` füllt fehlende Felder mit
-   Defaults, eine Schema-Migration ist nicht nötig — `schemaVersion` bleibt 1.
+1. `PersistedState` (`main.ts:27`) bekommt `runState` als vierte Ecke neben `settings`,
+   `zoneHashes` und `uidCache` — **nicht** in `MailstoneSettings`. Das Register ist
+   Laufzeitzustand, keine Einstellung; `zoneHashes` ist das Vorbild im eigenen Repo,
+   `vault-crews` begründet es ebenso („`lastRuns` ist ein eigenes `data.json`-Feld, nicht
+   Teil von `PluginSettings`"). Folge: `MailstoneSettings` und `schemaVersion` bleiben
+   unberührt, dafür braucht das Lesen einen eigenen Riegel — `parseRunState(raw?.runState)`
+   analog zu `raw?.zoneHashes ?? {}` in `onload()`.
 2. `lastRun` wandert aus der lokalen Variable in `onload()` (`main.ts:293`) in ein
    Plugin-Feld, damit „nächster Lauf" berechenbar wird.
 3. Das Ribbon-Icon öffnet künftig die View statt einen Sync auszulösen (`main.ts:265`).
