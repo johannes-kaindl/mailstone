@@ -6,10 +6,10 @@ import { initI18n } from "../../src/i18n/strings";
 
 initI18n("de");
 
-function fakeHost(): CockpitHost {
+function fakeHost(onChange?: CockpitHost["onChange"]): CockpitHost {
   return {
     accounts: () => [], runState: () => ({}), nextDueAt: () => null, isBusy: () => false,
-    syncNow: () => undefined, openSettings: () => undefined, onChange: () => () => undefined,
+    syncNow: () => undefined, openSettings: () => undefined, onChange: onChange ?? (() => () => undefined),
   };
 }
 
@@ -26,6 +26,19 @@ describe("MailstoneView", () => {
     expect(v.contentEl.children.length).toBeGreaterThan(0);
     await v.onClose();
     expect(v.contentEl.children.length).toBe(0);
+  });
+
+  it("meldet das Panel beim Schliessen wirklich ab — nicht nur den DOM geleert", async () => {
+    // Die Kinderzahl oben belegt das NICHT: `contentEl.empty()` leert sie ohnehin, ob das
+    // Panel sich vorher abgemeldet hat oder nicht (Task 4, Mutation 4 blieb genau daran
+    // gruen). Ein nicht abgemeldeter Listener feuerte bei jedem Sync-Lauf weiter und zeichnete
+    // in einen abgehaengten DOM — ein Leck pro Oeffnen/Schliessen-Zyklus.
+    const unsub = vi.fn();
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(() => unsub));
+    await v.onOpen();
+    expect(unsub).not.toHaveBeenCalled();
+    await v.onClose();
+    expect(unsub).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -55,7 +55,7 @@ export const en = {
   "settings.account.test.noSecret": "Set a password before testing the connection.",
 
   "cmd.sync.name": "Synchronise mailbox folder",
-  "ribbon.sync": "Mailstone: synchronise",
+  "cmd.openCockpit.name": "Open the sidebar panel",
   "status.sync.running": "Mailstone: synchronising…",
   "status.sync.idle": "Mailstone: {0} notes updated · last sync {1}",
   "status.sync.idleNoChange": "Mailstone: no changes · last sync {0}",
@@ -209,7 +209,7 @@ export const de: typeof en = {
   "settings.account.test.noSecret": "Vor dem Verbindungstest ein Passwort setzen.",
 
   "cmd.sync.name": "Postfach-Ordner synchronisieren",
-  "ribbon.sync": "Mailstone: synchronisieren",
+  "cmd.openCockpit.name": "Seitenleiste öffnen",
   "status.sync.running": "Mailstone: synchronisiert…",
   "status.sync.idle": "Mailstone: {0} Notizen aktualisiert · zuletzt {1}",
   "status.sync.idleNoChange": "Mailstone: keine Änderungen · zuletzt {0}",

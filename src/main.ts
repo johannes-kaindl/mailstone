@@ -1,5 +1,5 @@
 import { Notice, Plugin, SuggestModal, getLanguage, type App } from "obsidian";
-import { loadSettings, type MailstoneSettings } from "./core/settings";
+import { loadSettings, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
 import { t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
@@ -100,6 +100,22 @@ export function syncFailureStatus(results: readonly SyncRunResult[], silent = fa
 }
 
 export interface SyncNotice { key: string; args: (string | number)[] }
+
+/** Welche Konten ein Lauf anfasst.
+ *
+ *  Der Punkt ist der `only`-Zweig: ein ausdruecklich angefordertes Konto wird NICHT nach
+ *  `sync.enabled` gefiltert. „Jetzt synchronisieren" war sonst bei abgeschaltetem
+ *  Auto-Abgleich wirkungslos — und zwar zustandsabhaengig, weil ein zweites, aktives Konto
+ *  den Riegel passieren liess und derselbe Knopf sich je nach Nachbarkonto anders verhielt.
+ *  Manuell heisst manuell; `sync.enabled` regelt den WECKER, nicht die Bedienbarkeit.
+ *  `dueAccounts` filtert fuer den Takt ohnehin selbst, der stille Lauf verliert also nichts.
+ *
+ *  Reine Funktion, damit die Auswahl ohne Plugin-Instanz pruefbar ist — dieselbe Begruendung
+ *  wie bei `syncNotices` und `syncFailureStatus`. */
+export function syncTargets(accounts: readonly Account[], only?: readonly string[]): string[] {
+  if (only) return [...only];
+  return accounts.filter((a) => a.sync.enabled).map((a) => a.id);
+}
 
 /** Schreibt den Plugin-Zustand nur, wenn er sich seit dem letzten Schreibvorgang geaendert hat.
  *  Der Intervall-Lauf ruft `saveSettings()` in jedem Tick — ohne diesen Riegel entstuende alle
@@ -215,6 +231,12 @@ export default class MailstonePlugin extends Plugin {
   /** Eigener Emitter statt eine Wiederverwendung von syncEvents: das ist die Flaeche, an der
    *  Fremdplugins per api.on(...) haengen — die Cockpit-View soll dort nicht mitlauschen. */
   private readonly cockpitChanged: Emitter<{ changed: undefined }> = createEmitter();
+  /** Wie viele Sync-Laeufe gerade offen sind. Eigener Zustand NEBEN dem BusyGuard, nicht statt
+   *  ihm: der Guard wird tief in `syncAccount` belegt und dort im `finally` sofort wieder
+   *  freigegeben — zwischen zwei Konten und beim Render ist er frei. Fuer die Frage „laeuft das
+   *  Cockpit gerade?" ist er damit unbrauchbar, obwohl er fuer seine eigene Frage
+   *  („darf ich jetzt schreiben?") richtig ist. */
+  private cockpitRuns = 0;
 
   async onload(): Promise<void> {
     const raw = (await this.loadData()) as Partial<PersistedState> | null;
@@ -280,7 +302,9 @@ export default class MailstonePlugin extends Plugin {
     // einen direkten Sync ohne die Seitenleiste zu oeffnen.
     this.registerView(VIEW_TYPE_MAILSTONE, (leaf) => new MailstoneView(leaf, this.cockpitHost(notify)));
     this.addRibbonIcon("mail", t("cockpit.title"), () => { void activateMailstoneView(this.app); });
-    this.addCommand({ id: "open-cockpit", name: t("cockpit.title"), callback: () => { void activateMailstoneView(this.app); } });
+    // Eigener Schluessel statt cockpit.title: Obsidian stellt jedem Kommandonamen den
+    // Plugin-Namen voran — mit dem View-Titel stuende in der Palette „Mailstone: Mailstone".
+    this.addCommand({ id: "open-cockpit", name: t("cmd.openCockpit.name"), callback: () => { void activateMailstoneView(this.app); } });
     // Auto-Oeffnen ist Opt-in, Default aus (REGISTRY: Opt-in-Gate fuer Startup-Seiteneffekt).
     this.app.workspace.onLayoutReady(() => {
       if (this.settings.openViewOnStartup) void activateMailstoneView(this.app);
@@ -378,6 +402,15 @@ export default class MailstonePlugin extends Plugin {
     // uidCache.data() liefert die interne Referenz, keine Kopie — hier nur lesen, nie
     // hineinschreiben, sonst umgeht man die Verwerfungslogik des Caches bei UIDVALIDITY-Wechsel.
     await this.persist({ settings: this.settings, zoneHashes: this.zoneHashes, uidCache: this.uidCache.data(), runState: this.runState } satisfies PersistedState);
+    // Hier und nicht nur am Ende von runSync: der Settings-Tab ruft ausschliesslich
+    // saveSettings(). Ohne diesen Emit blieb eine offene Ansicht nach dem Anlegen des ersten
+    // Kontos im Empty-State stehen — und weil dort auch „Alle synchronisieren" gesperrt ist,
+    // gab es keinen Knopf mehr, der ein Re-Render haette ausloesen koennen. Dasselbe galt fuer
+    // Umbenennen, Loeschen und den Sync-Schalter.
+    // Unbedingt, nicht nur bei tatsaechlichem Schreiben: der Persister vergleicht die
+    // Serialisierung von `data.json`, das Cockpit zeigt aber auch `lastRun` — Zustand, der
+    // dort gar nicht vorkommt. Ein Re-Render zu viel ist unsichtbar, ein fehlendes nicht.
+    this.cockpitChanged.emit("changed", undefined);
   }
 
   private cockpitHost(notify: Notifier): CockpitHost {
@@ -385,9 +418,22 @@ export default class MailstonePlugin extends Plugin {
       accounts: () => this.settings.accounts,
       runState: () => this.runState,
       lastRun: () => this.lastRun,
-      isBusy: () => this.busy.isBusy(),
+      // Beides: der Guard sperrt auch waehrend eines Kommandos (dann darf das Cockpit nicht
+      // dazwischenfunken), der Zaehler ueberbrueckt die Luecken zwischen zwei Konten eines Laufs.
+      isBusy: () => this.busy.isBusy() || this.cockpitRuns > 0,
       syncNow: (accountId) => { void this.runSync(notify, false, accountId ? [accountId] : undefined); },
-      openSettings: () => { (this.app as unknown as { setting: { open(): void } }).setting.open(); },
+      // `setting` ist undokumentierte Obsidian-Flaeche, deshalb optional zugegriffen statt fest
+      // gecastet — fehlt sie einmal, oeffnet sich nichts, statt dass die Zeile wirft.
+      // `openTabById` ist der zweite Teil: `open()` allein landet auf dem ZULETZT benutzten Tab,
+      // und wer gerade „noch kein Konto" gelesen hat, stuende dann womoeglich bei „Darstellung".
+      // Vorbild kuro-gamification/src/main.ts:461.
+      openSettings: () => {
+        const setting = (this.app as unknown as {
+          setting?: { open(): void; openTabById(id: string): void };
+        }).setting;
+        setting?.open();
+        setting?.openTabById(this.manifest.id);
+      },
       onChange: (cb) => this.cockpitChanged.on("changed", cb),
     });
   }
@@ -456,17 +502,28 @@ export default class MailstonePlugin extends Plugin {
 
   /** `silent` = Intervall-Lauf: kein Notice bei Erfolg, nur bei Fehlern — sonst poppt alle
    *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste.
-   *  `only` schraenkt auf bestimmte Konten ein (der Wecker uebergibt die faelligen); ohne
-   *  Angabe laufen alle aktivierten. */
+   *  `only` schraenkt auf bestimmte Konten ein (der Wecker uebergibt die faelligen, das Cockpit
+   *  das angeklickte) und laeuft dann OHNE `sync.enabled`-Filter; ohne Angabe laufen alle
+   *  aktivierten. Die Auswahl selbst trifft `syncTargets`, dort steht auch die Begruendung. */
   private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<SyncRunResult[]> {
-    const enabled = this.settings.accounts.filter((a) => a.sync.enabled);
-    if (enabled.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return []; }
+    const ziele = syncTargets(this.settings.accounts, only);
+    if (ziele.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return []; }
     this.status.setText(t("status.sync.running"));
+    // Der Lauf beginnt SICHTBAR: der BusyGuard wird erst in syncAccount belegt und im finally
+    // dort wieder freigegeben — beim Render ist er darum immer frei, und der is-checking-
+    // Indikator waere unerreichbar. Ein eigener Zaehler statt eines Bools, weil ein Takt des
+    // Weckers und ein Handlauf sich ueberlappen koennen: das `finally` des inneren Laufs
+    // loeschte sonst die Anzeige des aeusseren.
+    this.cockpitRuns += 1;
+    this.cockpitChanged.emit("changed", undefined);
     try {
-      // Nacheinander, nie parallel gegen denselben Vault — dieselbe Zusage wie in syncAll.
+      // Nacheinander, nie parallel gegen denselben Vault — dieselbe Zusage, die `syncAll` im
+      // SyncService gibt. Eine Schleife fuer BEIDE Faelle statt syncAll() im einen Zweig: die
+      // Auswahl der Konten trifft damit an EINER Stelle `syncTargets` und ist dort pruefbar,
+      // statt sich auf zwei Filter in zwei Modulen zu verteilen — genau die Aufteilung, aus der
+      // Befund 2 entstand.
       const results: SyncRunResult[] = [];
-      if (only) { for (const id of only) results.push(await this.syncService.syncAccount(id)); }
-      else results.push(...(await this.syncService.syncAll()));
+      for (const id of ziele) results.push(await this.syncService.syncAccount(id));
       for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
       // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
       // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).
@@ -476,12 +533,13 @@ export default class MailstonePlugin extends Plugin {
       for (const n of notices) notify.info(n.key, ...n.args);
       this.lastDetachSkipped = detachSkipped;
       this.runState = recordRun(this.runState, results, Date.now());
-      this.cockpitChanged.emit("changed", undefined);
       return results;
     } finally {
+      this.cockpitRuns -= 1;
       // Zone-Hashes und UID-Cache muessen auch nach einem Abbruch persistiert sein — sonst
       // gilt jede geschriebene Notiz beim naechsten Lauf als fremd editiert (dieselbe
-      // Begruendung wie beim Import-Kommando aus M1).
+      // Begruendung wie beim Import-Kommando aus M1). Der Emit fuers Cockpit steckt darin —
+      // ein eigener waere ein zweites Re-Render fuer dieselbe Aenderung.
       await this.saveSettings();
     }
   }

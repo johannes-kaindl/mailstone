@@ -235,3 +235,6 @@ getrackten Lauf.
 | 5 | Startup-Gate, beide Hälften: mit `openViewOnStartup: false` neu laden, dann in den Einstellungen einschalten und erneut neu laden | Ansicht bleibt zu (aus) / Ansicht öffnet sich (an) — beide Hälften gefahren | |
 | 6 | Register überlebt den Neustart: Sync fahren, Zähler merken, Obsidian neu laden, Cockpit öffnen, danach `data.json` ansehen | Derselbe Stand steht da; `runState` liegt neben `settings`, `zoneHashes`, `uidCache` | |
 | 7 | Kaputtes Register kippt den Start nicht: in `data.json` `"runState": "kaputt"` eintragen, neu laden | Plugin lädt, Cockpit zeigt „Noch nicht gelaufen", kein Fehler in der Konsole | |
+| 8 | Kommandoname in der Palette nachsehen | „Mailstone: Seitenleiste öffnen" — nicht „Mailstone: Mailstone" (Fix-Welle 1, Befund 9) | |
+| 9 | `openTabById` gegen die echte API: erst die Einstellungen öffnen und dort „Darstellung" wählen, schließen, dann im leeren Cockpit „Einstellungen öffnen" klicken | Einstellungen öffnen sich auf dem **Mailstone**-Tab, nicht auf „Darstellung" (Fix-Welle 1, Befund 5) | |
+| 10 | Lauf-Anzeige: Sync über den Kopfknopf starten und währenddessen hinsehen | In der **Kopfzeile** dreht genau ein `loader`-Symbol (CSS-Animation, per Unit-Test nicht messbar), die Kontozeilen behalten Zustand und Zähler; danach ist das Symbol weg (Fix-Welle 1, Befund 4) | |
