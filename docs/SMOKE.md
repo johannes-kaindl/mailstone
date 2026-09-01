@@ -216,3 +216,30 @@ direkte Belegen des Guards). Ob `mail.replyExternal` tatsächlich ein Mailprogra
 nicht geprüft — `window.open` war abgefangen, um die URL zu messen; das Öffnen selbst ist
 Betriebssystemsache. Die Oberfläche lief auf Englisch (`language: auto`); die deutschen Texte deckt
 der i18n-Paritätstest ab, nicht dieser Lauf.
+
+## M5-Handprobe — Verdrahtung (Ribbon, View-Registrierung, Startup-Gate, Register-Persistenz)
+
+**Was hier steht und warum — Stand nach der Abschluss-Fix-Welle (2026-09-02).** Ursprünglich
+galt die ganze Verdrahtung als unit-untestbar. Das war zu weit gegriffen: nicht die
+Plugin-Instanz ist unerreichbar, sondern nur `onload()`. Konstruktor plus direkt gesetzte
+Felder genügen, und `tests/obsidian/main-cockpit.test.ts` belegt seither die Persistenz-Rundreise,
+den manuellen Lauf, den Lauf-Zustand und `openSettings` **im Gate**.
+
+Nicht unit-belegbar bleiben genau drei Dinge, und sie sind der Grund für diese Tabelle:
+`registerView` und die Ribbon-Umstellung (der vendorte `Plugin`-Mock verwirft Titel und
+Callback von `addRibbonIcon`), das `onLayoutReady`-Gate, und alles Sichtbare — ob ein Element
+Pixel hat, wo es sitzt, ob eine Animation läuft. Für diese Punkte ist die Tabelle der
+**einzige** Beleg; der GUI-Smoke-Treiber aus M4 überführt sie später in einen getrackten Lauf.
+
+| # | Prüfpunkt | Erwartung | Ergebnis |
+|---|---|---|---|
+| 1 | Sichtbarkeit beim Erstöffnen: rechte Seitenleiste einklappen, Obsidian neu laden, Ribbon-Symbol klicken | Leiste klappt auf, Cockpit ist sichtbar (kein 0×0-Blatt, REGISTRY §UI) | |
+| 2 | Knopf-Position: „Alle synchronisieren" per `getBoundingClientRect()` prüfen | Knopf steht im Inhalt und ist sichtbar, nicht nur im DOM vorhanden | |
+| 3 | Ribbon-Klick öffnet die Ansicht, startet **keinen** Lauf; Gegenprobe `sync-mailbox` in der Befehlspalette | Ribbon öffnet nur, Befehlspalette startet weiterhin einen Sync | |
+| 4 | Genau ein View-Type prüfen (Konsole/Sidebar-Menü) | Nur `mailstone-cockpit` taucht auf (UI-STANDARD §1) | |
+| 5 | Startup-Gate, beide Hälften: mit `openViewOnStartup: false` neu laden, dann in den Einstellungen einschalten und erneut neu laden | Ansicht bleibt zu (aus) / Ansicht öffnet sich (an) — beide Hälften gefahren | |
+| 6 | Register überlebt den Neustart: Sync fahren, Zähler merken, Obsidian neu laden, Cockpit öffnen, danach `data.json` ansehen | Derselbe Stand steht da; `runState` liegt neben `settings`, `zoneHashes`, `uidCache` | |
+| 7 | Kaputtes Register kippt den Start nicht: in `data.json` `"runState": "kaputt"` eintragen, neu laden | Plugin lädt, Cockpit zeigt „Noch nicht gelaufen", kein Fehler in der Konsole | |
+| 8 | Kommandoname in der Palette nachsehen | „Mailstone: Seitenleiste öffnen" — nicht „Mailstone: Mailstone" (Fix-Welle 1, Befund 9) | |
+| 9 | `openTabById` gegen die echte API: erst die Einstellungen öffnen und dort „Darstellung" wählen, schließen, dann im leeren Cockpit „Einstellungen öffnen" klicken | Einstellungen öffnen sich auf dem **Mailstone**-Tab, nicht auf „Darstellung" (Fix-Welle 1, Befund 5) | |
+| 10 | Lauf-Anzeige: Sync über den Kopfknopf starten und währenddessen hinsehen | In der **Kopfzeile** dreht genau ein `loader`-Symbol (CSS-Animation, per Unit-Test nicht messbar), die Kontozeilen behalten Zustand und Zähler; danach ist das Symbol weg (Fix-Welle 1, Befund 4) | |
