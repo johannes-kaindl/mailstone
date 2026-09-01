@@ -40,11 +40,14 @@ export async function activateMailstoneView(app: App): Promise<void> {
   const vorhanden = app.workspace.getLeavesOfType(VIEW_TYPE_MAILSTONE);
   const bestehend = vorhanden[0];
   if (bestehend) {
-    app.workspace.revealLeaf(bestehend);
+    // await statt void: die Funktion ist ohnehin async, und ein Aufrufer, der auf sie wartet
+    // (Tests, ein spaeterer Kommando-Callback), soll erst nach dem tatsaechlichen Aufklappen
+    // als fertig gelten — kein Grund, hier ein Fire-and-forget zu waehlen.
+    await app.workspace.revealLeaf(bestehend);
     return;
   }
   const leaf = app.workspace.getRightLeaf(false);
   if (!leaf) return;
   await leaf.setViewState({ type: VIEW_TYPE_MAILSTONE, active: true });
-  app.workspace.revealLeaf(leaf);
+  await app.workspace.revealLeaf(leaf);
 }

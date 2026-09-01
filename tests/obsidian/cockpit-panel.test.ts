@@ -138,18 +138,22 @@ describe("CockpitPanel — Bedienung", () => {
 
 describe("CockpitPanel — Lebenszyklus", () => {
   it("zeichnet bei einer Aenderung neu, statt am alten Stand zu kleben", () => {
-    let cb: (() => void) | null = null;
+    // Zustand in einem Objekt statt einer `let`-Variablen: TypeScript verengt eine `let`-Variable
+    // an der Aufrufstelle `cb?.()` auf den Stand VOR der Zuweisung im Callback (hier `null`) und
+    // macht daraus `never` — obwohl die Zuweisung zur Laufzeit laengst passiert ist. Ein Feld auf
+    // einem Objekt entgeht diesem Narrowing, die Testaussage bleibt unveraendert.
+    const state: { cb: (() => void) | null } = { cb: null };
     let rs: RunState = {};
     const el = makeFakeEl();
     const p = new CockpitPanel(fakeHost({
       accounts: () => [acc("a")],
       runState: () => rs,
-      onChange: (fn) => { cb = fn; return () => { cb = null; }; },
+      onChange: (fn) => { state.cb = fn; return () => { state.cb = null; }; },
     }));
     p.mount(el);
     expect(findAll(el, "mailstone-cockpit-status")).toHaveLength(0);
     rs = { a: { at: 100, ok: true, counts: NIX } };
-    cb?.();
+    state.cb?.();
     expect(findAll(el, "mailstone-cockpit-status")).toHaveLength(1);
   });
 
