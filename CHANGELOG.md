@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Sidebar-Cockpit — Betriebsansicht je Konto (2026-09-02)
+- Neue Ansicht in der rechten Seitenleiste: pro Konto ein Status-Indikator, der letzte Lauf mit
+  Uhrzeit, der nächste Lauf, die Zähler des letzten Laufs und der Fehler im Klartext, dazu
+  „Jetzt synchronisieren" je Konto und für alle. Bisher blitzte all das nur in der Statusleiste
+  auf und war beim nächsten Takt weg
+- **Der letzte Lauf überlebt jetzt den Neustart.** Neues `runState` in `data.json` — neben
+  `settings`, `zoneHashes` und `uidCache`, nicht in den Einstellungen: es ist Laufzeitzustand,
+  keine Konfiguration. Ein unbrauchbarer Eintrag fällt einzeln weg, statt das Register zu kippen
+- Zähler verdichtet: nur was von null verschieden ist („3 neu · 1 wieder verknüpft"). Sechs
+  Nullen nebeneinander verstecken die eine Zahl, auf die es ankommt
+- Status-Indikator nach dem verbindlichen Baustein-Katalog: Form **und** Farbe **und**
+  Klasse **und** `aria-label`. `is-warning` für den Lauf, der durchlief und trotzdem etwas
+  ausgelassen hat — weder ok noch Fehler. „Noch nie gelaufen" bekommt bewusst keinen Indikator,
+  weil es dafür keinen Zustand gibt
+- **Das Ribbon-Symbol öffnet jetzt die Ansicht statt zu synchronisieren.** Der Sync bleibt über
+  die Befehlspalette (`sync-mailbox`) und den Knopf im Cockpit erreichbar — also besser
+  erreichbar als vorher
+- Auto-Öffnen beim Start ist Opt-in, Standard aus
+- **„Jetzt synchronisieren" ignoriert den Auto-Schalter.** Wer den automatischen Abgleich
+  abgeschaltet hat, kann trotzdem von Hand synchronisieren — vorher war der Knopf in genau
+  dieser Konfiguration wirkungslos, und zwar abhängig davon, ob ein *anderes* Konto aktiv war
+- Die Ansicht folgt Änderungen an den Konten: Anlegen, Umbenennen, Löschen und das Umlegen des
+  Sync-Schalters zeichnen sie neu, während sie offen steht
+- Fehlermeldungen ziehen dieselben Textschlüssel wie die Benachrichtigungen; ein unbekannter
+  Code aus einer handgeschriebenen `data.json` zeigt keinen rohen Schlüssel mehr
+
 ## [0.1.0] — 2026-09-01
 
 ### M3b — Vault-Kommandos (2026-09-01)
