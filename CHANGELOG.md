@@ -6,6 +6,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### M3b — Vault-Kommandos (2026-09-01)
+- Vier Kommandos auf einer Mail-Notiz, jedes mit Vorschau vor dem Schreiben:
+  - `mail.rerender` — Nachrichtenabschnitt und abgeleitete Frontmatter-Felder aus der lokalen
+    `.eml` neu bauen. Der einzige Weg zu `allowUpdate: true` außerhalb des Imports; `mail_source`
+    und `mail_state` werden dabei aus der Notiz übernommen, nie neu bestimmt, und die `.eml` muss
+    dieselbe `mail_id` tragen wie die Notiz (`eml-mismatch`, sonst überschriebe eine falsch
+    benannte Datei die Notiz mit fremdem Inhalt)
+- `mail.relink` — Message-IDs in `in_reply_to`/`references` zu Wikilinks, wo die Zielnotiz
+    existiert; nur vorwärts, ein bestehender Wikilink wird nie zurückverwandelt. Ändert
+    ausschließlich Frontmatter-Zeilen in-place (`mergeFrontmatterOnly`), Kommentare und
+    Block-Skalare bleiben byte-identisch
+- `mail.extractAttachment` — eine Anlage aus der `.eml` in den Anhangordner, Link in den
+    freien Bereich der Notiz (nicht in die verwaltete Zone, dort überlebte er kein Re-Render)
+- `mail.replyExternal` — `mailto:` mit `Re:`-Betreff und `In-Reply-To`; eine Ersatz-ID
+    (`noid-…`) wird weggelassen statt erfunden
+- Deskriptor-Rahmen (`core/commands/`): Mini-JSON-Schema mit Validator, Registry mit
+  idempotenter Default-Befüllung, `executeCommandPlan` als einziger Schreibweg, geteilter
+  Busy-Guard mit dem Sync. `CommandProbe`/`CommandContext` getrennt, damit `checkCallback`
+  synchron bleibt; optionales `schemaFor(ctx)` macht die Anhangliste zum Dropdown
+- Schutz gegen verlorene Schreibvorgänge: der Plan merkt sich den Stand, aus dem er gebaut
+  wurde (`NotePlan.expectedContent`); ändert sich die Notiz, während die Vorschau offen steht,
+  wird übersprungen statt überschrieben — mit einer Meldung, die den Ausweg nennt
+- Fehlertexte für alle Kommando-Codes in EN und DE, abgesichert durch einen Paritätstest über
+  den echten Kommando-Satz mit compilerdurchgesetzter Vollständigkeit über `CommandErrorCode`
+
+### Behoben
+- **Zwei Anhänge mit gleichem Dateinamen teilten sich einen Schlüssel** im Byte-Speicher des
+  MIME-Parsers (`contentId ?? name`): die extrahierte Datei hätte den Namen des einen und den
+  Inhalt des anderen getragen, und der erste wäre unerreichbar gewesen. Jede Anlage hat jetzt
+  einen eindeutigen Schlüssel. Der Defekt lag seit M1 im Parser und war harmlos, bis M3b sein
+  erster Konsument wurde
+- Ein leeres Pflichtfeld kam durch die Schema-Validierung (`required` prüfte nur auf
+  `undefined`)
+- Ein Wurf zwischen Kommandopalette und Lesezugriff (gelöschte Notiz) wurde zur unbehandelten
+  Rejection — das Kommando tat sichtbar nichts; jetzt eine übersetzte Meldung
+- `unregister()` der calendar-notes-Brücke ruft die Instanz, die die Registrierung angenommen
+  hat, und fängt einen Wurf des Nachbarn ab, statt ihn aus `onunload()` entkommen zu lassen
+- Mehrzeiliges SMTP-Greeting (`220-`) ist jetzt getestet (Carry-over aus der M1-Nachlese)
+
 ### M3 — IMAP-Sync (2026-08-30)
 - IMAP-Client (`core/imap/client.ts`): Zustandsautomat CAPABILITY -> AUTHENTICATE PLAIN
   (Fallback LOGIN) -> EXAMINE (read-only) -> UID SEARCH ALL -> UID FETCH -> LOGOUT, nur
