@@ -27,18 +27,22 @@ export async function parseEml(bytes: Uint8Array): Promise<ParsedMail> {
   const id = normalizeMessageId(messageIdRaw) ?? fallbackId(dateIso, from?.address ?? "", e.subject ?? "");
   const attachments: MailAttachmentMeta[] = [];
   const attachmentData = new Map<string, Uint8Array>();
-  for (const a of e.attachments) {
+  e.attachments.forEach((a, index) => {
     const data = bytesOf(a);
     const contentId = a.contentId ? (normalizeMessageId(a.contentId) ?? undefined) : undefined;
     const inline = a.disposition === "inline" || a.related === true || !!contentId;
-    const name = a.filename ?? (contentId ? `inline-${contentId}` : `attachment-${attachments.length + 1}`);
+    const name = a.filename ?? (contentId ? `inline-${contentId}` : `attachment-${index + 1}`);
     // TNEF (Exchange): Typ vereinheitlichen, damit Renderer/UI ihn erkennen; nie auspacken (Spec § 2.2)
     const type = a.mimeType === "application/ms-tnef" || name.toLowerCase() === "winmail.dat" ? "application/ms-tnef" : a.mimeType;
-    const meta: MailAttachmentMeta = { name, type, size: data.byteLength, inline };
+    // Der Index macht den Key eindeutig, auch wenn zwei Anhaenge denselben Namen tragen —
+    // ohne ihn ueberschriebe der zweite `set()` die Bytes des ersten (M3b-Nachlese, Fund 1).
+    // contentId bleibt der Key, wo vorhanden, weil Inline-Bilder darueber nachgeschlagen werden.
+    const key = contentId ?? `${index}:${name}`;
+    const meta: MailAttachmentMeta = { name, type, size: data.byteLength, inline, key };
     if (contentId) meta.contentId = contentId;
     attachments.push(meta);
-    attachmentData.set(contentId ?? name, data);
-  }
+    attachmentData.set(key, data);
+  });
   return {
     id,
     messageIdRaw,

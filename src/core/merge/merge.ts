@@ -169,3 +169,29 @@ export function mergeNote(input: MergeInput): MergeResult {
   }
   return { ok: true, content: candidate, changed: true, zoneHash: zoneHash(input.block) };
 }
+
+/**
+ * Aendert AUSSCHLIESSLICH bestehende Frontmatter-Keys und laesst den Body Byte fuer Byte
+ * stehen — auch die verwaltete Zone. Fuer Kommandos, die am Inhalt der Nachricht nichts zu
+ * suchen haben (mail.relink). Bewusst OHNE Zone-Hash-Pruefung: wer die Zone nicht anfasst,
+ * darf an einer von Hand geaenderten Zone nicht scheitern.
+ *
+ * Keys, die im Frontmatter nicht vorkommen, werden ignoriert statt angelegt: ein Kommando,
+ * das `in_reply_to` setzt, soll es dort, wo es die Mail nie gab, auch nicht erfinden.
+ */
+export function mergeFrontmatterOnly(input: { existing: string; values: Record<string, FmVal> }):
+  | { ok: true; content: string; changed: boolean }
+  | { ok: false; code: MergeErrorCode } {
+  const doc = readFm(input.existing);
+  if (!doc) {
+    if (input.existing.startsWith("---")) return { ok: false, code: "frontmatter-unparseable" };
+    return { ok: true, content: input.existing, changed: false };
+  }
+  const managed = Object.keys(input.values).filter((k) => doc.entries.has(k));
+  if (managed.length === 0) return { ok: true, content: input.existing, changed: false };
+  const raw = rewriteFm(doc, input.values, managed, new Set());
+  if (raw === null) return { ok: false, code: "frontmatter-unparseable" };
+  const body = input.existing.slice(doc.open.length + doc.raw.length + doc.close.length);
+  const content = `${doc.open}${raw}${doc.close}${body}`;
+  return { ok: true, content, changed: content !== input.existing };
+}

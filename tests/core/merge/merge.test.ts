@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeNote, newNote } from "../../../src/core/merge/merge";
+import { mergeFrontmatterOnly, mergeNote, newNote } from "../../../src/core/merge/merge";
 import { zoneHash } from "../../../src/core/merge/fences";
 
 const derived = { mail_id: "a@x", mail_source: "s", mail_state: "live", mail_synced: "2026-08-23T15:00:00+02:00", title: "Hi", from: "a@x" };
@@ -152,5 +152,63 @@ describe("mergeNote: volatileKeys", () => {
     if (!r.ok) return;
     expect(r.changed).toBe(true);
     expect(r.content).toContain("mail_synced: 2026-08-23T16:30:00+02:00");
+  });
+});
+
+describe("mergeFrontmatterOnly", () => {
+  const note = [
+    "---",
+    "mail_id: a@x",
+    "in_reply_to: b@x",
+    "references:",
+    "  - c@x",
+    "eigenes: bleibt",
+    "# ein Kommentar",
+    "---",
+    "## Notizen",
+    "",
+    "%% mailstone:begin %%",
+    "## Nachricht",
+    "Hallo",
+    "%% mailstone:end %%",
+    "",
+  ].join("\n");
+
+  it("ersetzt einen einzelnen Key und laesst den Rest byte-identisch", () => {
+    const r = mergeFrontmatterOnly({ existing: note, values: { in_reply_to: "[[Mail/2026/b]]" } });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    if (!r.ok) return;
+    expect(r.content).toContain("in_reply_to: \"[[Mail/2026/b]]\"");
+    expect(r.content).toContain("eigenes: bleibt");
+    expect(r.content).toContain("# ein Kommentar");
+    expect(r.content).toContain("%% mailstone:begin %%");
+  });
+
+  it("laesst die Zone unangetastet", () => {
+    const r = mergeFrontmatterOnly({ existing: note, values: { in_reply_to: "[[Mail/2026/b]]" } });
+    expect(r.ok && r.content.slice(r.content.indexOf("## Notizen"))).toBe(note.slice(note.indexOf("## Notizen")));
+  });
+
+  it("legt keinen Key an, den es im Frontmatter nicht gibt", () => {
+    const r = mergeFrontmatterOnly({ existing: note, values: { cc: ["x@y"] } });
+    expect(r).toMatchObject({ ok: true, changed: false });
+    expect(r.ok && r.content).toBe(note);
+  });
+
+  it("meldet changed: false, wenn der Wert schon stimmt", () => {
+    expect(mergeFrontmatterOnly({ existing: note, values: { in_reply_to: "b@x" } })).toMatchObject({ ok: true, changed: false });
+  });
+
+  it("meldet frontmatter-unparseable bei einem Block-Skalar", () => {
+    const mitBlock = "---\nin_reply_to: |\n  mehrzeilig\n---\ntext";
+    expect(mergeFrontmatterOnly({ existing: mitBlock, values: { in_reply_to: "x" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("meldet frontmatter-unparseable, wenn der Block nicht geschlossen ist", () => {
+    expect(mergeFrontmatterOnly({ existing: "---\nmail_id: a@x\nohne Ende", values: { mail_id: "b" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("laesst eine Notiz ohne Frontmatter unveraendert", () => {
+    expect(mergeFrontmatterOnly({ existing: "nur Text", values: { mail_id: "a" } })).toEqual({ ok: true, content: "nur Text", changed: false });
   });
 });

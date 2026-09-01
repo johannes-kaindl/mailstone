@@ -94,5 +94,20 @@ export function makeApp(seed?: { path: string; frontmatter: Record<string, FmVal
     e.content = `${serializeFrontmatter(fm, order)}${parsed.body}`;
   };
 
+  // Obsidian legt Anhaenge in den konfigurierten Anhangordner und weicht Kollisionen mit
+  // einem Zaehler aus. Async wie das Original — genau deshalb loest command-flow die Pfade
+  // vorab auf, statt sie im Plan zu berechnen.
+  app.fileManager.getAvailablePathForAttachment = async (name: string): Promise<string> => {
+    const base = `Anhaenge/${name}`;
+    if (!files.has(base)) return base;
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : "";
+    for (let n = 1; ; n++) {
+      const candidate = `Anhaenge/${stem} ${n}${ext}`;
+      if (!files.has(candidate)) return candidate;
+    }
+  };
+
   return Object.assign(app, { __files: files });
 }

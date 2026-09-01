@@ -73,21 +73,30 @@ export interface CalendarNotesBridge {
 }
 
 /**
- * `tryRegister()` ist idempotent (mehrfacher Aufruf registriert nicht doppelt), `unregister()`
- * liest die API erneut frisch — der Nachbar kann inzwischen entladen worden sein, dann ist es
- * ein No-op statt einer Ausnahme.
+ * `tryRegister()` ist idempotent (mehrfacher Aufruf registriert nicht doppelt). `unregister()`
+ * spricht bewusst nicht die aktuell im Plugin-Register stehende API an, sondern `lastApi` — die
+ * Instanz, die die Registrierung seinerzeit angenommen hat; ohne gemerkte Instanz (nie
+ * registriert, oder bereits als unregistriert erkannt) ist es ein No-op statt einer Ausnahme.
  *
  * Der Nachbar ist fremder Code an einer nicht-oeffentlichen Grenze (app.plugins.plugins) — zwei
  * Haertungen dagegen: (1) `registerMailTransport` kann ablehnen ({ error: ... }) oder werfen;
  * beides darf nicht aus onload() propagieren, also try/catch UND Form-Pruefung des Ergebnisses
- * statt Erfolg blind anzunehmen. (2) Ein Plugin-Reload des Nachbarn ersetzt dessen `api`-Objekt
+ * statt Erfolg blind anzunehmen. Symmetrisch dazu: `unregisterMailTransport` laeuft aus
+ * `onunload()` und ist ebenfalls try/catch-geschuetzt — die aufgerufene Instanz kann dort bereits
+ * abgebaut sein (Nachbar komplett entladen, nicht nur neu geladen), und ein Wurf darf Obsidians
+ * Unload-Sequenz nicht abschneiden. (2) Ein Plugin-Reload des Nachbarn ersetzt dessen `api`-Objekt
  * durch eine neue Instanz, ohne dass mailstone das mitbekommt — `lastApi` haelt die Identitaet
  * fest, gegen die zuletzt registriert wurde; weicht ein frischer Read davon ab, gilt das als
  * unregistriert (die alte Registrierung lebt nur noch im entladenen Nachbarn, nicht mehr hier).
+ * Dieselbe gemerkte Identitaet ist es auch, mit der `unregister()` spricht statt frisch zu
+ * lesen: ein frischer Read koennte nach einem Reload des Nachbarn eine andere, fremde Instanz
+ * liefern, und der Aufruf mit unserer eigenen ID liefe dort ins Leere — harmlos, aber beim
+ * Lesen irrefuehrend, weil es aussieht, als spraeche mailstone noch mit der Instanz, bei der es
+ * registriert war.
  */
 export function createCalendarNotesBridge(app: App, transport: MailTransport): CalendarNotesBridge {
   let registered = false;
-  let lastApi: unknown = null;
+  let lastApi: CalendarNotesApiSubset | null = null;
 
   function isStillRegistered(): boolean {
     if (!registered) return false;
@@ -118,11 +127,21 @@ export function createCalendarNotesBridge(app: App, transport: MailTransport): C
     },
     unregister() {
       if (!registered) return;
-      const api = readCalendarNotesApi(app);
+      // lastApi statt frischem Read — s. Doc-Kommentar oben.
+      const api = lastApi;
       registered = false;
       lastApi = null;
       if (!api) return;
-      api.unregisterMailTransport(transport.id);
+      // Wie bei registerMailTransport (oben): fremder Code an einer nicht-oeffentlichen
+      // Grenze, hier zusaetzlich auf einer moeglicherweise bereits abgebauten Nachbar-Instanz
+      // (Nachbar komplett entladen, nicht nur neu geladen). Ob der Aufruf wirft, haengt von
+      // dessen eigenem onunload()-Innenleben ab, das dieses Modul nicht sehen kann — ein
+      // Wurf aus onunload() darf Obsidians Unload-Sequenz nicht abschneiden.
+      try {
+        api.unregisterMailTransport(transport.id);
+      } catch {
+        // absichtlich leer — s. Kommentar oben.
+      }
     },
     get registered() {
       return isStillRegistered();

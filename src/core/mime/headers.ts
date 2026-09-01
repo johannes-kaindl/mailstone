@@ -83,3 +83,12 @@ export function foldHeader(name: string, value: string): string {
 export function fallbackId(date: string, from: string, subject: string): string {
   return `noid-${sha256HexUtf8(`${date}|${from}|${subject}`).slice(0, 32)}`;
 }
+
+/** Umkehrung zu formatAddress: die reine Adresse aus "Name <adresse>" oder aus einer
+ *  nackten Adresse. null, wenn nichts Adressartiges drinsteht — der Aufrufer entscheidet,
+ *  ob das ein Fehler ist. */
+export function addressOf(formatted: string): string | null {
+  const m = /<([^<>]+)>\s*$/.exec(formatted.trim());
+  const candidate = (m?.[1] ?? formatted).trim();
+  return candidate.includes("@") && !candidate.includes(" ") ? candidate : null;
+}

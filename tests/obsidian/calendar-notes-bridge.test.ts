@@ -150,7 +150,7 @@ describe("createCalendarNotesBridge", () => {
     expect(bridge.registered).toBe(false);
   });
 
-  it("unregister() nach Entladen des Nachbarn wirft nicht und setzt registered zurueck", () => {
+  it("unregister() nach Entladen des Nachbarn wirft nicht, ruft aber weiterhin die gemerkte Instanz", () => {
     const registerMailTransport = vi.fn().mockReturnValue({ ok: true });
     const unregisterMailTransport = vi.fn();
     const app: { plugins: { plugins: Record<string, { api?: unknown }> } } = {
@@ -159,12 +159,41 @@ describe("createCalendarNotesBridge", () => {
     const bridge = createCalendarNotesBridge(app as unknown as import("obsidian").App, transport);
     expect(bridge.tryRegister()).toBe(true);
 
-    // Nachbar wird entladen: api verschwindet.
+    // Nachbar wird entladen: api verschwindet aus dem Plugin-Register. unregister() spricht
+    // trotzdem die gemerkte Instanz an (die bei der Registrierung angenommen hat), nicht einen
+    // frischen (jetzt leeren) Read — s. calendar-notes-bridge.ts.
     delete app.plugins.plugins["calendar-notes"];
 
     expect(() => bridge.unregister()).not.toThrow();
     expect(bridge.registered).toBe(false);
-    expect(unregisterMailTransport).not.toHaveBeenCalled();
+    expect(unregisterMailTransport).toHaveBeenCalledWith("mailstone");
+  });
+
+  it("unregister() nach einem Reload des Nachbarn spricht die urspruengliche Instanz an, nicht die neue", () => {
+    const firstRegister = vi.fn().mockReturnValue({ ok: true });
+    const firstUnregister = vi.fn();
+    const secondRegister = vi.fn().mockReturnValue({ ok: true });
+    const secondUnregister = vi.fn();
+    const app: { plugins: { plugins: Record<string, { api?: unknown }> } } = {
+      plugins: {
+        plugins: { "calendar-notes": { api: { version: 1, registerMailTransport: firstRegister, unregisterMailTransport: firstUnregister } } },
+      },
+    };
+    const bridge = createCalendarNotesBridge(app as unknown as import("obsidian").App, transport);
+    expect(bridge.tryRegister()).toBe(true);
+
+    // Der Nachbar laedt neu: gleiche Form, aber eine frische Objekt-Instanz — mailstone hat
+    // davon nichts mitbekommen (kein unregister() dazwischen).
+    app.plugins.plugins["calendar-notes"] = {
+      api: { version: 1, registerMailTransport: secondRegister, unregisterMailTransport: secondUnregister },
+    };
+
+    bridge.unregister();
+
+    // Angesprochen wird die Instanz, bei der tatsaechlich registriert wurde (die alte) — nicht
+    // die neue, fremde Instanz, die zufaellig unter demselben Plugin-Key steht.
+    expect(firstUnregister).toHaveBeenCalledWith("mailstone");
+    expect(secondUnregister).not.toHaveBeenCalled();
   });
 
   it("unregister() ruft unregisterMailTransport wenn der Nachbar noch da ist", () => {
@@ -174,6 +203,20 @@ describe("createCalendarNotesBridge", () => {
     const bridge = createCalendarNotesBridge(app, transport);
     bridge.tryRegister();
     bridge.unregister();
+    expect(unregisterMailTransport).toHaveBeenCalledWith("mailstone");
+    expect(bridge.registered).toBe(false);
+  });
+
+  it("unregister() faengt eine werfende unregisterMailTransport ab und crasht nicht (onunload darf nicht abbrechen)", () => {
+    const registerMailTransport = vi.fn().mockReturnValue({ ok: true });
+    const unregisterMailTransport = vi.fn().mockImplementation(() => {
+      throw new Error("Nachbar bereits abgebaut");
+    });
+    const app = makeApp({ version: 1, registerMailTransport, unregisterMailTransport });
+    const bridge = createCalendarNotesBridge(app, transport);
+    bridge.tryRegister();
+
+    expect(() => bridge.unregister()).not.toThrow();
     expect(unregisterMailTransport).toHaveBeenCalledWith("mailstone");
     expect(bridge.registered).toBe(false);
   });

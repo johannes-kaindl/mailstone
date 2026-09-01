@@ -43,6 +43,37 @@ describe("vaultPlanExecutor", () => {
     expect(r.errors[0]?.plan.path).toBe("Mail/kaputt.md");
     expect(await app.vault.adapter.exists("Mail/gut.md")).toBe(true);
   });
+  it("expectedContent gesetzt und die Datei stimmt noch ueberein → schreibt", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/x.md", "alt");
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const r = await ex.execute([{ kind: "update", path: "Mail/x.md", content: "neu", mailId: "a@x", zoneHash: "h", expectedContent: "alt" }]);
+    expect(r.updated).toBe(1);
+    expect(r.skipped).toEqual([]);
+    expect(await app.vault.adapter.read("Mail/x.md")).toBe("neu");
+  });
+
+  it("expectedContent gesetzt, aber die Datei hat sich zwischenzeitlich geaendert → skip statt Ueberschreiben (Fund 2, M3b-Nachlese)", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/x.md", "zwischenzeitlich geaendert");
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const r = await ex.execute([{ kind: "update", path: "Mail/x.md", content: "neu", mailId: "a@x", zoneHash: "h", expectedContent: "alter Stand, aus dem der Plan berechnet wurde" }]);
+    expect(r.updated).toBe(0);
+    expect(r.skipped).toHaveLength(1);
+    expect(r.skipped[0]?.kind === "skip" && r.skipped[0].reason).toBe("content-changed");
+    // Nichts wurde ueberschrieben — die zwischenzeitliche Aenderung bleibt stehen.
+    expect(await app.vault.adapter.read("Mail/x.md")).toBe("zwischenzeitlich geaendert");
+  });
+
+  it("kein expectedContent (Sync-/Import-Pfad) → schreibt wie bisher, ohne zu lesen", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/x.md", "irgendwas anderes als der Plan erwartet");
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const r = await ex.execute([{ kind: "update", path: "Mail/x.md", content: "neu", mailId: "a@x", zoneHash: "h" }]);
+    expect(r.updated).toBe(1);
+    expect(await app.vault.adapter.read("Mail/x.md")).toBe("neu");
+  });
+
   it("nicht auffindbares Ziel → skip mit reason missing-target", async () => {
     const app = makeApp();
     const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });

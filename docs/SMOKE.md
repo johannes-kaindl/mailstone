@@ -145,3 +145,74 @@ gebauter MIME-Encoder üblicherweise scheitert.
 (Google zeigt bei `method=REQUEST` normalerweise eine Antwort-Karte) — geprüft wurde die
 Authentifizierung, nicht die Darstellung. Und der `LOGIN`-Fallback bleibt weiter ungeprüft, weil
 dieser Server `SASL-IR` kann (s. M3-Live-Probe).
+
+---
+
+## M3b-Live-Probe — die vier Vault-Kommandos (2026-09-01)
+
+Gefahren gegen ein laufendes Obsidian **1.13.7** per CDP, Staging-Vault `mailstone`, Build vom
+Branch `feat/m3b-mail-commands` (`66d599d`, deployt 16:42). Obsidian lief zu dem Zeitpunkt nicht;
+gestartet mit `--remote-debugging-port=9222`, CDP-Lock gehalten (`--exclusive all`), zwei fremde
+Vault-Fenster (`10_Pallas`, `80_Arbeit`) blieben unberührt. Der Treiber war einmalig
+(Scratchpad, nicht getrackt) — ein getrackter GUI-Smoke ist M4.
+
+| # | Prüfpunkt | Ergebnis |
+|---|---|---|
+| P0 | Plugin lädt, Kommandos registriert | ✅ mailstone 0.0.1, 6 Mail-Notizen im Vault |
+| P1 | Vier Kommandos auf einer Mail-Notiz **mit** Anhängen | ✅ `extractAttachment, relink, replyExternal, rerender` |
+| P1b | Drei auf einer Notiz **ohne** Anhänge | ✅ `extractAttachment` fällt zu Recht weg (`appliesTo` liest `attachments`) |
+| P2 | Keines auf einer fremden Notiz (ohne `mail_id`) | ✅ keines anwendbar |
+| P3 | `mail.rerender` ohne Änderung | ✅ keine Vorschau, keine Schreiboperation, „Nothing to change." |
+| P4 | Eigener Text außerhalb der Zone überlebt ein Re-Render | ✅ Vorschau mit 1 Diff-Zeile, eigene Zeile steht danach unverändert |
+| P5 | Von Hand geänderte Zone | ✅ `zone-edited`, Datei byte-identisch, erklärende Meldung |
+| P6 | `mail.relink` macht aus der Message-ID einen Wikilink | ✅ `alt-001@mail.example.org` → `[[Mail/2026/2026-08-19-1000-termin]]` |
+| P7 | `.eml` bleibt nach der Extraktion Treuefläche | ✅ 785 Bytes unverändert, beide Anhang-Nutzlasten drin |
+| P8 | `mail.replyExternal` baut die `mailto:`-URL | ✅ `mailto:erika@example.org?subject=Re%3A%20Termin&in-reply-to=%3Calt-001%40mail.example.org%3E` |
+| P9 | Kommando bei belegtem Busy-Guard | ✅ Vorschau erscheint, das **Schreiben** wird abgelehnt: „A synchronisation or another command is running." |
+| P10a | Dropdown unterscheidet zwei gleichnamige Anhänge | ✅ `rechnung.pdf` / `rechnung.pdf (2)` |
+| P10b | Die extrahierte Datei trägt den Inhalt des **gewählten** Anhangs | ✅ „rechnung.pdf (2)" gewählt → Datei enthält `RECHNUNG ZWEI` |
+| P10c | Link steht in der Notiz, **vor** der verwalteten Zone | ✅ |
+| P11 | Fremdschreiber während der offenen Vorschau | ✅ übersprungen statt überschrieben, fremde Zeile überlebt |
+| P12 | Notiz verschwindet mitten im Ablauf | ✅ übersetzte Meldung statt stillem Nichts |
+| P13 | Keine „0 Notizen geschrieben"-Meldung nach `mail.replyExternal` | ✅ keine Meldung |
+
+### Die drei Prüfpunkte, die es ohne den Abschluss-Review nicht gäbe
+
+**P10 belegt den Critical.** Der MIME-Parser keyte seinen Byte-Speicher mit `contentId ?? name`;
+zwei nicht-inline Anhänge gleichen Namens teilten sich einen Eintrag. `find` lieferte die
+Metadaten des ersten, `get` die **Bytes des zweiten** — die extrahierte Datei hätte den Namen des
+einen und den Inhalt des anderen getragen, ohne Fehlermeldung, und der erste wäre unerreichbar
+gewesen. Der Defekt lag seit M1 im Parser und war harmlos, weil M3b sein erster Konsument ist.
+Die Fixture (`Import/dup-attachments.eml`, zwei `rechnung.pdf` mit unterscheidbarem Inhalt) liegt
+im Staging-Vault und gehört in jeden künftigen Lauf — ein synthetisches Ein-Anhang-Fixture kann
+diesen Fall nie zeigen.
+
+**P11 belegt den Snapshot-Schutz.** Der Kommando-Plan entsteht **vor** den Modalen, der Busy-Guard
+greift aber erst beim Schreiben; ein Sync-Tick, der während der offenen Vorschau durchläuft, wäre
+sonst überschrieben worden. Gemessen wurde nicht mit einem echten Sync-Tick, sondern mit einem
+**Fremdschreiber zur selben Stelle** — das ist dieselbe Ursache ohne Zeitabhängigkeit und damit die
+belastbarere Probe. Die Meldung nennt den Grund und den Ausweg: „1 note(s) were skipped: they
+changed while the preview was open, so nothing was overwritten. Run the command again if you still
+want it applied."
+
+**P12 belegt den Fehlerpfad.** Verschwindet die Notiz zwischen Palette und Lesezugriff, endete das
+Kommando vorher in einer unbehandelten Rejection — sichtbar tat es nichts.
+
+### Zwei Befunde über die Probe selbst, nicht über den Code
+
+1. **P1 schlug zuerst fehl, und der Prüfpunkt war schuld.** „Vier Kommandos auf einer Mail-Notiz"
+   gilt nur für eine Notiz **mit** Anhängen; `mail.extractAttachment` blendet sich über das
+   Frontmatter-Feld `attachments` korrekt aus. Der Prüfpunkt ist entsprechend zweigeteilt.
+2. **P9 und P11 maßen im ersten Anlauf nichts.** Die Zielnotiz steckte noch im `zone-edited`-Zustand
+   aus P5, den der Lauf nicht zurückgesetzt hatte — beide Kommandos brachen also ab, bevor Guard
+   oder Fremdschreiber überhaupt zum Tragen kamen, und die grüne Meldung sah wie ein Ergebnis aus.
+   Seither steht vor beiden eine **Vorprobe**, die prüft, ob sich die Notiz überhaupt rendern lässt;
+   ohne sie hätte der Lauf zwei Zusicherungen als geprüft geführt, die er nie berührt hat.
+
+### Was diese Probe nicht misst
+
+Kein echter Sync-Lauf gegen das Postfach (P11 ersetzt ihn durch den Fremdschreiber, P9 durch das
+direkte Belegen des Guards). Ob `mail.replyExternal` tatsächlich ein Mailprogramm öffnet, wurde
+nicht geprüft — `window.open` war abgefangen, um die URL zu messen; das Öffnen selbst ist
+Betriebssystemsache. Die Oberfläche lief auf Englisch (`language: auto`); die deutschen Texte deckt
+der i18n-Paritätstest ab, nicht dieser Lauf.

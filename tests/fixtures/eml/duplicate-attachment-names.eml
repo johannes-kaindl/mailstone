@@ -1,0 +1,25 @@
+From: erika@example.org
+To: max@example.net
+Subject: Zwei Rechnungen
+Date: Tue, 19 Aug 2026 12:00:00 +0200
+Message-ID: <duplicate-attachments-001@mail.example.org>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="dup"
+
+--dup
+Content-Type: text/plain; charset=UTF-8
+
+Anbei zwei Rechnungen.
+--dup
+Content-Type: application/pdf; name="invoice.pdf"
+Content-Disposition: attachment; filename="invoice.pdf"
+Content-Transfer-Encoding: base64
+
+ZXJzdGU=
+--dup
+Content-Type: application/pdf; name="invoice.pdf"
+Content-Disposition: attachment; filename="invoice.pdf"
+Content-Transfer-Encoding: base64
+
+endlaXRl
+--dup--
