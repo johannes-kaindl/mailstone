@@ -30,3 +30,26 @@
 .mailstone-cockpit-status.is-checking { color: var(--text-muted); }
 .mailstone-cockpit-status.is-checking svg { animation: mailstone-spin 1s linear infinite; }
 @keyframes mailstone-spin { to { transform: rotate(360deg); } }
+
+/* Inbox — Listen-Zeile (UI-STANDARD §8), gleicher Aufbau wie Cockpit */
+.mailstone-inbox-head { display: flex; align-items: center; gap: var(--size-4-2); flex-wrap: wrap; }
+.mailstone-inbox-head h3 { margin: 0; flex: 1; font-size: var(--font-ui-medium); }
+.mailstone-inbox-row { padding: var(--size-4-2) 0; border-bottom: 1px solid var(--background-modifier-border); }
+.mailstone-inbox-row.is-unread .mailstone-inbox-subject { font-weight: var(--font-semibold); }
+.mailstone-inbox-row-head { display: flex; align-items: center; gap: var(--size-4-1); }
+.mailstone-inbox-subject { flex: 1; font-size: var(--font-ui-small); overflow-wrap: anywhere; }
+.mailstone-inbox-meta { display: flex; justify-content: space-between; gap: var(--size-4-2);
+  color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.mailstone-inbox-actions { display: flex; gap: var(--size-4-1); margin-top: var(--size-4-1); }
+.mailstone-inbox-empty { text-align: center; color: var(--text-muted); padding: var(--size-4-4) 0; }
+.mailstone-inbox-error { display: flex; align-items: center; gap: var(--size-4-1);
+  color: var(--text-error); font-size: var(--font-ui-small); }
+.mailstone-inbox-badge { color: var(--text-success); display: inline-flex; }
+
+/* Status-Indikator: dieselbe Vokabel wie beim Cockpit — Form UND Farbe UND Klasse UND
+ * aria-label (WCAG 1.4.1). Der Brief listet fuer diesen Baustein keine Farbregeln; ohne sie
+ * bliebe is-error/is-checking optisch wirkungslos, deshalb ergaenzt wie beim Cockpit-Vorbild. */
+.mailstone-inbox-status { display: inline-flex; align-items: center; }
+.mailstone-inbox-status.is-error { color: var(--text-error); }
+.mailstone-inbox-status.is-checking { color: var(--text-muted); }
+.mailstone-inbox-status.is-checking svg { animation: mailstone-spin 1s linear infinite; }
