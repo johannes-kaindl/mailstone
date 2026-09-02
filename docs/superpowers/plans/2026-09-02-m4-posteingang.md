@@ -15,7 +15,7 @@
 - **`src/core/**` ist obsidian-, DOM- und node-frei.** `npm run check:pure` verbietet dort zusätzlich `process` und `window`. Sockets, Dateisystem und Secrets werden aus `src/obsidian/**` hineingereicht.
 - **Volles Gate ist `npm run gate`** — Lint, drei Typprüfungen, Unit, **Integration**, `check:pure`, Build und Bundle-Test. `npm test` allein sieht die Integrationstests nicht.
 - **Kit-Module nur über `npm run kit:sync`** (Herkunfts-Header + `VENDOR.json`), nie von Hand editieren. Vendor-Stand ist obsidian-kit `0.28.0`.
-- **Lesen setzt nie `\Seen`:** `EXAMINE` + `BODY.PEEK` auf allen lesenden Pfaden. Schreibend ist genau ein Pfad (Task 4).
+- **Lesen setzt nie `\Seen`:** `EXAMINE` + `BODY.PEEK` auf allen lesenden Pfaden. Schreibend ist genau ein Pfad: `core/inbox/actions.ts` (Task 5).
 - **Alle sichtbaren Texte** kommen aus `src/i18n/strings.ts` (englischer Wert + Key), nie als Literal in der UI.
 - **Kommentare und Bezeichner in `.ts`-Dateien schreiben Umlaute als `ae`/`oe`/`ue`** — so hält es das ganze Repo (`uebernommen`, `Rueckkanal`, `gehoert`). In `.md` stehen echte Umlaute.
 - **Ein einziger `registerView`-Typ** (`mailstone-cockpit`, UI-STANDARD § 1). Der Posteingang ist ein Tab, keine zweite View.
