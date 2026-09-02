@@ -49,7 +49,7 @@ Was mailstone daraus bauen muss: eine `multipart/alternative`-Mail mit `text/pla
 - IMAP/SMTP sind kein HTTP: `requestUrl` hilft nicht, es braucht `node:net`/`node:tls` → **desktop-only**, `Platform.isDesktop`-guarded `await import("node:tls")` ist die einzige Source-Form, die beide Store-Scan-Regeln besteht (REGISTRY § Node-Builtin desktop-only).
 - Zugangsdaten: `app.secretStorage` (Obsidian ≥ 1.11.4, OS-verschlüsselt, nicht vault-synct) statt `data.json` — calendar-notes macht das so, mailstone sollte gleichziehen, dann ist die Settings-UX identisch (`SecretComponent`).
 - Der Store misst Bauarten: Netzwerk + Credentials kosten nichts, `child_process` kostet immer die Bestnote — ein `msmtp`/`sendmail`-Aufruf wäre der falsche Weg.
-- Die Mail-Plattform ist mailbox.org (Spec in `/Users/Shared/40_Tools/mailbox-org/docs/superpowers/specs/`), Identitäten `mail@` (privat) und `kontakt@` (öffentlich) — `accounts()` sollte beide liefern können.
+- Die Mail-Plattform ist mailbox.org (Spec im Werkzeug-Verzeichnis des Maintainers, `40_Tools/mailbox-org/docs/superpowers/specs/`), Identitäten `mail@` (privat) und `kontakt@` (öffentlich) — `accounts()` sollte beide liefern können.
 
 ## Nachtrag 2026-08-23 — Pflichten aus dem mailbox.org-Betrieb
 

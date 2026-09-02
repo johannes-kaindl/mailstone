@@ -6,7 +6,7 @@
 
 Dieses Dokument beschreibt **kein Feature**. Es beschreibt das Postfach, gegen das `mailstone` laufen soll, und die Entscheidungen, die dort bereits getroffen und live sind. Wer eine davon bricht, baut gegen ein System, das der Nutzer täglich benutzt.
 
-> **Öffentlichkeitsgrenze:** `mailstone` wird Store-Software, dieses Repo wird öffentlich. Deshalb stehen hier **Muster statt Werte** — keine Domain, keine realen Adressen, keine Dienste-Kennungen. Die konkreten Werte liegen unter `/Users/Shared/40_Tools/mailbox-org/` und im Pallas-Vault (`60_Bereiche/30_System/mailbox-org/`). Beim Zitieren bitte die Grenze halten.
+> **Öffentlichkeitsgrenze:** `mailstone` wird Store-Software, dieses Repo wird öffentlich. Deshalb stehen hier **Muster statt Werte** — keine Domain, keine realen Adressen, keine Dienste-Kennungen. Die konkreten Werte liegen im Werkzeug-Verzeichnis des Maintainers (`40_Tools/mailbox-org/`) und im Pallas-Vault (`60_Bereiche/30_System/mailbox-org/`). Beim Zitieren bitte die Grenze halten.
 
 ---
 
@@ -164,7 +164,7 @@ Ein Nachtrag zu ③ kommt hierher, sobald er existiert.
 
 | Was | Wo |
 |---|---|
-| Design-Spec (alle Entscheidungen mit Begründung) | `/Users/Shared/40_Tools/mailbox-org/docs/superpowers/specs/2026-08-22-mailbox-org-setup-design.md` |
+| Design-Spec (alle Entscheidungen mit Begründung) | `40_Tools/mailbox-org/docs/superpowers/specs/2026-08-22-mailbox-org-setup-design.md` (maintainer-lokal) |
 | Endpunkte, Auth-Modell, DNS-Stand | Pallas-Vault → `60_Bereiche/30_System/mailbox-org/Technische-Referenz.md` |
 | Adressmodell und seine Grenzen | ebenda → `Adressen.md` |
 | Filterregelwerk (entsteht in ③) | ebenda → `Filterregeln.md` |
