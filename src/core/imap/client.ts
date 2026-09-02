@@ -175,6 +175,15 @@ function capabilitiesFrom(responses: ImapResponse[]): string[] {
   return out;
 }
 
+/** Capabilities aus einem Response-Code `[CAPABILITY a b c]` einer Tagged-Antwort. Viele Server
+ *  kuendigen MOVE/UIDPLUS erst NACH der Anmeldung an — wer nur die Prae-Auth-Liste liest, haelt
+ *  einen faehigen Server fuer unfaehig. */
+function capabilitiesFromCode(text: string): string[] {
+  const m = /\[CAPABILITY\s+([^\]]+)\]/i.exec(text);
+  if (!m || m[1] === undefined) return [];
+  return m[1].split(/\s+/).filter((v) => v.length > 0).map((v) => v.toUpperCase());
+}
+
 /** `* OK [UIDVALIDITY 42] …` — der Wert steckt im eckigen Klammer-Atom (siehe Tokenizer). */
 function bracketNumber(responses: ImapResponse[], key: string): number | null {
   for (const r of responses) {
@@ -267,7 +276,11 @@ async function runConnect(transport: SocketTransport, opts: ImapConnectOptions):
       : await conn.command(authTag, `LOGIN ${quoteArg(opts.username)} ${quoteArg(opts.password)}`, `LOGIN **** ****`);
     if (auth.status !== "OK") return { ok: false, code: "auth", detail: auth.text };
 
-    return { ok: true, session: makeSession(conn, capabilities) };
+    // Vereinigung aus drei Quellen: Prae-Auth-CAPABILITY, untagged `* CAPABILITY` der
+    // Auth-Antwort und deren Response-Code. Set statt Array-Suche, damit die Reihenfolge
+    // der Quellen keine Duplikate erzeugt.
+    const alle = new Set([...capabilities, ...capabilitiesFrom(auth.untagged), ...capabilitiesFromCode(auth.text)]);
+    return { ok: true, session: makeSession(conn, [...alle]) };
   } catch (e) {
     if (e instanceof NetError) return { ok: false, code: e.code, detail: e.message };
     throw e;

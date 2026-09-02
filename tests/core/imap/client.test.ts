@@ -95,6 +95,39 @@ describe("imapConnect", () => {
     const r = await imapConnect(fake, { ...base, tls: "none", allowInsecureAuth: true });
     expect(r.ok).toBe(true);
   });
+
+  it("nimmt Capabilities aus dem Response-Code der Auth-Antwort dazu", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] authenticated"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.session.capabilities).toContain("MOVE");
+    expect(r.session.capabilities).toContain("UIDPLUS");
+    expect(r.session.capabilities).toContain("AUTH=PLAIN");
+  });
+
+  it("nimmt Capabilities aus einer untagged Zeile nach der Anmeldung dazu", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["* CAPABILITY IMAP4rev1 MOVE", "a002 OK authenticated"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.session.capabilities).toContain("MOVE");
+  });
+
+  it("fuehrt keine Capability doppelt", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR MOVE", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK [CAPABILITY IMAP4rev1 MOVE] authenticated"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.session.capabilities.filter((c) => c === "MOVE")).toHaveLength(1);
+  });
 });
 
 describe("ImapSession", () => {
