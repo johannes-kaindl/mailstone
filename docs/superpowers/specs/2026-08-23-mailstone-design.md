@@ -185,6 +185,8 @@ Kein `mail.delete`, keine Massenaktion mit Vorauswahl. Kommandos öffnen mit `SE
 
 ⚠️ **Nachgetragen (2026-08-31):** `mail.replyExternal` stand in der Tabelle oben von Anfang an als Vault-Kommando, war aber nie einem Meilenstein zugeordnet — § 6 führt es unter M4. Tatsächlich gebaut wurde es in M3b, zusammen mit `mail.rerender`, `mail.relink` und `mail.extractAttachment` auf demselben Deskriptor-Rahmen. `mail.createTask` bleibt wie geplant M5.
 
+⚠️ **Überholt für `mail.adopt`/`mail.archive` (2026-09-02, M4-Design):** die beiden stehen **nicht** im Deskriptor-Rahmen. Er ist notiz-zentriert (`MailTarget` ist immer eine Notiz mit Pfad, `MailCommandPlan` trägt Vault-Schreibvorgänge) und existiert für Formular, Diff-Vorschau und Merge-Risiko — wovon eine Server-Aktion nichts hat. Sie leben stattdessen in `src/core/inbox/actions.ts` und sind Knöpfe in der Liste, keine Palette-Einträge. Ebenfalls überholt: der MOVE-Fallback `COPY` + `STORE \Deleted` + `EXPUNGE` — ein UID-loses `EXPUNGE` entfernt auch fremd markierte Nachrichten; ohne `MOVE` **und** `UIDPLUS` bricht die Aktion mit `unsupported` ab. Begründungen und die vollständige Abweichungsliste: `2026-09-02-m4-posteingang-design.md`.
+
 ### 3.3 Versand (`core/send`, `core/smtp`, `core/mime/build.ts`)
 
 ```ts
@@ -212,6 +214,8 @@ In `onload` nach dem Aufbau des Transports und erneut bei `layout-ready` sowie b
 ## 4. View und TaskNotes
 
 ### 4.1 Live-View (`src/obsidian/view/`, `ItemView`, Typ `mailstone-inbox`)
+
+⚠️ **Weitgehend überholt (2026-09-02, M4-Design — maßgeblich ist `2026-09-02-m4-posteingang-design.md`).** Drei Dinge sind hier anders gekommen: (1) Es gibt **einen** `registerView`-Typ, `mailstone-cockpit`, und der Posteingang ist ein zweiter **Tab** darin (UI-STANDARD § 1, Kit-Hub-Leiste) — kein eigener Typ `mailstone-inbox`. (2) Der Listen-Abruf nutzt `FLAGS` + `BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)]` statt `ENVELOPE`, aus denselben Gründen wie in § 3.1: kein Adresslisten-Parser, und der Badge-Abgleich läuft über **eine** Message-ID-Normalisierung statt über zwei Quellen. (3) V1 ist enger geschnitten — Vorschau-Panel, Anhang-Marker, „mehr laden" und die Pfeil-/Enter-Bedienung sind V1.1. Was unverändert gilt: die View schreibt nie eine Datei, Lesen setzt nie `\Seen`, Aktualisierung beim Öffnen/per Knopf/nach `synced`/`changed`, kein Ordnerbaum, keine Suche.
 
 Schlank in V1: Kontowahl (falls > 1), Liste des `folders.inbox` (`UID FETCH ENVELOPE FLAGS` der letzten *N* UIDs, Default 100, „mehr laden"), Zeile = Absender · Betreff · Datum · Anhang-Marker · Badge, falls bereits als Notiz im Vault (Index-Treffer); Vorschau-Panel lädt Body erst beim Öffnen (`BODY.PEEK[]`, kein `\Seen`), gerendert über denselben `render/`-Pfad (Markdown im `MarkdownRenderer`). Aktionen: Übernehmen, Archivieren, extern antworten, Aufgabe erstellen (falls TaskNotes), Notiz öffnen (falls vorhanden). Kein Ordnerbaum, keine Suche (V1.1: IMAP `SEARCH` serverseitig). Die View schreibt **nie** eine Datei. Aktualisierung: beim Öffnen, per Button und nach `synced`/`changed`. Fokus-/Tastaturbedienung: Pfeile + Enter, Kommandos auch über die Command-Palette bei fokussierter Zeile. UI-STANDARD: Obsidian-native Komponenten, Theme-CSS-Variablen, eine Frontend-Schicht.
 
