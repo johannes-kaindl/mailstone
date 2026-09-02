@@ -231,15 +231,43 @@ Callback von `addRibbonIcon`), das `onLayoutReady`-Gate, und alles Sichtbare —
 Pixel hat, wo es sitzt, ob eine Animation läuft. Für diese Punkte ist die Tabelle der
 **einzige** Beleg; der GUI-Smoke-Treiber aus M4 überführt sie später in einen getrackten Lauf.
 
+**Gefahren am 2026-09-02, Ergebnis: bestanden (10/10).** Obsidian **1.13.7**, Staging-Vault
+`mailstone`, deployter Stand byte-identisch mit dem frisch gebauten Repo-Stand (`shasum` beider
+`main.js` gleich) — der Punkt aus der Dach-Lesson „ein Smoke gegen den Produktiv-Vault misst den
+installierten Stand". Kein Neustart der App: der Debug-Port hörte bereits, das mailstone-Fenster
+wurde per `obsidian://open?vault=` als zusätzliches Fenster geöffnet, die **fünf fremden
+Vault-Fenster** (`10_Pallas`, `80_Arbeit`, `anysource-sideloader`, `koda-agent` und ein
+Einstellungen-Fenster) blieben unberührt. CDP-Lock durchgehend gehalten (`--exclusive focus`).
+Der Treiber war einmalig (Scratchpad, nicht getrackt) — der getrackte GUI-Smoke ist M4.
+
 | # | Prüfpunkt | Erwartung | Ergebnis |
 |---|---|---|---|
-| 1 | Sichtbarkeit beim Erstöffnen: rechte Seitenleiste einklappen, Obsidian neu laden, Ribbon-Symbol klicken | Leiste klappt auf, Cockpit ist sichtbar (kein 0×0-Blatt, REGISTRY §UI) | |
-| 2 | Knopf-Position: „Alle synchronisieren" per `getBoundingClientRect()` prüfen | Knopf steht im Inhalt und ist sichtbar, nicht nur im DOM vorhanden | |
-| 3 | Ribbon-Klick öffnet die Ansicht, startet **keinen** Lauf; Gegenprobe `sync-mailbox` in der Befehlspalette | Ribbon öffnet nur, Befehlspalette startet weiterhin einen Sync | |
-| 4 | Genau ein View-Type prüfen (Konsole/Sidebar-Menü) | Nur `mailstone-cockpit` taucht auf (UI-STANDARD §1) | |
-| 5 | Startup-Gate, beide Hälften: mit `openViewOnStartup: false` neu laden, dann in den Einstellungen einschalten und erneut neu laden | Ansicht bleibt zu (aus) / Ansicht öffnet sich (an) — beide Hälften gefahren | |
-| 6 | Register überlebt den Neustart: Sync fahren, Zähler merken, Obsidian neu laden, Cockpit öffnen, danach `data.json` ansehen | Derselbe Stand steht da; `runState` liegt neben `settings`, `zoneHashes`, `uidCache` | |
-| 7 | Kaputtes Register kippt den Start nicht: in `data.json` `"runState": "kaputt"` eintragen, neu laden | Plugin lädt, Cockpit zeigt „Noch nicht gelaufen", kein Fehler in der Konsole | |
-| 8 | Kommandoname in der Palette nachsehen | „Mailstone: Seitenleiste öffnen" — nicht „Mailstone: Mailstone" (Fix-Welle 1, Befund 9) | |
-| 9 | `openTabById` gegen die echte API: erst die Einstellungen öffnen und dort „Darstellung" wählen, schließen, dann im leeren Cockpit „Einstellungen öffnen" klicken | Einstellungen öffnen sich auf dem **Mailstone**-Tab, nicht auf „Darstellung" (Fix-Welle 1, Befund 5) | |
-| 10 | Lauf-Anzeige: Sync über den Kopfknopf starten und währenddessen hinsehen | In der **Kopfzeile** dreht genau ein `loader`-Symbol (CSS-Animation, per Unit-Test nicht messbar), die Kontozeilen behalten Zustand und Zähler; danach ist das Symbol weg (Fix-Welle 1, Befund 4) | |
+| 1 | Sichtbarkeit beim Erstöffnen: rechte Seitenleiste einklappen, Obsidian neu laden, Ribbon-Symbol klicken | Leiste klappt auf, Cockpit ist sichtbar (kein 0×0-Blatt, REGISTRY §UI) | ✅ Leiste klappt auf, Cockpit **300×730 px** — kein 0×0-Blatt |
+| 2 | Knopf-Position: „Alle synchronisieren" per `getBoundingClientRect()` prüfen | Knopf steht im Inhalt und ist sichtbar, nicht nur im DOM vorhanden | ✅ 146×30 px bei y=82, innerhalb der `view-content` (y 70–800) und im Viewport |
+| 3 | Ribbon-Klick öffnet die Ansicht, startet **keinen** Lauf; Gegenprobe `sync-mailbox` in der Befehlspalette | Ribbon öffnet nur, Befehlspalette startet weiterhin einen Sync | ✅ Ribbon: `runState.account.at` unverändert (…502341 → …502341), Leaves 0 → 1. Palette: …502341 → …634634, `ok: true` |
+| 4 | Genau ein View-Type prüfen (Konsole/Sidebar-Menü) | Nur `mailstone-cockpit` taucht auf (UI-STANDARD §1) | ✅ `viewByType` führt genau einen Treffer: `mailstone-cockpit` |
+| 5 | Startup-Gate, beide Hälften: mit `openViewOnStartup: false` neu laden, dann in den Einstellungen einschalten und erneut neu laden | Ansicht bleibt zu (aus) / Ansicht öffnet sich (an) — beide Hälften gefahren | ✅ **aus:** nach `onLayoutReady`+2 s null Leaves, Leiste bleibt eingeklappt · **an:** 1 Leaf, Leiste offen, 300×730 px |
+| 6 | Register überlebt den Neustart: Sync fahren, Zähler merken, Obsidian neu laden, Cockpit öffnen, danach `data.json` ansehen | Derselbe Stand steht da; `runState` liegt neben `settings`, `zoneHashes`, `uidCache` | ✅ „Zuletzt 06:36:42" vor und nach dem Neustart identisch; `data.json` führt `runState` neben `settings`, `zoneHashes`, `uidCache` |
+| 7 | Kaputtes Register kippt den Start nicht: in `data.json` `"runState": "kaputt"` eintragen, neu laden | Plugin lädt, Cockpit zeigt „Noch nicht gelaufen", kein Fehler in der Konsole | ✅ `runState` wird zu `{}`, Cockpit zeigt „Noch nicht gelaufen", **0** Fehler/Warnungen im Konsolen-Mitschnitt über den Neustart hinweg |
+| 8 | Kommandoname in der Palette nachsehen | „Mailstone: Seitenleiste öffnen" — nicht „Mailstone: Mailstone" (Fix-Welle 1, Befund 9) | ✅ „Mailstone: Seitenleiste öffnen" |
+| 9 | `openTabById` gegen die echte API: erst die Einstellungen öffnen und dort „Darstellung" wählen, schließen, dann im leeren Cockpit „Einstellungen öffnen" klicken | Einstellungen öffnen sich auf dem **Mailstone**-Tab, nicht auf „Darstellung" (Fix-Welle 1, Befund 5) | ✅ Einstellungen öffnen auf **Mailstone** (erstes Feld „Sprache"), obwohl zuvor „Darstellung" aktiv war |
+| 10 | Lauf-Anzeige: Sync über den Kopfknopf starten und währenddessen hinsehen | In der **Kopfzeile** dreht genau ein `loader`-Symbol (CSS-Animation, per Unit-Test nicht messbar), die Kontozeilen behalten Zustand und Zähler; danach ist das Symbol weg (Fix-Welle 1, Befund 4) | ✅ 48 Loader-Frames, **alle 48 in der Kopfzeile**, 0 in der Kontozeile, nie mehr als einer gleichzeitig, `animation-name: mailstone-spin`; Kontozeile behält `is-ok` und „Keine Änderungen"; danach ist das Symbol weg |
+
+### Zwei Sachen, die die Tabelle so nicht hergibt
+
+**Punkt 10 war ohne Sampler nicht messbar.** Ein Sync-Lauf gegen den leeren Allowlist-Ordner ist
+in **unter einer Sekunde** durch — eine Stichprobe „schau während des Laufs hin" trifft den
+Loader mit hoher Wahrscheinlichkeit nicht und meldet dann fälschlich, es drehe sich nichts.
+Gemessen wurde deshalb mit einem 20-ms-Sampler, der über den ganzen Lauf Position, Anzahl und
+`animation-name` jedes `svg` mitschreibt. Erst das trennt die drei Aussagen sauber, die der
+Prüfpunkt verlangt: **wo** (48/48 Frames in `.mailstone-cockpit-head`, 0 in der Kontozeile — genau
+der Befund aus Fix-Welle 1), **wie viele** (nie mehr als einer) und **ob es sich bewegt**
+(`mailstone-spin`, nicht nur ein statisches Icon mit Loader-Klasse).
+
+**Ein „reload" ist erst belegt, wenn der alte Renderer nachweislich weg ist.** Der erste Versuch
+meldete das Fenster nach einem einzigen Pollschritt als „wieder da" — schnell genug, um den
+Verdacht zu wecken, dass noch der *alte* Renderer antwortete und die Messung damit gar keinen
+Neustart gesehen hätte. Jeder der fünf Neustarts setzt seither vorher `window.__probeMarker` und
+gilt erst als vollzogen, wenn der Marker **weg** und das Plugin wieder geladen ist. Das ist
+dieselbe Trennung von Mutation und Wartephase, die die Dach-Doku für `pollUntil` beschreibt — hier
+für den Prüfling selbst.
