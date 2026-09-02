@@ -558,7 +558,7 @@ EOF
 - Consumes: `imapConnectWritable`, `ImapWriteSession`, `UidMoveResult` (Tasks 2–3); `BusyGuard` aus `src/core/sync/busy.ts`
 - Produces:
   ```ts
-  export type InboxActionCode = "busy" | "unsupported" | "gone" | "folder-missing" | "no-target-folder" | "connect" | "tls" | "auth" | "protocol" | "timeout" | "tls-required" | "no-secret";
+  export type InboxActionCode = "busy" | "unsupported" | "gone" | "folder-missing" | "no-target-folder" | "connect" | "tls" | "auth" | "protocol" | "timeout" | "tls-required" | "no-secret" | "closed";
   export type InboxActionResult = { ok: true } | { ok: false; code: InboxActionCode; detail: string };
   export interface InboxActionDeps {
     connect(): Promise<ImapConnectWritableResult>;
@@ -683,7 +683,9 @@ export type InboxActionCode =
   | "no-target-folder"  // Zielordner nicht konfiguriert — es gibt nichts anzusteuern
   | "unsupported"       // Server kann kein sicheres Verschieben (kein MOVE)
   | "gone"              // Quell-UID trifft nichts mehr — erneut synchronisieren
-  | "folder-missing" | "connect" | "tls" | "tls-required" | "auth" | "no-secret" | "protocol" | "timeout";
+  // Die restlichen sind genau die ImapErrorCode-Werte (types.ts:7 + net/types.ts:22) —
+  // `closed` gehoert dazu, sonst ist `code: verbunden.code` ein Typfehler.
+  | "folder-missing" | "connect" | "tls" | "tls-required" | "auth" | "no-secret" | "protocol" | "timeout" | "closed";
 
 export type InboxActionResult = { ok: true } | { ok: false; code: InboxActionCode; detail: string };
 
@@ -1261,18 +1263,38 @@ In `src/i18n/strings.ts` neben den `cockpit.*`-Einträgen:
 
 - [ ] **Step 2: Write the failing test**
 
-Neue Datei `tests/obsidian/inbox-panel.test.ts`, gebaut nach dem Muster von `tests/obsidian/cockpit-panel.test.ts` (**diese Datei zuerst lesen** — sie zeigt, wie der Obsidian-Mock und der Host-Doppelgänger hier aufgebaut werden):
+Neue Datei `tests/obsidian/inbox-panel.test.ts`.
+
+⚠️ **Es gibt hier kein DOM.** `vitest.config.ts:7` fährt `environment: "node"`; `document.createElement` und `querySelector` stehen nicht zur Verfügung. Panels werden im Repo über `makeFakeEl` aus `tests/vendor/kit/obsidian-mock` geprüft, dessen `querySelectorAll` **ausschließlich** Tag-Namen und `.klasse` versteht (`matchesSimpleSelector`, `obsidian-mock.ts:49` — bewusst kein CSS-Parser). Deshalb der lokale `findAll`-Helfer, wörtlich wie in `tests/obsidian/cockpit-panel.test.ts:31`.
 
 ```ts
 import { describe, it, expect, vi } from "vitest";
+import { makeFakeEl } from "../vendor/kit/obsidian-mock";
 import { InboxPanel, type InboxHost } from "../../src/obsidian/views/inbox-panel";
 import type { InboxViewModel } from "../../src/core/view/inbox-vm";
+import { initI18n } from "../../src/i18n/strings";
+
+initI18n("de");
+
+/** Alle Nachfahren mit dieser Klasse — der Fake-El haelt Kinder in `children`.
+ *  Uebernommen aus tests/obsidian/cockpit-panel.test.ts. */
+function findAll(el: any, cls: string): any[] {
+  const out: any[] = [];
+  const walk = (n: any): void => {
+    for (const c of n.children ?? []) {
+      if (String(c.className ?? "").split(" ").includes(cls)) out.push(c);
+      walk(c);
+    }
+  };
+  walk(el);
+  return out;
+}
 
 const zeile = { uid: 7, from: "Jürgen", subject: "Rechnung", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
 
-function host(vm: Partial<InboxViewModel>, over: Partial<InboxHost> = {}): InboxHost {
+function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): InboxHost {
   return {
-    accounts: () => [{ id: "a1", label: "Konto" }] as never,
+    accounts: () => [],
     selectedAccountId: () => "a1",
     selectAccount: vi.fn(),
     viewModel: () => ({ state: "gefuellt", rows: [zeile], fehlerCode: null, aktionenAktiv: true, ...vm }),
@@ -1287,42 +1309,56 @@ function host(vm: Partial<InboxViewModel>, over: Partial<InboxHost> = {}): Inbox
 
 describe("InboxPanel", () => {
   it("erfuellt den HubPanel-Vertrag", () => {
-    const p = new InboxPanel(host({}));
+    const p = new InboxPanel(host());
     expect(p.id).toBe("inbox");
     expect(typeof p.label).toBe("string");
     expect(typeof p.icon).toBe("string");
   });
 
   it("zeichnet je Mail eine Zeile mit Absender und Betreff", () => {
-    const el = document.createElement("div");
-    new InboxPanel(host({})).mount(el);
-    expect(el.textContent).toContain("Jürgen");
-    expect(el.textContent).toContain("Rechnung");
+    const el = makeFakeEl();
+    new InboxPanel(host()).mount(el);
+    expect(findAll(el, "mailstone-inbox-row")).toHaveLength(1);
+    expect(String(el.textContent)).toContain("Jürgen");
+    expect(String(el.textContent)).toContain("Rechnung");
   });
 
   it("zeigt den Empty-State samt Handlungsangebot, wenn nichts da ist", () => {
-    const el = document.createElement("div");
+    const el = makeFakeEl();
     new InboxPanel(host({ state: "leer", rows: [] })).mount(el);
-    expect(el.querySelector(".mailstone-inbox-empty")).not.toBeNull();
+    expect(findAll(el, "mailstone-inbox-empty")).toHaveLength(1);
   });
 
   it("zeichnet keine Aktionsknoepfe, solange aktionenAktiv false ist", () => {
-    const el = document.createElement("div");
+    const el = makeFakeEl();
     new InboxPanel(host({ aktionenAktiv: false })).mount(el);
-    expect(el.querySelectorAll("button.mailstone-inbox-action")).toHaveLength(0);
+    expect(findAll(el, "mailstone-inbox-action")).toHaveLength(0);
   });
 
-  it("meldet einen Fehlerzustand sichtbar", () => {
-    const el = document.createElement("div");
+  it("zeichnet zwei Aktionsknoepfe je Zeile, wenn sie aktiv sind", () => {
+    const el = makeFakeEl();
+    new InboxPanel(host()).mount(el);
+    expect(findAll(el, "mailstone-inbox-action")).toHaveLength(2);
+  });
+
+  it("meldet einen Fehlerzustand mit Zustandsklasse UND aria-label — Farbe nie allein", () => {
+    const el = makeFakeEl();
     new InboxPanel(host({ state: "fehler", rows: [], fehlerCode: "auth" })).mount(el);
-    expect(el.querySelector(".mailstone-inbox-status.is-error")).not.toBeNull();
+    const ind = findAll(el, "mailstone-inbox-status")[0];
+    expect(String(ind.className).split(" ")).toContain("is-error");
+    expect(ind.getAttribute("aria-label")).toBeTruthy();
+  });
+
+  it("blendet die Kontowahl aus, solange es nur ein Konto gibt", () => {
+    const eins = makeFakeEl();
+    new InboxPanel(host()).mount(eins);
+    expect(findAll(eins, "mailstone-inbox-account")).toHaveLength(0);
   });
 
   it("raeumt beim destroy auf", () => {
-    const el = document.createElement("div");
     const unsub = vi.fn();
     const p = new InboxPanel(host({}, { onChange: () => unsub }));
-    p.mount(el);
+    p.mount(makeFakeEl());
     p.destroy();
     expect(unsub).toHaveBeenCalled();
   });
@@ -1690,10 +1726,11 @@ In `tests/obsidian/mailstone-view.test.ts`:
 
 ```ts
   it("mountet beide Panels als Tabs", async () => {
-    const view = new MailstoneView(leafDoppel(), cockpitHostDoppel(), inboxHostDoppel());
+    const view = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost());
     await view.onOpen();
-    const tabs = view.contentEl.querySelectorAll("[data-tab]");
-    const ids = [...tabs].map((el) => el.getAttribute("data-tab"));
+    // Attributselektoren kann der Fake-El NICHT (matchesSimpleSelector versteht nur Tag und
+    // .klasse) — also die Tabs ueber ihre Klasse einsammeln und data-tab dort auslesen.
+    const ids = alleMit(view.contentEl, "kit-hub-tab").map((el) => el.getAttribute("data-tab"));
     expect(ids).toContain("cockpit");
     expect(ids).toContain("inbox");
   });
@@ -1701,8 +1738,21 @@ In `tests/obsidian/mailstone-view.test.ts`:
   it("bleibt bei EINEM registerView-Typ", () => {
     expect(VIEW_TYPE_MAILSTONE).toBe("mailstone-cockpit");
   });
+
+  it("zerstoert beim Schliessen BEIDE Panels", async () => {
+    const abCockpit = vi.fn();
+    const abInbox = vi.fn();
+    const view = new MailstoneView(new WorkspaceLeaf(), fakeHost(() => abCockpit), fakeInboxHost(() => abInbox));
+    await view.onOpen();
+    await view.onClose();
+    expect(abCockpit).toHaveBeenCalled();
+    expect(abInbox).toHaveBeenCalled();
+  });
 ```
-(`leafDoppel`/`cockpitHostDoppel` gibt es in der Datei bereits — `inboxHostDoppel` nach demselben Muster ergänzen.)
+
+Dazu in der Datei ergänzen: `fakeInboxHost` nach dem Muster des vorhandenen `fakeHost` (alle `InboxHost`-Methoden als No-Ops, `viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenAktiv: false })`) und den `alleMit`-Helfer — identisch zu `findAll` aus `tests/obsidian/cockpit-panel.test.ts:31`.
+
+⚠️ **Die Tab-Klasse ist zu prüfen, nicht zu raten:** `kit-hub-tab` ist der erwartete Name, aber verbindlich ist, was `src/vendor/kit-obsidian/hub.ts` nach dem Vendoring in Step 3 tatsächlich vergibt. Dort nachsehen und den Test darauf setzen; stimmt der Name nicht, ist der Test falsch, nicht der Hub.
 
 - [ ] **Step 5: Run test to verify it fails**
 
