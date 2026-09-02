@@ -925,15 +925,18 @@ export interface InboxViewModel {
  */
 export async function toInboxRow(row: ImapHeaderRow, bekannteIds: ReadonlySet<string>): Promise<InboxRow> {
   const mail = await parseEml(row.header);
-  const id = mail.id;
   // Beide Seiten normalisieren: der Index kann Rohformen aus aelteren Staenden tragen.
   const bekannt = new Set([...bekannteIds].map((v) => normalizeMessageId(v)).filter((v): v is string => v !== null));
   return {
     uid: row.uid,
     from: mail.from?.name !== undefined && mail.from.name.length > 0 ? mail.from.name : (mail.from?.address ?? ""),
-    subject: mail.subject ?? "",
-    date: mail.date ?? "",
-    imVault: id !== null && bekannt.has(id),
+    subject: mail.subject,
+    // `ParsedMail.date` ist ein Date, kein String. Die Zeile traegt einen ISO-String, damit das
+    // ViewModel anzeigefertig und vergleichbar bleibt und kein Date durch die reine Schicht wandert.
+    date: mail.date === null ? "" : mail.date.toISOString(),
+    // Kein Null-Check: `id` ist immer gesetzt — fehlt der Header, erzeugt der Parser
+    // `noid-<sha256[:32]>`, und so eine synthetische Id trifft nie einen Index-Eintrag.
+    imVault: bekannt.has(mail.id),
     ungelesen: !row.flags.includes("\\Seen"),
   };
 }
@@ -953,7 +956,9 @@ export function buildInboxViewModel(input: InboxInput): InboxViewModel {
 }
 ```
 
-**Hinweis für die Umsetzung:** `mail.from` und `mail.date` sind laut der Messung vom 2026-09-02 vorhanden (`from` als `{name, address}`, `date` als ISO-String). Stimmen die Feldnamen nicht mit `src/core/mime/types.ts` überein, gilt **die Typdatei**, nicht dieser Plan — dann die Zugriffe anpassen, nicht die Typen.
+**Die Felder von `ParsedMail`, am Typ abgelesen** (`src/core/mime/types.ts`) — nicht aus einer Laufzeitausgabe geschlossen: `from: MailAddress | null`, `subject: string` (nie undefined), `date: Date | null`, `id: string` (nie null; ohne Header `noid-<sha256[:32]>`).
+
+⚠️ Eine frühere Messung ließ `date` wie einen ISO-String aussehen — sie lief durch `JSON.stringify`, und `Date.toJSON()` liefert genau diese Form. Es ist ein `Date`. Wer `mail.date ?? ""` schreibt, bekommt einen Typfehler; die Umwandlung oben ist Absicht. Stimmen weitere Feldnamen nicht mit der Typdatei überein, gilt **die Typdatei**, nicht dieser Plan.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
