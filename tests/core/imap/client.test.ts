@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
-import { imapConnect } from "../../../src/core/imap/client";
+import { imapConnect, imapConnectWritable } from "../../../src/core/imap/client";
 import { MAX_UNTAGGED_PER_COMMAND } from "../../../src/core/imap/types";
 
 const base = { host: "imap.example.net", port: 993, tls: "implicit" as const, username: "u@example.net", password: "geheim", timers: testTimers };
@@ -130,7 +130,7 @@ describe("imapConnect", () => {
   });
 });
 
-describe("ImapSession", () => {
+describe("ImapReadSession", () => {
   async function session(steps: DialogStep[]) {
     const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth, ...steps]);
     const r = await imapConnect(fake, base);
@@ -220,7 +220,7 @@ describe("ImapSession", () => {
   });
 });
 
-describe("ImapSession.append", () => {
+describe("ImapReadSession.append", () => {
   async function sessionFor(steps: DialogStep[]) {
     const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth, ...steps]);
     const r = await imapConnect(fake, base);
@@ -387,5 +387,36 @@ describe("imapConnect — einheitliche Konventionen", () => {
     const r = await imapConnect(fake, base);
     if (!r.ok) throw new Error("unreachable");
     expect(await r.session.uidFetchBody(7)).not.toBeNull();
+  });
+});
+
+const authWithMove: DialogStep[] = [
+  { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS MOVE", "a001 OK done"] },
+  { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+];
+
+describe("imapConnectWritable", () => {
+  it("oeffnet einen Ordner mit SELECT (nicht EXAMINE) und liefert UIDVALIDITY", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...authWithMove,
+      { expect: /^a003 SELECT "INBOX"$/, send: ["* 4 EXISTS", "* OK [UIDVALIDITY 99] .", "a003 OK [READ-WRITE] selected"] },
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    const sel = await r.session.select("INBOX");
+    expect(sel).toMatchObject({ ok: true, uidValidity: 99, exists: 4 });
+    expect(fake.written.some((l) => /^a003 SELECT /.test(l))).toBe(true);
+    expect(fake.written.some((l) => /EXAMINE/.test(l))).toBe(false);
+  });
+
+  it("meldet folder-missing, wenn SELECT mit NO beantwortet wird", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...authWithMove,
+      { expect: /^a003 SELECT "Fehlt"$/, send: ["a003 NO Mailbox does not exist"] },
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(await r.session.select("Fehlt")).toMatchObject({ ok: false, code: "folder-missing" });
   });
 });

@@ -31,7 +31,7 @@ export interface ImapConnectOptions {
   allowInsecureAuth?: boolean;
 }
 
-export interface ImapSession {
+export interface ImapReadSession {
   readonly capabilities: string[];
   examine(mailbox: string): Promise<{ ok: true; uidValidity: number; exists: number } | { ok: false; code: ImapErrorCode; detail: string }>;
   uidSearchAll(): Promise<number[]>;
@@ -46,7 +46,20 @@ export interface ImapSession {
   logout(): Promise<void>;
 }
 
-export type ImapConnectResult = { ok: true; session: ImapSession } | { ok: false; code: ImapErrorCode; detail: string };
+/** Schreibfaehige Erweiterung von ImapReadSession — nur ueber imapConnectWritable erreichbar.
+ *  select() ersetzt EXAMINE bewusst nicht: der Sync-Pfad bekommt gar keinen Zugriff auf diese
+ *  Methode, weil er nur eine ImapReadSession in Haenden haelt. */
+export interface ImapWriteSession extends ImapReadSession {
+  /** Oeffnet den Ordner SCHREIBBAR. Der einzige Weg zu einem SELECT in diesem Plugin —
+   *  der Sync bekommt eine ImapReadSession und kann diese Methode nicht sehen. */
+  select(mailbox: string): Promise<{ ok: true; uidValidity: number; exists: number } | { ok: false; code: ImapErrorCode; detail: string }>;
+  uidMove(uid: number, target: string): Promise<UidMoveResult>;
+}
+
+export type UidMoveResult = { ok: true } | { ok: false; code: ImapErrorCode | "unsupported" | "gone"; detail: string };
+
+export type ImapConnectResult = { ok: true; session: ImapReadSession } | { ok: false; code: ImapErrorCode; detail: string };
+export type ImapConnectWritableResult = { ok: true; session: ImapWriteSession } | { ok: false; code: ImapErrorCode; detail: string };
 
 const DEFAULT_TIMEOUT_MS = 30000;
 /** UIDs je FETCH-Kommando. 200 haelt die Kommandozeile deutlich unter jeder ueblichen
@@ -210,13 +223,27 @@ function messageIdFromHeader(bytes: Uint8Array): string | null {
   return m?.[1] ? normalizeMessageId(m[1].trim()) : null;
 }
 
-/** Oeffentlicher Einstieg: faehrt den Dialog (runConnect) und schliesst den Transport auf jedem
+type ConnectedRaw = { ok: true; conn: Connection; capabilities: string[] } | { ok: false; code: ImapErrorCode; detail: string };
+
+/** Oeffentlicher Einstieg: faehrt den Dialog (connectRaw) und schliesst den Transport auf jedem
  *  Fehlerpfad — der Aufrufer bekommt bei `ok:false` kein Session-Handle und kann selbst nicht
  *  schliessen. Im Erfolgsfall bleibt die Verbindung bewusst offen, die Session braucht sie noch.
- *  `result` bleibt undefined, wenn runConnect einen NICHT-NetError wirft (Programmierfehler) —
+ *  `result` bleibt undefined, wenn connectRaw einen NICHT-NetError wirft (Programmierfehler) —
  *  auch dann wird aufgeraeumt, statt den Socket offenzulassen. */
 export async function imapConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectResult> {
-  let result: ImapConnectResult | undefined;
+  const r = await connectRaw(transport, opts);
+  return r.ok ? { ok: true, session: makeReadSession(r.conn, r.capabilities) } : r;
+}
+
+/** Der EINZIGE Weg zu einer schreibfaehigen Sitzung (Spec 2026-09-02 § 2). Wer ihn nimmt,
+ *  oeffnet den Nur-Lese-Vertrag bewusst — der Sync nimmt imapConnect und kann es nicht. */
+export async function imapConnectWritable(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectWritableResult> {
+  const r = await connectRaw(transport, opts);
+  return r.ok ? { ok: true, session: makeWriteSession(r.conn, r.capabilities) } : r;
+}
+
+async function connectRaw(transport: SocketTransport, opts: ImapConnectOptions): Promise<ConnectedRaw> {
+  let result: ConnectedRaw | undefined;
   try {
     result = await runConnect(transport, opts);
     return result;
@@ -225,7 +252,7 @@ export async function imapConnect(transport: SocketTransport, opts: ImapConnectO
   }
 }
 
-async function runConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectResult> {
+async function runConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ConnectedRaw> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const conn = new Connection(transport, timeoutMs, opts.timers, opts.log);
   try {
@@ -280,14 +307,14 @@ async function runConnect(transport: SocketTransport, opts: ImapConnectOptions):
     // Auth-Antwort und deren Response-Code. Set statt Array-Suche, damit die Reihenfolge
     // der Quellen keine Duplikate erzeugt.
     const alle = new Set([...capabilities, ...capabilitiesFrom(auth.untagged), ...capabilitiesFromCode(auth.text)]);
-    return { ok: true, session: makeSession(conn, [...alle]) };
+    return { ok: true, conn, capabilities: [...alle] };
   } catch (e) {
     if (e instanceof NetError) return { ok: false, code: e.code, detail: e.message };
     throw e;
   }
 }
 
-function makeSession(conn: Connection, capabilities: string[]): ImapSession {
+function makeReadSession(conn: Connection, capabilities: string[]): ImapReadSession {
   return {
     capabilities,
 
@@ -374,6 +401,27 @@ function makeSession(conn: Connection, capabilities: string[]): ImapSession {
       } finally {
         if (!conn.transport.closed) await conn.transport.close().catch(() => undefined);
       }
+    },
+  };
+}
+
+function makeWriteSession(conn: Connection, capabilities: string[]): ImapWriteSession {
+  const lesend = makeReadSession(conn, capabilities);
+  return {
+    ...lesend,
+
+    async select(mailbox) {
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `SELECT ${quoteArg(encodeMailbox(mailbox))}`);
+      if (r.status === "NO") return { ok: false, code: "folder-missing", detail: r.text };
+      if (r.status !== "OK") return { ok: false, code: "protocol", detail: r.text };
+      const uidValidity = bracketNumber(r.untagged, "UIDVALIDITY");
+      if (uidValidity === null) return { ok: false, code: "protocol", detail: "keine UIDVALIDITY in der SELECT-Antwort" };
+      return { ok: true, uidValidity, exists: existsFrom(r.untagged) };
+    },
+
+    async uidMove(_uid, _target) {
+      return { ok: false, code: "unsupported", detail: "noch nicht implementiert" };
     },
   };
 }
