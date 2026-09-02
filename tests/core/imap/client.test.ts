@@ -469,3 +469,54 @@ describe("uidMove", () => {
     expect(fake.written.some((l) => /UID MOVE/.test(l))).toBe(false);
   });
 });
+
+describe("uidFetchHeaders", () => {
+  it("liefert Flags und Header-Bytes je UID", async () => {
+    const header = "From: a@example.invalid\r\nSubject: Hallo\r\n\r\n";
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      {
+        // buildUidSet() (core/imap/commands.ts) komprimiert aufeinanderfolgende UIDs zu einem
+        // Bereich (5:6) statt einer Liste (5,6) — dieselbe Funktion, die uidFetchMessageIds
+        // schon nutzt (dort mit 7,9 unbeobachtet, weil nicht konsekutiv).
+        expect: /^a003 UID FETCH 5:6 \(FLAGS BODY\.PEEK\[HEADER\.FIELDS \(FROM SUBJECT DATE MESSAGE-ID\)\]\)$/,
+        send: [
+          `* 1 FETCH (UID 5 FLAGS (\\Seen) BODY[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)] {${header.length}}`,
+          new TextEncoder().encode(header),
+          ")",
+          `* 2 FETCH (UID 6 FLAGS () BODY[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)] {${header.length}}`,
+          new TextEncoder().encode(header),
+          ")",
+          "a003 OK done",
+        ],
+      },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    const rows = await r.session.uidFetchHeaders([5, 6]);
+    expect(rows.size).toBe(2);
+    expect(rows.get(5)?.flags).toEqual(["\\Seen"]);
+    expect(rows.get(6)?.flags).toEqual([]);
+    expect(new TextDecoder().decode(rows.get(5)!.header)).toContain("Subject: Hallo");
+  });
+
+  it("nutzt PEEK und setzt damit kein \\Seen", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      { expect: /^a003 UID FETCH 5 /, send: ["a003 OK done"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    await r.session.uidFetchHeaders([5]);
+    expect(fake.written.some((l) => /BODY\.PEEK\[HEADER\.FIELDS/.test(l))).toBe(true);
+    expect(fake.written.some((l) => /BODY\[HEADER/.test(l))).toBe(false);
+  });
+
+  it("liefert eine leere Map fuer eine leere UID-Liste, ohne zu senden", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect((await r.session.uidFetchHeaders([])).size).toBe(0);
+    expect(fake.written.some((l) => /UID FETCH/.test(l))).toBe(false);
+  });
+});

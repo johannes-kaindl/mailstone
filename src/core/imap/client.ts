@@ -8,7 +8,7 @@ import { withTimeout, type TimeoutTimers } from "../../vendor/code-kit/timeout";
 import { normalizeMessageId } from "../mime/headers";
 import { assertNoCrlf, buildUidSet, chunk, encodeMailbox, quoteArg } from "./commands";
 import { findAtomValue, firstLiteral, parseResponse, readRawLine } from "./parser";
-import type { ImapErrorCode, ImapResponse } from "./types";
+import type { ImapErrorCode, ImapItem, ImapResponse } from "./types";
 import { MAX_UNTAGGED_PER_COMMAND } from "./types";
 
 export interface ImapConnectOptions {
@@ -37,6 +37,10 @@ export interface ImapReadSession {
   uidSearchAll(): Promise<number[]>;
   /** uid → normalisierte Message-ID; null, wenn die Mail keinen Message-ID-Header hat. */
   uidFetchMessageIds(uids: readonly number[]): Promise<Map<number, string | null>>;
+  /** Flags plus ein schmaler Header-Block je UID — Rohmaterial fuer die Posteingangs-Liste.
+   *  Die Bytes gehen durch denselben parseEml wie eine vollstaendige .eml (Task 6), damit
+   *  Betreff/Absender/Message-ID hier dieselbe Auslegung tragen wie im Sync-Pfad. */
+  uidFetchHeaders(uids: readonly number[]): Promise<Map<number, ImapHeaderRow>>;
   /** Rohe RFC-5322-Bytes via BODY.PEEK[] — null, wenn die UID nicht mehr existiert. */
   uidFetchBody(uid: number): Promise<Uint8Array | null>;
   /** Legt eine Nachricht in einem Ordner ab (RFC 3501 § 6.3.11). Der einzige schreibende
@@ -57,6 +61,14 @@ export interface ImapWriteSession extends ImapReadSession {
 }
 
 export type UidMoveResult = { ok: true } | { ok: false; code: ImapErrorCode | "unsupported" | "gone"; detail: string };
+
+/** Rohmaterial fuer eine Posteingangs-Zeile: Flags plus die Rohbytes eines schmalen
+ *  Header-Blocks. Geparst wird hier nichts — das tut parseEml (Task 6). */
+export interface ImapHeaderRow {
+  uid: number;
+  flags: string[];
+  header: Uint8Array;
+}
 
 export type ImapConnectResult = { ok: true; session: ImapReadSession } | { ok: false; code: ImapErrorCode; detail: string };
 export type ImapConnectWritableResult = { ok: true; session: ImapWriteSession } | { ok: false; code: ImapErrorCode; detail: string };
@@ -217,6 +229,19 @@ function existsFrom(responses: ImapResponse[]): number {
   return 0;
 }
 
+/** Die FLAGS-Liste eines FETCH-Items. Fehlt sie, ist das kein Fehler — eine Mail ohne
+ *  gesetzte Flags ist der Normalfall im Posteingang. */
+function flagsFrom(items: ImapItem[]): string[] {
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it?.kind !== "atom" || it.value.toUpperCase() !== "FLAGS") continue;
+    const list = items[i + 1];
+    if (list?.kind !== "list") return [];
+    return list.items.filter((v): v is { kind: "atom"; value: string } => v.kind === "atom").map((v) => v.value);
+  }
+  return [];
+}
+
 function messageIdFromHeader(bytes: Uint8Array): string | null {
   const text = new TextDecoder().decode(bytes);
   const m = /^message-id:\s*(.+)$/im.exec(text);
@@ -357,6 +382,30 @@ function makeReadSession(conn: Connection, capabilities: string[]): ImapReadSess
           const bytes = firstLiteral(list.items);
           if (!uidText || !bytes) continue;
           out.set(Number(uidText), messageIdFromHeader(bytes));
+        }
+      }
+      return out;
+    },
+
+    async uidFetchHeaders(uids) {
+      const out = new Map<number, ImapHeaderRow>();
+      if (uids.length === 0) return out;
+      for (const batch of chunk(uids, HEADER_BATCH)) {
+        const tag = conn.nextTag();
+        const r = await conn.command(
+          tag,
+          `UID FETCH ${buildUidSet(batch)} (FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])`,
+        );
+        if (r.status !== "OK") throw new NetError("protocol", `UID FETCH (Headerliste) abgelehnt: ${r.text}`);
+        for (const resp of r.untagged) {
+          const list = resp.items.find((i) => i.kind === "list");
+          if (list?.kind !== "list") continue;
+          const uidText = findAtomValue(list.items, "UID");
+          const header = firstLiteral(list.items);
+          if (!uidText || !header) continue;
+          const uid = Number(uidText);
+          if (!Number.isSafeInteger(uid) || uid <= 0) continue;
+          out.set(uid, { uid, flags: flagsFrom(list.items), header });
         }
       }
       return out;
