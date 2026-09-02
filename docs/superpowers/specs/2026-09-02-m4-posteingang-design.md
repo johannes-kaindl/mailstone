@@ -113,6 +113,15 @@ Fehlerfälle als Werte: `unsupported` (Server kann kein sicheres Verschieben), `
 existiert nicht mehr — die Mail wurde anderswo verschoben, Hinweis „erneut synchronisieren"),
 dazu die bestehenden Verbindungs-Codes.
 
+⚠️ **`gone` erkennt man nicht am Status.** Nach RFC 6851 § 3.3 antwortet `UID MOVE` auf eine
+UID, die keine Nachricht trifft, mit **`OK`** — ein Erfolg, bei dem nichts bewegt wurde. Wer nur
+`status === "OK"` prüft, meldet dem Nutzer „übernommen" und stößt einen Sync an, der nichts
+findet; die Mail bleibt liegen, und niemand erfährt warum. Der Erfolg wird deshalb an einem
+**Beleg** festgemacht: ein `[COPYUID …]`-Response-Code (kommt bei `UIDPLUS`) oder eine untagged
+`* <n> EXPUNGE`-Zeile. Fehlen beide bei `OK`, ist das Ergebnis `gone`. Das ist zugleich der
+Grund, warum die Capability-Prüfung aus (a) vor dieser Änderung stehen muss: ohne `UIDPLUS` gibt
+es keinen `COPYUID`-Beleg, und dann trägt nur noch die `EXPUNGE`-Zeile.
+
 ---
 
 ## 4. Server-Aktionen stehen **neben** dem Deskriptor-Rahmen
