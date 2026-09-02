@@ -420,3 +420,52 @@ describe("imapConnectWritable", () => {
     expect(await r.session.select("Fehlt")).toMatchObject({ ok: false, code: "folder-missing" });
   });
 });
+
+describe("uidMove", () => {
+  async function writable(steps: DialogStep[]) {
+    const fake = new FakeSocketTransport(["* OK ready"], [...authWithMove, ...steps]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    return { fake, session: r.session };
+  }
+
+  it("verschiebt und meldet Erfolg, wenn COPYUID belegt ist", async () => {
+    const { session, fake } = await writable([
+      { expect: /^a003 UID MOVE 7 "Vault"$/, send: ["a003 OK [COPYUID 99 7 12] Move completed"] },
+    ]);
+    expect(await session.uidMove(7, "Vault")).toEqual({ ok: true });
+    expect(fake.written.some((l) => /^a003 UID MOVE 7 "Vault"$/.test(l))).toBe(true);
+  });
+
+  it("akzeptiert eine untagged EXPUNGE-Zeile als Beleg", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID MOVE 7 "Vault"$/, send: ["* 3 EXPUNGE", "a003 OK Move completed"] },
+    ]);
+    expect(await session.uidMove(7, "Vault")).toEqual({ ok: true });
+  });
+
+  it("meldet 'gone' bei OK OHNE Beleg — RFC 6851: eine UID ohne Treffer ergibt OK", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID MOVE 7 "Vault"$/, send: ["a003 OK Move completed"] },
+    ]);
+    expect(await session.uidMove(7, "Vault")).toMatchObject({ ok: false, code: "gone" });
+  });
+
+  it("meldet 'protocol' bei NO", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID MOVE 7 "Fehlt"$/, send: ["a003 NO [TRYCREATE] Mailbox does not exist"] },
+    ]);
+    expect(await session.uidMove(7, "Fehlt")).toMatchObject({ ok: false, code: "protocol" });
+  });
+
+  it("meldet 'unsupported' ohne MOVE-Capability und sendet NICHTS", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(await r.session.uidMove(7, "Vault")).toMatchObject({ ok: false, code: "unsupported" });
+    expect(fake.written.some((l) => /UID MOVE/.test(l))).toBe(false);
+  });
+});

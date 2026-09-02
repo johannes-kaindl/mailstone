@@ -420,8 +420,25 @@ function makeWriteSession(conn: Connection, capabilities: string[]): ImapWriteSe
       return { ok: true, uidValidity, exists: existsFrom(r.untagged) };
     },
 
-    async uidMove(_uid, _target) {
-      return { ok: false, code: "unsupported", detail: "noch nicht implementiert" };
+    async uidMove(uid, target) {
+      // Vorher pruefen und NICHTS senden: ohne MOVE gibt es keinen sicheren Weg. Der
+      // Fallback COPY+STORE+EXPUNGE ist bewusst nicht gebaut (Spec 2026-09-02 § 3d) — ein
+      // UID-loses EXPUNGE entfernt auch fremd markierte Nachrichten.
+      if (!capabilities.includes("MOVE")) {
+        return { ok: false, code: "unsupported", detail: "Server kuendigt MOVE nicht an" };
+      }
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `UID MOVE ${String(uid)} ${quoteArg(encodeMailbox(target))}`);
+      if (r.status !== "OK") return { ok: false, code: "protocol", detail: r.text };
+
+      // RFC 6851 § 3.3: eine UID, die keine Nachricht trifft, ergibt OK. Der Status allein
+      // belegt also nichts — erst COPYUID oder eine EXPUNGE-Zeile tun es.
+      const copyUid = /\[COPYUID\s/i.test(r.text);
+      const expunged = r.untagged.some((u) => /^\d+\s+EXPUNGE\b/i.test(u.text));
+      if (!copyUid && !expunged) {
+        return { ok: false, code: "gone", detail: "UID nicht mehr vorhanden — erneut synchronisieren" };
+      }
+      return { ok: true };
     },
   };
 }
