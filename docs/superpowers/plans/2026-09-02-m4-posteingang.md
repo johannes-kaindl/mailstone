@@ -826,7 +826,7 @@ describe("toInboxRow", () => {
     expect((await toInboxRow({ uid: 1, flags: [], header: h }, new Set(["anders@example.invalid"]))).imVault).toBe(false);
   });
 
-  it("erkennt dieselbe Mail trotz spitzer Klammern und Grossschreibung im Index", async () => {
+  it("erkennt dieselbe Mail trotz spitzer Klammern und Whitespace im Index", async () => {
     // Der Abgleich laeuft ueber normalizeMessageId auf BEIDEN Seiten — sonst waere der
     // Badge eine Heuristik statt eines exakten Treffers.
     const h = header("Message-ID:  <ABC@Example.Invalid>  \r\nSubject: X");
