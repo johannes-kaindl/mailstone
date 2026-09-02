@@ -1647,7 +1647,34 @@ python3 ~/.claude/hooks/obsidian-cdp-lock.py release
 ```
 Erwartet: 12/12. **Ohne diese Baseline ist ein grüner Lauf danach nicht von „anders grün" zu unterscheiden** — der Treiber ist beim Umbau selbst der Prüfling. Zahl und Datum in `docs/SMOKE.md` notieren. Läuft kein Obsidian mit offenem Vault: `open "obsidian://open?vault=mailstone"` — **kein Neustart**, es hängen regelmäßig fremde Vaults an der Instanz.
 
-- [ ] **Step 2: Hub aus dem Kit vendoren**
+- [ ] **Step 2: ⛔ ZUERST `tools/sync-kit.sh` reparieren — der Aufruf ist heute destruktiv**
+
+**`npm run kit:sync` NICHT ausführen, bevor dieser Schritt erledigt ist.** Gemessen (Cockpit-Task „sync-kit.sh liest aus dem Kit-Arbeitsstand (CORE-META-22)", Nachtrag 2026-09-02): das Skript liest per `cat "$KIT/src/pure/$f.ts"` aus dem **Arbeitsstand** des Kit-Verzeichnisses statt aus einem Ref. Das Kit steht inzwischen auf 0.29.0-9, und die hier vendorten Module `timeout`, `sha256`, `filename-template`, `settings`, `i18n` liegen dort **nicht mehr** unter `src/pure/` (nach `code-kit` gezogen). In einer Sandbox reproduziert: die erste Zieldatei wird durch einen **102-Byte-Stummel aus nur der Stempelzeile** ersetzt, dann bricht `set -e` ab und lässt die übrigen Module alt — ein halb zerstörter Vendor-Ordner, der wie ein gültiges Vendoring aussieht.
+
+Vorgehen: `tools/sync-kit.sh` auf das Muster aus `vault-rag/tools/sync-kit.sh` umstellen — **alle Quellen vorprüfen, bevor irgendetwas geschrieben wird**, dann `.tmp` + `mv` nur bei Erfolg, und `git show <ref>:<pfad>` statt `cat` aus dem Arbeitsstand. Zuletzt so umgestellt in `epub-exporter` (`9fc4495`), dort auch die Zwei-Ref-Variante für getrennt gepinnte Vendor-Ordner. Dabei die Pfade der fünf verschobenen Module auf ihren neuen Ort ziehen.
+
+Eigener Commit, bevor irgendetwas vendort wird:
+
+```bash
+git add tools/sync-kit.sh
+git commit -F - <<'EOF'
+fix(kit): sync-kit.sh liest aus einem Ref statt aus dem Arbeitsstand
+
+Vorher las das Skript per cat aus dem Kit-Arbeitsverzeichnis und war
+damit an dessen HEAD gekoppelt statt an den eigenen Pin. Seit dem Umzug
+von fuenf Modulen nach code-kit findet es sie dort nicht mehr: die
+erste Zieldatei wurde zu einem 102-Byte-Stummel, danach brach set -e ab
+und liess den Rest alt - ein halb zerstoerter Vendor-Ordner, der wie
+ein gueltiges Vendoring aussieht. Jetzt alle Quellen vorpruefen, dann
+.tmp + mv nur bei Erfolg (Muster vault-rag, zuletzt epub-exporter).
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+EOF
+```
+
+Danach zur Gegenprobe einmal ohne Änderung laufen lassen: `npm run kit:sync && git diff --stat src/vendor/` muss **leer** sein — ein Vendoring, das ohne Kit-Änderung Diffs erzeugt, ist nicht reproduzierbar.
+
+- [ ] **Step 3: Hub aus dem Kit vendoren**
 
 ```bash
 npm run kit:sync
@@ -1657,7 +1684,7 @@ Erwartet: `src/vendor/kit-obsidian/hub.ts` neu, mit Herkunfts-Header in Zeile 1.
 
 Anschließend das Hub-CSS in `styles.css` übernehmen (Kit-Vertrag: die Darstellung ist eine Kopie beim Consumer). Die vier Zutaten des Umbruch-Rezepts stehen im Kopfkommentar von `hub.ts` — alle vier übernehmen, jede einzelne ist wirkungslos.
 
-- [ ] **Step 3: Write the failing test**
+- [ ] **Step 4: Write the failing test**
 
 In `tests/obsidian/mailstone-view.test.ts`:
 
@@ -1677,12 +1704,12 @@ In `tests/obsidian/mailstone-view.test.ts`:
 ```
 (`leafDoppel`/`cockpitHostDoppel` gibt es in der Datei bereits — `inboxHostDoppel` nach demselben Muster ergänzen.)
 
-- [ ] **Step 4: Run test to verify it fails**
+- [ ] **Step 5: Run test to verify it fails**
 
 Run: `npx vitest run tests/obsidian/mailstone-view.test.ts`
 Expected: FAIL — der Konstruktor nimmt noch kein zweites Host-Argument.
 
-- [ ] **Step 5: Implement**
+- [ ] **Step 6: Implement**
 
 In `src/obsidian/views/mailstone-view.ts` den Konstruktor um `inboxHost` erweitern und `onOpen` ersetzen:
 
@@ -1699,12 +1726,12 @@ In `src/obsidian/views/mailstone-view.ts` den Konstruktor um `inboxHost` erweite
 
 In `src/main.ts:303` den zweiten Host mitgeben und neben `cockpitHost(notify)` eine `inboxHost(notify)`-Methode nach demselben Muster ergänzen (Zeile ~417). Sie reicht `adopt`/`archive` an `adoptMessage`/`archiveMessage` aus Task 5 durch — mit einer `connect`-Funktion, die `imapConnectWritable` mit dem Transport und den Zugangsdaten des gewählten Kontos aufruft, und dem **geteilten** Busy-Guard des Syncs. Nach erfolgreichem `adopt` einen Sync anstoßen; die Notiz entsteht dort, nicht in der Aktion.
 
-- [ ] **Step 6: Run the full gate**
+- [ ] **Step 7: Run the full gate**
 
 Run: `npm run gate`
 Expected: alles grün. Der Bundle-Test und `check:pure` fangen hier zwei typische Fehlgriffe: ein `node:`-Import in der neuen Kette und ein DOM-Zugriff, der aus Versehen in `src/core/` gelandet ist.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
