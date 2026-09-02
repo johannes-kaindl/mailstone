@@ -271,3 +271,82 @@ Neustart gesehen hätte. Jeder der fünf Neustarts setzt seither vorher `window.
 gilt erst als vollzogen, wenn der Marker **weg** und das Plugin wieder geladen ist. Das ist
 dieselbe Trennung von Mutation und Wartephase, die die Dach-Doku für `pollUntil` beschreibt — hier
 für den Prüfling selbst.
+
+---
+
+## M4 — getrackter GUI-Smoke-Treiber (2026-09-02)
+
+`npm run smoke:gui` fährt die zehn Punkte der M5-Handprobe seither selbst
+(`scripts/gui-smoke.ts`, zwölf Prüfpunkte — V3 und V5 zerfallen in je zwei Hälften, weil
+beide eine Gegenprobe brauchen). Erfüllt CORE-TEST-02 (b): der Hand-Lauf darüber existierte
+genau einmal und wäre beim nächsten Mal wieder Handarbeit gewesen.
+
+**Ergebnis: 12/12 grün** gegen Obsidian 1.13.7, Staging-Vault `mailstone`, deployter Stand
+`0.2.0`. `data.json` byte-gleich zurückgeschrieben, keine Testnotizen, kein Testkonto und
+keine Rettungskopie übrig.
+
+**Der Treiber hängt an nichts Fremdem.** Er legt sich ein Testkonto auf `127.0.0.1` an und
+stellt seine Gegenstellen selbst her: einen **toten Port** (sofortiges `ECONNREFUSED`, für
+„hat ein Lauf stattgefunden?") und einen **Schweige-Server**, der die Verbindung annimmt und
+nie antwortet — der Lauf hängt dann lange genug, um die Lauf-Anzeige abzutasten, und ein
+`close()` beendet ihn sofort statt nach 30 s. Ein *erfolgreicher* Sync ist bewusst nicht
+herstellbar: `Account["imap"]["tls"]` kennt nur `implicit`/`starttls`, der getrackte
+Fake-IMAP spricht kein TLS, und den Typ dafür aufzuweichen wäre der falsche Preis. Für die
+Verdrahtung genügt, dass ein Lauf *stattfindet*.
+
+### Die Gegenprobe (CORE-TEST-02) — und was sie im Treiber fand
+
+Ein grüner Smoke beweist nichts, solange er nie rot war. Ausgebaut wurde der
+Kopfzeilen-Indikator (`cockpit-panel.ts:104`, Befund 4 der Abschluss-Fix-Welle).
+
+| Lauf | Ergebnis |
+|---|---|
+| mit Fix | 12/12 grün |
+| Fix ausgebaut | **11/12 — genau V10 rot**, kein anderer Punkt fällt mit |
+| Fix zurück | 12/12 grün |
+
+Die rote Zeile nannte dabei den Klartext des Prüflings mit (CORE-TEST-14): „Synchronisiert…"
+stand in der Kopfzeile, der Lauf lief also — es fehlte allein das Symbol. Genau der
+ausgebaute Defekt, ohne Rätselraten.
+
+**Sechs von sieben Auffälligkeiten der ersten Läufe lagen im Werkzeug, nicht im Prüfling** —
+das ist die eigentliche Leistung dieser Runde und deckt sich mit dem, was der Skill für den
+ersten Lauf vorhersagt. Der Reihe nach, weil jede eine eigene Lehre trägt:
+
+1. **`persist()` schreibt nichts.** Der Treiber rief die Persister-Funktion ohne Argument;
+   sie erwartet den ganzen Zustand (`main.ts:404`). Einstellungen wirkten im Speicher und
+   überlebten keinen Neustart — V5b war rot bei intaktem Prüfling. Richtig ist
+   `saveSettings()`, die Methode, die auch der Settings-Tab nimmt.
+2. **Ungültige Geheimnis-ID.** `secretId` war `mailstone:<id>`; erlaubt sind nur
+   Kleinbuchstaben, Zahlen und Bindestriche (`secretIdFor` bildet `mailstone-<id>`). Ohne
+   hinterlegtes Passwort bricht jeder Lauf **vor** dem Verbindungsaufbau ab — die
+   Gegenstelle wurde nie erreicht, und die Lauf-Anzeige war nur Millisekunden da.
+3. **Der aktive Einstellungs-Tab steht nicht im Workspace-Renderer.** Ab Obsidian 1.13 sind
+   die Einstellungen ein eigenes **Fenster**; `app.setting.activeTab` ist dort `null`. V9 las
+   damit nicht den Tab, sondern die Abwesenheit des Modals.
+4. **Der CTA-Griff traf Obsidians eigenen Knopf.** „Der erste Knopf in der Ansicht, der nicht
+   `sync-all` ist" war der `view-action` im Kopf der Leaf. Einstieg gehört über einen
+   plugin-eigenen Anker — hier `.mailstone-cockpit-empty`.
+5. **Ohne Fokus drosselt Chromium die Timer auf etwa einen Tick pro Sekunde.** Die Abtastung
+   in V10 lieferte 7 statt 133 Proben, und die Sidebar wurde mit **24 statt 300 px** gemessen —
+   beide Male blieb der Punkt **grün** und maß das Falsche. `requireVisible` gehört nicht nur
+   an den Anfang, sondern **nach jeden Neustart**: der Fokus überlebt ihn nicht zuverlässig.
+   Seither ist auch „zu wenige Proben" ein roter Ausgang statt eines stillen.
+6. **Der erste Prüfpunkt maß den Stand von vorhin.** Obsidian hält `main.js` im Speicher; ein
+   frisches `npm run deploy` wirkt erst nach einem Plugin-Neuladen. In der ersten Gegenprobe
+   blieb V10 deshalb grün, obwohl der geprüfte Fix ausgebaut war — der Smoke prüfte den alten
+   Build. Der Treiber lädt das Plugin jetzt zu Beginn neu.
+7. **Das Aufräumen maß zu früh und ließ den Testzustand stehen.** Der Vergleich meldete
+   „byte-gleich", während das Plugin seinen Speicherstand beim Entladen noch einmal
+   darüberschrieb: das absichtlich kaputt gesetzte Register aus V7 (`runState: "kaputt"`)
+   blieb im Vault liegen. Richtige Reihenfolge ist **abschalten → Datei herstellen →
+   einschalten**, dann vergleichen.
+
+Nummer 5 und 6 sind dieselbe Familie wie die Nachlese der Handprobe darüber: eine Messung am
+Übergang, die den gemeinten Zustand nie gesehen hat — und deren Fehlerausgang **grün** ist.
+
+### Was der Treiber nicht abdeckt
+
+Postfach-Logik (dafür `tests/integration/` gegen den Fake-IMAP über einen echten Socket) und
+alles, was ein Urteil verlangt: ob die Anordnung gefällt, ob eine Meldung verständlich ist.
+Dafür bleibt die Hand-Runde.
