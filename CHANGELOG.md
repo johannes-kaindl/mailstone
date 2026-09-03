@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Intern
+- Der Nur-Lese-Vertrag des Sync-Laufs (`EXAMINE` + `BODY.PEEK`, nie `SELECT` oder `BODY[]`) wird
+  jetzt über einen echten Socket belegt: der Fake-IMAP-Server protokolliert jede empfangene
+  Kommandozeile, und der Integrationstest prüft den ganzen Dialog eines Laufs auf **Abwesenheit**
+  der verbotenen Formen — nicht nur die Aufrufe, für die es heute einen Unit-Test gibt
+- Der schreibende Pfad (`Übernehmen` → `SELECT` + `UID MOVE`) hat seinen ersten Integrationstest.
+  Der Fake kündigt `MOVE`/`UIDPLUS` dabei erst **nach** der Anmeldung an und fährt damit genau die
+  Server-Bauart, wegen der die Capabilities ein zweites Mal gelesen werden
+
 ## [0.3.0] — 2026-09-03
 
 ### Posteingang — Mail sichten und übernehmen, ohne den Vault zu verlassen (2026-09-03)
