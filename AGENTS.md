@@ -79,6 +79,14 @@ scheitert **lautlos**, wenn die ID schon existiert (nur ein Hover-Tooltip, keine
 einmal gesetztes Passwort ist über die UI faktisch unveränderbar. Dasselbe Muster trat in
 `calendar-notes` auf; es steht als Registry-Eintrag im Dach.
 
+**Ein verwaister Schlüsselbund-Eintrag wird bewusst NICHT aufgeräumt** (entschieden 2026-09-03,
+M1-Nachlese): Wer im Konten-Modal ein Geheimnis anlegt und dann *Abbrechen* drückt, hinterlässt
+einen Eintrag ohne Konto — `SecretComponent` schreibt am Save/Cancel-Ausgang vorbei direkt in den
+Speicher. Ihn beim Abbrechen zu löschen hieße, in einem **globalen** Namensraum zu räumen: die IDs
+vergibt der Nutzer, `app.secretStorage` gehört allen Plugins, und dieselbe ID kann bereits an einem
+anderen Konto oder Plugin hängen. Ein verwaister Eintrag kostet nichts; ein fälschlich gelöschter
+kostet ein Passwort, das über die UI (s. o.) kaum wiederherzustellen ist.
+
 ## Ein Fehlschlag der Sent-Kopie ist kein Fehlschlag des Versands
 
 `send()` legt die Nachricht nach erfolgreichem Versand per `APPEND` im Ordner aus `folders.sent`
