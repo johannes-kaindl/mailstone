@@ -35,6 +35,7 @@ function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): 
     archive: vi.fn(),
     openSettings: vi.fn(),
     onChange: () => () => undefined,
+    destroy: vi.fn(),
     ...over,
   };
 }

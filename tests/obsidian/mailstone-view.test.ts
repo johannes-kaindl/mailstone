@@ -14,12 +14,13 @@ function fakeHost(onChange?: CockpitHost["onChange"]): CockpitHost {
   };
 }
 
-function fakeInboxHost(onChange?: InboxHost["onChange"]): InboxHost {
+function fakeInboxHost(onChange?: InboxHost["onChange"], destroy?: InboxHost["destroy"]): InboxHost {
   return {
     accounts: () => [], selectedAccountId: () => "", selectAccount: () => undefined,
     viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenGrund: null }),
     refresh: () => undefined, ensureLoaded: () => undefined, adopt: () => undefined, archive: () => undefined,
     openSettings: () => undefined, onChange: onChange ?? (() => () => undefined),
+    destroy: destroy ?? (() => undefined),
   };
 }
 
@@ -89,6 +90,21 @@ describe("MailstoneView", () => {
     await v.onClose();
     expect(abCockpit).toHaveBeenCalled();
     expect(abInbox).toHaveBeenCalled();
+  });
+
+  it("meldet den Inbox-HOST beim Schliessen ab, nicht nur das Panel (I2-Regression)", async () => {
+    // Der Host haengt sich fuer seine gesamte Lebensdauer an einen plugin-lebenslangen
+    // Emitter (`syncEvents`); `hub.destroy()` raeumt nur die Panels ab. Ohne einen expliziten
+    // `inboxHost.destroy()`-Aufruf aus `onClose()` ueberlebt der Host das Schliessen der
+    // Ansicht und kann bei einem kuenftigen Sync erneut laden() ausloesen — Netzverkehr ohne
+    // sichtbare Oberflaeche. Dieser Test wird ROT, wenn der Aufruf wieder entfernt wird; ein
+    // Test, der nur prueft, dass `destroy` als Methode existiert, faengt das nicht.
+    const hostDestroy = vi.fn();
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost(undefined, hostDestroy));
+    await v.onOpen();
+    expect(hostDestroy).not.toHaveBeenCalled();
+    await v.onClose();
+    expect(hostDestroy).toHaveBeenCalledTimes(1);
   });
 });
 

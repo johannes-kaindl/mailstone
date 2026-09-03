@@ -105,12 +105,18 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
   // I2 (Teil B): ein Sync macht die Liste veraltet — neu LADEN statt nur neu zu zeichnen, sonst
   // aktualisiert sich weder die Zeilenmenge noch der "liegt im Vault"-Badge (Spec § 8). `laden()`
   // haelt bei `busy` selbst den vorherigen Zustand (I1), ein Zusammenstoss mit einem parallel
-  // laufenden Nachladen ist also unschaedlich. Einmalig fuer die Lebensdauer des Hosts verdrahtet
-  // (kein `destroy()` am Host, dieselbe Lebensdauer wie die View). Nur NACH dem ersten
-  // `ensureLoaded()`: sonst loest ein Sync im Hintergrund eine IMAP-Verbindung fuer einen Tab
-  // aus, den niemand je geoeffnet hat — das erste Laden bleibt bewusst lazy (Spec § 8 "beim
-  // Oeffnen des Tabs"), das Nachladen danach folgt derselben Regel.
-  deps.onChange(() => { if (ersteLadungAusgeloest) void laden(); });
+  // laufenden Nachladen ist also unschaedlich. Einmalig fuer die Lebensdauer des Hosts verdrahtet.
+  // Nur NACH dem ersten `ensureLoaded()`: sonst loest ein Sync im Hintergrund eine IMAP-Verbindung
+  // fuer einen Tab aus, den niemand je geoeffnet hat — das erste Laden bleibt bewusst lazy
+  // (Spec § 8 "beim Oeffnen des Tabs"), das Nachladen danach folgt derselben Regel.
+  //
+  // Regression aus dem I2-Re-Review: der Unsub wurde bis hierher NIRGENDS gehalten. `main.ts`
+  // ruft die Host-Fabrik bei jeder Leaf-Erzeugung neu auf, und `InboxHost` hatte kein `destroy()`
+  // — jedes Schliessen/Wiederoeffnen des Posteingangs haengte einen weiteren, nie abgemeldeten
+  // Listener an `syncEvents` (plugin-lebenslang). Ein toter Host konnte so bei kuenftigen Syncs
+  // erneut `laden()` ausloesen und eine IMAP-Verbindung fuer eine laengst geschlossene Ansicht
+  // aufbauen. Der Unsub wird jetzt gehalten und in `destroy()` aufgerufen.
+  const syncUnsub = deps.onChange(() => { if (ersteLadungAusgeloest) void laden(); });
 
   return {
     accounts: () => deps.accounts(),
@@ -129,6 +135,12 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
     onChange: (cb) => {
       horcher.add(cb);
       return () => { horcher.delete(cb); };
+    },
+    // Muss vom View-Lebenszyklus aufgerufen werden (`MailstoneView.onClose()`) — ohne diesen
+    // Aufruf bleibt `syncUnsub` fuer immer aktiv (s. Kommentar oben an `syncUnsub`).
+    destroy: () => {
+      syncUnsub();
+      horcher.clear();
     },
   };
 }

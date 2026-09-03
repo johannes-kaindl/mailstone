@@ -20,6 +20,11 @@ export interface InboxHost {
   archive(uid: number): void;
   openSettings(): void;
   onChange(cb: () => void): Unsubscribe;
+  /** Meldet den Host von seiner `synced`/`changed`-Registrierung ab (I2-Nachtrag): der Host
+   *  haengt sich fuer seine gesamte Lebensdauer an einen plugin-lebenslangen Emitter — ohne
+   *  diesen Aufruf beim Schliessen der Ansicht bleibt der Listener aktiv und kann nach dem
+   *  Schliessen noch IMAP-Verbindungen ausloesen. Aufrufer: `MailstoneView.onClose()`. */
+  destroy(): void;
 }
 
 /** Fehlercode -> i18n-Key, deckungsgleich mit `InboxActionCode` (13 Werte). Vollstaendig

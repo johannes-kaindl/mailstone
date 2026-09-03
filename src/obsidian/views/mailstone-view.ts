@@ -36,6 +36,11 @@ export class MailstoneView extends ItemView {
     this.hub?.destroy();
     this.hub = null;
     this.contentEl.empty();
+    // Regression-Fix (I2-Re-Review): der Inbox-Host haengt sich fuer seine gesamte Lebensdauer
+    // an einen plugin-lebenslangen Emitter (`syncEvents`). `hub.destroy()` raeumt nur die
+    // Panels ab, nicht den Host dahinter — ohne diesen Aufruf ueberlebt der Listener das
+    // Schliessen der Ansicht und kann bei jedem kuenftigen Sync erneut laden().
+    this.inboxHost.destroy();
   }
 }
 
