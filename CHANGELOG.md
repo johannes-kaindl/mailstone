@@ -6,6 +6,54 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-03
+
+### Posteingang — Mail sichten und übernehmen, ohne den Vault zu verlassen (2026-09-03)
+- Neuer Tab **Posteingang** neben dem Cockpit, in derselben Ansicht: die letzten 100 Nachrichten
+  aus `folders.inbox` mit Absender, Betreff, Datum und einem Häkchen für alles, was schon als
+  Notiz im Vault liegt. Ungelesenes steht halbfett
+- **„Ins Vault übernehmen"** verschiebt die Mail serverseitig in den Allowlist-Ordner; die Notiz
+  entsteht anschließend durch den regulären Sync-Lauf, nicht durch die Aktion selbst. **„Archivieren"**
+  räumt sie in den Archivordner. Beides erst nach Rückfrage — auf dem Server ist nichts davon
+  rückgängig zu machen
+- Der Badge „liegt im Vault" ist ein **exakter** Treffer, keine Heuristik: die Message-ID aus der
+  Liste läuft durch dieselbe Normalisierung wie die im Sync-Pfad, und beide Seiten des Vergleichs
+  werden normalisiert
+- Die Liste aktualisiert sich beim Öffnen des Tabs, per Knopf und nach jedem Sync-Lauf. Ein
+  Tabwechsel behält Scrollposition und Zustand — die Panels bleiben gemountet und werden nur
+  umgeblendet
+- Ohne Konto oder ohne Nachrichten steht dort eine Aussage samt Handlungsangebot statt einer
+  leeren Fläche. Kann ein Server nicht sicher verschieben, bleiben die Knöpfe sichtbar, aber
+  gesperrt, und nennen den Grund — statt wortlos zu verschwinden
+
+### Der Nur-Lese-Vertrag geht auf — an genau einer Stelle, bewacht vom Compiler
+- Bis hierher war der IMAP-Client rein lesend, und das ist eine Zusage an das Postfach: eine
+  gespiegelte Mail muss im Mailprogramm ungelesen aussehen, weil im Ordner `Belege` ein anderer
+  Abholer über genau dieses „ungelesen" gesteuert wird. „Übernehmen" braucht `SELECT` und
+  `UID MOVE` — der Vertrag musste sich öffnen
+- Gelöst über **zwei Typen statt einer Konvention**: `imapConnect` liefert weiterhin eine
+  `ImapReadSession` ohne `select`/`uidMove`, schreibfähig wird die Verbindung nur über
+  `imapConnectWritable`, und den nimmt genau ein Pfad. Ein versehentliches `SELECT` im Sync ist
+  damit ein **Typfehler**, kein Review-Befund. Auch der schreibende Weg setzt kein `\Seen`:
+  `UID MOVE` nimmt die Flags mit
+- **`UID MOVE` misst den Erfolg an einem Beleg, nicht an der Statuszeile.** Nach RFC 6851 § 3.3
+  antwortet ein Server auf eine UID, die nichts trifft, mit `OK` — ein Erfolg, bei dem nichts
+  bewegt wurde. Ohne `COPYUID`-Code oder untagged `EXPUNGE` gilt die Aktion deshalb als
+  fehlgeschlagen („erneut synchronisieren"), statt einen Sync anzustoßen, der nichts findet
+- Kein `COPY`+`EXPUNGE`-Ersatzweg: ein UID-loses `EXPUNGE` entfernt auch Nachrichten, die ein
+  anderes Programm als gelöscht markiert hat. Kann ein Server kein `MOVE`, wird gar nichts gesendet
+
+### Behoben
+- **Capabilities werden jetzt auch nach der Anmeldung gelesen.** Viele Server kündigen `MOVE` und
+  `UIDPLUS` erst danach an, oft nur im Response-Code der `OK`-Zeile — ein fähiger Server sah damit
+  unfähig aus
+- Fehlermeldungen des Posteingangs sind vollständig übersetzt. Vorher erschienen neun von dreizehn
+  Fällen als roher Schlüsseltext oder, schlimmer, als plausible Unwahrheit
+- `tools/sync-kit.sh` liest Kit-Module aus einer **festen Ref** statt aus dem Arbeitsstand der
+  Nachbar-Repos, prüft alle Quellen vor dem ersten Schreibvorgang und schreibt über `.tmp` + `mv`.
+  Vorher war das Vendoring an fremde HEADs gekoppelt und hätte bei einer fehlenden Quelle eine
+  Zieldatei als Stummel hinterlassen (intern, keine Nutzerwirkung)
+
 ## [0.2.0] — 2026-09-01
 
 ### Sidebar-Cockpit — Betriebsansicht je Konto (2026-09-01)
