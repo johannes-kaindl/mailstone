@@ -732,6 +732,141 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
   await evaluieren(cdp, `app.setting.close(); return true;`).catch(() => undefined);
 }
 
+// ── Posteingang (Hub-Tabs: Cockpit / Inbox) ────────────────────────────────────────────
+//
+// Diese drei Punkte pruefen Verdrahtung wie die zehn davor — nicht Postfach-Logik (dafuer
+// `tests/integration/` gegen den erweiterten Fake-IMAP). Sie brauchen keine IMAP-Gegenstelle:
+// das Panel zeigt seinen Inhalt erst nach einem Refresh-Klick, den kein Punkt hier ausloest,
+// darum ist die Inbox in jedem frischen View-Zustand "leer" — genau der Zustand, den V12
+// belegen soll.
+
+/** Klickt einen Hub-Tab per `data-tab` und meldet, ob der Button ueberhaupt im DOM stand. */
+async function tabKlicken(cdp: Cdp, tabId: string): Promise<boolean> {
+  const ausdruck = `document.querySelector('.okit-hub-tab[data-tab="${tabId}"]')`;
+  const da = await evaluieren<boolean>(cdp, `return !!${ausdruck};`);
+  if (!da) return false;
+  // Echter Mausklick wie beim Ribbon — ein synthetischer Klick liefe an denselben
+  // Host-Pfaden vorbei (s. `ribbonKlicken`).
+  await clickReal(cdp, ausdruck, 150);
+  return true;
+}
+
+async function v11_inboxTabOeffnetInhalt(cdp: Cdp): Promise<void> {
+  await cockpitOeffnen(cdp);
+  if (!(await tabKlicken(cdp, "inbox"))) {
+    pruefe("V11 Inbox-Tab existiert, ist klickbar und zeigt seinen Inhalt", false, "Inbox-Tab nicht im DOM");
+    return;
+  }
+  await warte(600);
+  const messung = await evaluieren<{
+    inboxDa: boolean;
+    inboxVersteckt: boolean;
+    inboxSichtbar: boolean;
+    cockpitDa: boolean;
+    cockpitVersteckt: boolean;
+  }>(
+    cdp,
+    `const inbox = document.querySelector('.okit-hub-panel[data-tab="inbox"]');
+     const cockpit = document.querySelector('.okit-hub-panel[data-tab="cockpit"]');
+     const r = inbox ? inbox.getBoundingClientRect() : null;
+     return {
+       inboxDa: !!inbox,
+       inboxVersteckt: !!inbox && inbox.classList.contains("is-hidden"),
+       inboxSichtbar: !!r && r.width > 0 && r.height > 0,
+       cockpitDa: !!cockpit,
+       cockpitVersteckt: !!cockpit && cockpit.classList.contains("is-hidden"),
+     };`,
+  );
+  pruefe(
+    "V11 Inbox-Tab existiert, ist klickbar und zeigt seinen Inhalt",
+    messung.inboxDa && !messung.inboxVersteckt && messung.inboxSichtbar && messung.cockpitDa && messung.cockpitVersteckt,
+    `Inbox da: ${String(messung.inboxDa)}, versteckt: ${String(messung.inboxVersteckt)}, sichtbar: ${String(messung.inboxSichtbar)} — ` +
+      `Cockpit da: ${String(messung.cockpitDa)}, versteckt: ${String(messung.cockpitVersteckt)}`,
+  );
+}
+
+async function v12_leererOrdnerZeigtEmptyState(cdp: Cdp): Promise<void> {
+  // Konten explizit leeren statt sich auf "noch nie geladen" zu verlassen — so bleibt der
+  // Punkt unabhaengig davon, ob ein frueherer Lauf schon einmal "Aktualisieren" geklickt hat.
+  await evaluieren(
+    cdp,
+    `const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+     p.settings.accounts = []; await p.saveSettings(); return true;`,
+  );
+  await warte(400);
+  if (!(await tabKlicken(cdp, "inbox"))) {
+    pruefe("V12 leerer Ordner zeigt Empty-State mit Handlungsangebot", false, "Inbox-Tab nicht im DOM");
+    return;
+  }
+  await warte(600);
+  const messung = await evaluieren<{ emptyDa: boolean; ctaDa: boolean; ctaSichtbar: boolean }>(
+    cdp,
+    `const leer = document.querySelector(".mailstone-inbox-empty");
+     const cta = leer ? leer.querySelector("button") : null;
+     const r = cta ? cta.getBoundingClientRect() : null;
+     return { emptyDa: !!leer, ctaDa: !!cta, ctaSichtbar: !!r && r.width > 0 && r.height > 0 };`,
+  );
+  pruefe(
+    "V12 leerer Ordner zeigt Empty-State mit Handlungsangebot",
+    messung.emptyDa && messung.ctaDa && messung.ctaSichtbar,
+    `Empty-State da: ${String(messung.emptyDa)}, CTA da: ${String(messung.ctaDa)}, CTA sichtbar: ${String(messung.ctaSichtbar)} — ${await klartext(cdp)}`,
+  );
+}
+
+/**
+ * Belegt das „mount-once"-Muster (hub.ts): der Panel-Div wird einmal gebaut und beim
+ * Tab-Wechsel nur per `is-hidden` umgeblendet, nie neu erzeugt. Eine selbst gesetzte Marke
+ * am DOM-Element ist der Beleg — ueberlebt sie den Hin-und-zurueck-Wechsel nicht, wurde das
+ * Element zwischendurch ausgetauscht (Panel-Zustand ginge dann bei jedem Tab-Wechsel verloren:
+ * Scrollposition, laufende Aktionen, alles).
+ */
+async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
+  const NAME = "V13 Tab-Wahl übersteht Wechsel hin und zurück (mount-once)";
+  if (!(await tabKlicken(cdp, "inbox"))) {
+    pruefe(NAME, false, "Inbox-Tab nicht im DOM");
+    return;
+  }
+  await warte(400);
+  const marke = `smoke-${String(Date.now())}`;
+  const gesetzt = await evaluieren<boolean>(
+    cdp,
+    `const inbox = document.querySelector('.okit-hub-panel[data-tab="inbox"]');
+     if (!inbox) return false;
+     inbox.dataset.smokeMarke = ${JSON.stringify(marke)};
+     return true;`,
+  );
+  if (!gesetzt) {
+    pruefe(NAME, false, "Inbox-Panel-Div nicht im DOM, Marke nicht gesetzt");
+    return;
+  }
+  if (!(await tabKlicken(cdp, "cockpit"))) {
+    pruefe(NAME, false, "Cockpit-Tab nicht im DOM (Ruecksprung nicht moeglich)");
+    return;
+  }
+  await warte(400);
+  if (!(await tabKlicken(cdp, "inbox"))) {
+    pruefe(NAME, false, "Inbox-Tab beim Rueckwechsel nicht im DOM");
+    return;
+  }
+  await warte(400);
+  const messung = await evaluieren<{ markeDa: boolean; versteckt: boolean; sichtbar: boolean }>(
+    cdp,
+    `const inbox = document.querySelector('.okit-hub-panel[data-tab="inbox"]');
+     const r = inbox ? inbox.getBoundingClientRect() : null;
+     return {
+       markeDa: !!inbox && inbox.dataset.smokeMarke === ${JSON.stringify(marke)},
+       versteckt: !!inbox && inbox.classList.contains("is-hidden"),
+       sichtbar: !!r && r.width > 0 && r.height > 0,
+     };`,
+  );
+  pruefe(
+    NAME,
+    messung.markeDa && !messung.versteckt && messung.sichtbar,
+    `Marke nach Hin-und-zurueck noch da: ${String(messung.markeDa)} (dasselbe DOM-Element = kein Neubau), ` +
+      `versteckt: ${String(messung.versteckt)}, sichtbar: ${String(messung.sichtbar)}`,
+  );
+}
+
 // ── Lauf ────────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -805,6 +940,12 @@ async function main(): Promise<void> {
     console.log("── Defensive Pfade");
     await v7_kaputtesRegisterKipptDenStartNicht(cdp, datenDatei);
     await v9_einstellungenOeffnenTrifftDenEigenenTab(cdp);
+    console.log("");
+
+    console.log("── Posteingang (Hub-Tabs)");
+    await v11_inboxTabOeffnetInhalt(cdp);
+    await v12_leererOrdnerZeigtEmptyState(cdp);
+    await v13_tabWahlUeberlebtWechsel(cdp);
     console.log("");
   } finally {
     // Aufräumen darf nie am Ergebnis hängen: auch ein abgebrochener Lauf gibt den Vault so
