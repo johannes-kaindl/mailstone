@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-03
+
 ### Posteingang — Mail sichten und übernehmen, ohne den Vault zu verlassen (2026-09-03)
 - Neuer Tab **Posteingang** neben dem Cockpit, in derselben Ansicht: die letzten 100 Nachrichten
   aus `folders.inbox` mit Absender, Betreff, Datum und einem Häkchen für alles, was schon als
