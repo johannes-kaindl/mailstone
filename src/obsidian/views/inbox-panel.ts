@@ -97,7 +97,7 @@ export class InboxPanel {
 
     if (vm.state === "fehler") {
       const zeile = root.createDiv({ cls: "mailstone-inbox-error" });
-      const el = zeile.createSpan({ cls: "mailstone-inbox-status is-error", attr: { "aria-label": t("inbox.title") } });
+      const el = zeile.createSpan({ cls: "mailstone-inbox-status is-error", attr: { "aria-label": t("inbox.aria.error") } });
       setIcon(el, "circle-x");
       zeile.createSpan({ text: t(FEHLER_KEYS[vm.fehlerCode ?? ""] ?? "inbox.error.busy") });
       return;

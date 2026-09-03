@@ -153,6 +153,7 @@ export const en = {
   "cockpit.aria.checking": "Synchronisation running",
 
   "inbox.title": "Inbox",
+  "inbox.aria.error": "Loading the inbox failed",
   "inbox.refresh": "Refresh",
   "inbox.empty": "No messages in this folder.",
   "inbox.empty.cta": "Open settings",
@@ -324,6 +325,7 @@ export const de: typeof en = {
   "cockpit.aria.checking": "Abgleich läuft",
 
   "inbox.title": "Posteingang",
+  "inbox.aria.error": "Laden des Posteingangs gescheitert",
   "inbox.refresh": "Aktualisieren",
   "inbox.empty": "Keine Nachrichten in diesem Ordner.",
   "inbox.empty.cta": "Einstellungen öffnen",

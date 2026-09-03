@@ -3,6 +3,7 @@ import { makeFakeEl } from "../vendor/kit/obsidian-mock";
 import { InboxPanel, type InboxHost } from "../../src/obsidian/views/inbox-panel";
 import type { InboxViewModel } from "../../src/core/view/inbox-vm";
 import { initI18n } from "../../src/i18n/strings";
+import { t } from "../../src/vendor/code-kit/i18n";
 
 initI18n("de");
 
@@ -76,7 +77,11 @@ describe("InboxPanel", () => {
     new InboxPanel(host({ state: "fehler", rows: [], fehlerCode: "auth" })).mount(el);
     const ind = findAll(el, "mailstone-inbox-status")[0];
     expect(String(ind.className).split(" ")).toContain("is-error");
-    expect(ind.getAttribute("aria-label")).toBeTruthy();
+    const label = ind.getAttribute("aria-label");
+    expect(label).toBeTruthy();
+    // Nicht nur "irgendein Label" — es muss den Fehlerzustand beschreiben, nicht bloss den
+    // Panel-Titel wiederholen (den ein Screenreader sonst faelschlich auf das Fehlersymbol liest).
+    expect(label).not.toBe(t("inbox.title"));
   });
 
   it("blendet die Kontowahl aus, solange es nur ein Konto gibt", () => {
