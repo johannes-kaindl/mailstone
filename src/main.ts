@@ -8,8 +8,12 @@ import { noticeNotifier, type Notifier } from "./obsidian/notifier";
 import { FolderPromptModal } from "./obsidian/modals/folder-prompt";
 import { obsidianSecretStore } from "./obsidian/secrets";
 import { nodeSocketTransport } from "./obsidian/tls-transport";
-import { createSendService, resolveSender, type SendService } from "./core/send/service";
+import { createSendService, resolveSender, isLoopback, type SendService } from "./core/send/service";
 import { transportAccounts, splitTransportId } from "./core/send/imip";
+import type { SecretStore } from "./core/send/secrets";
+import { imapConnect, imapConnectWritable } from "./core/imap/client";
+import { fetchInbox as fetchInboxCore } from "./core/inbox/fetch";
+import { adoptMessage, archiveMessage, type InboxActionCode } from "./core/inbox/actions";
 import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge } from "./obsidian/calendar-notes-bridge";
 import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
 import { dueAccounts, TICK_MS } from "./core/sync/schedule";
@@ -26,6 +30,9 @@ import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
 import { trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
 import type { CockpitHost } from "./obsidian/views/cockpit-panel";
+import { createInboxHost } from "./obsidian/views/inbox-host";
+import type { InboxHost } from "./obsidian/views/inbox-panel";
+import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "./obsidian/views/mailstone-view";
 
 // runState ist Laufzeitzustand wie zoneHashes und uidCache, keine Einstellung — s.
@@ -300,7 +307,7 @@ export default class MailstonePlugin extends Plugin {
     // Genau ein registerView-Type (UI-STANDARD §1): das Ribbon-Symbol OEFFNET die Ansicht,
     // es startet keinen Lauf mehr — "sync-mailbox" in der Befehlspalette bleibt der Weg fuer
     // einen direkten Sync ohne die Seitenleiste zu oeffnen.
-    this.registerView(VIEW_TYPE_MAILSTONE, (leaf) => new MailstoneView(leaf, this.cockpitHost(notify)));
+    this.registerView(VIEW_TYPE_MAILSTONE, (leaf) => new MailstoneView(leaf, this.cockpitHost(notify), this.inboxHost(notify, secrets)));
     this.addRibbonIcon("mail", t("cockpit.title"), () => { void activateMailstoneView(this.app); });
     // Eigener Schluessel statt cockpit.title: Obsidian stellt jedem Kommandonamen den
     // Plugin-Namen voran — mit dem View-Titel stuende in der Palette „Mailstone: Mailstone".
@@ -435,6 +442,93 @@ export default class MailstonePlugin extends Plugin {
         setting?.openTabById(this.manifest.id);
       },
       onChange: (cb) => this.cockpitChanged.on("changed", cb),
+    });
+  }
+
+  private inboxHost(notify: Notifier, secrets: SecretStore): InboxHost {
+    const konto = (id: string): Account | undefined => this.settings.accounts.find((a) => a.id === id);
+
+    // Kein-Geheimnis ist ein Konfigurationsfehler, keiner, den connect() melden kann: dessen
+    // Rueckgabetyp ImapConnectResult/ImapConnectWritableResult kennt nur ImapErrorCode, und
+    // "no-secret" gehoert nicht dazu (s. InboxActionCode) — deshalb hier abgefangen, BEVOR
+    // eine Verbindung ueberhaupt versucht wird. Derselbe Riegel wie SyncService.syncAccount.
+    function password(acc: Account): { ok: true; wert: string } | { ok: false; code: InboxActionCode } {
+      const w = secrets.get(acc.secretId);
+      return w === null ? { ok: false, code: "no-secret" } : { ok: true, wert: w };
+    }
+
+    const connectOpts = (acc: Account, pw: string) => ({
+      host: acc.imap.host, port: acc.imap.port, tls: acc.imap.tls,
+      username: acc.username, password: pw, timers: window,
+      ...(isLoopback(acc.imap.host) ? { allowInsecureAuth: true } : {}),
+    });
+
+    return createInboxHost({
+      accounts: () => this.settings.accounts,
+      // Derselbe geteilte Guard wie beim Cockpit — ein zweiter Zaehler wuerde eine zweite,
+      // moeglicherweise widerspruechliche Wahrheit ueber "laeuft gerade etwas" fuehren.
+      isBusy: () => this.busy.isBusy() || this.cockpitRuns > 0,
+      fetchInbox: async (accountId) => {
+        const acc = konto(accountId);
+        if (!acc) return { ok: false, code: "gone", detail: "Konto nicht mehr vorhanden" };
+        const pw = password(acc);
+        if (!pw.ok) return { ok: false, code: pw.code, detail: "kein Geheimnis hinterlegt" };
+        return fetchInboxCore(
+          {
+            connect: () => imapConnect(nodeSocketTransport(), connectOpts(acc, pw.wert)),
+            busy: this.busy,
+            bekannteIds: () => new Set(mailIndex(this.app, this.settings.profile).keys()),
+          },
+          { folder: acc.folders.inbox },
+        );
+      },
+      adopt: async (accountId, uid) => {
+        const acc = konto(accountId);
+        if (!acc) return { ok: false, code: "gone", detail: "Konto nicht mehr vorhanden" };
+        const pw = password(acc);
+        if (!pw.ok) return { ok: false, code: pw.code, detail: "kein Geheimnis hinterlegt" };
+        return adoptMessage(
+          // imapConnectWritable, nicht imapConnect: der Sync bleibt lesend, diese Aktion ist
+          // der EINZIGE hier erlaubte Weg zu einer schreibfaehigen Sitzung (client.ts:264).
+          { connect: () => imapConnectWritable(nodeSocketTransport(), connectOpts(acc, pw.wert)), busy: this.busy },
+          { uid, sourceFolder: acc.folders.inbox, targetFolder: acc.folders.allowlist },
+        );
+      },
+      archive: async (accountId, uid) => {
+        const acc = konto(accountId);
+        if (!acc) return { ok: false, code: "gone", detail: "Konto nicht mehr vorhanden" };
+        const pw = password(acc);
+        if (!pw.ok) return { ok: false, code: pw.code, detail: "kein Geheimnis hinterlegt" };
+        return archiveMessage(
+          { connect: () => imapConnectWritable(nodeSocketTransport(), connectOpts(acc, pw.wert)), busy: this.busy },
+          { uid, sourceFolder: acc.folders.inbox, targetFolder: acc.folders.archive },
+        );
+      },
+      confirmMove: (kind, zielordner) => confirmAction(this.app, { message: t(`inbox.confirm.${kind}`, zielordner) }),
+      targetFolder: (accountId, kind) => {
+        const acc = konto(accountId);
+        if (!acc) return "";
+        return kind === "adopt" ? acc.folders.allowlist : acc.folders.archive;
+      },
+      // Die Notiz entsteht im Sync, nicht in der Aktion (Spec § 4) — nach einem erfolgreichen
+      // Uebernehmen also einen (nicht-stillen) Lauf fuer GENAU dieses Konto anstossen.
+      syncNow: (accountId) => { void this.runSync(notify, false, [accountId]); },
+      notifyError: (code) => notify.error(`inbox.error.${code}`),
+      openSettings: () => {
+        const setting = (this.app as unknown as {
+          setting?: { open(): void; openTabById(id: string): void };
+        }).setting;
+        setting?.open();
+        setting?.openTabById(this.manifest.id);
+      },
+      // "synced" UND "changed": ein Sync ohne inhaltliche Aenderung (synced) kann trotzdem
+      // den imVault-Status einer Zeile veraendert haben (Notiz woanders geloescht+neu erkannt),
+      // "changed" feuert dagegen nur bei tatsaechlich ausgefuehrten NotePlans (Spec § 8).
+      onChange: (cb) => {
+        const ab1 = this.syncEvents.on("synced", () => cb());
+        const ab2 = this.syncEvents.on("changed", () => cb());
+        return () => { ab1(); ab2(); };
+      },
     });
   }
 

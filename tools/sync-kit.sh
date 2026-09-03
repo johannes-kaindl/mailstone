@@ -32,7 +32,7 @@ mkdir -p src/vendor/code-kit src/vendor/kit src/vendor/kit-obsidian tests/vendor
 
 CK_MODULES="timeout sha256 filename-template settings i18n"
 K_PURE="frontmatter vault-path"
-K_OBS="settings_walker folder-suggest confirm"
+K_OBS="settings_walker folder-suggest confirm hub"
 
 # VORPRUEFUNG, bevor irgendetwas geschrieben wird.
 #
