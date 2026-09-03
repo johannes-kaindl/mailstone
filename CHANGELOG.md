@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Behoben
+- **Eine Notiz mit Windows-Zeilenenden behält sie.** Der Sync schrieb die verwaltete Zone immer
+  mit `LF`, während der Frontmatter das Zeilenende der Notiz übernahm — in einer CRLF-Notiz
+  mischte ein Lauf also beides. Der Zonen-Vergleich ignoriert Zeilenenden jetzt ausdrücklich,
+  sonst hätte dieselbe Änderung jede solche Notiz beim nächsten Lauf als „von Hand geändert"
+  gemeldet
+- **Ein Ordner, den ein paralleler Vorgang gerade anlegt, lässt den Sync nicht mehr scheitern.**
+  Zwischen „gibt es den Ordner?" und „lege ihn an" passt ein zweiter Schreibvorgang; sein Erfolg
+  ist jetzt kein Fehler mehr, ein echter Ordner-Fehler bleibt einer
 - **Der Zustandswechsel einer Notiz schreibt nur noch die eine Zeile, die er meint.** Bisher lief
   er über Obsidians `processFrontMatter`, und das liest den Frontmatter als YAML und schreibt ihn
   komplett neu: eigene Felder verlieren ihre Formatierung (aus `to: [adresse]` wird eine
