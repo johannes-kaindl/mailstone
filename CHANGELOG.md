@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Dokumentation
+- **Deutsche README** (`README.de.md`), Badge-Zeile in beiden Fassungen
+- **Der Installationsweg zeigte ins Leere.** Er nannte den Community-Store, aus dem dieses Plugin
+  nicht bezogen werden kann, und verlinkte den GitHub-Spiegel, der anonym mit 404 antwortet.
+  Beides ersetzt: empfohlen wird der AnySource Sideloader mit dem Plugin-Katalog, daneben der
+  Download von `git.jkaindl.de` und der Bau aus dem Quelltext
+
 ### Behoben
 - **Eine Notiz mit Windows-Zeilenenden behält sie.** Der Sync schrieb die verwaltete Zone immer
   mit `LF`, während der Frontmatter das Zeilenende der Notiz übernahm — in einer CRLF-Notiz

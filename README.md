@@ -4,8 +4,14 @@ Mailstone brings mail into the vault as notes: a server-side folder (an IMAP mai
 the mail server, not in the plugin) decides what becomes a note, so triage stays where the mail
 already lives instead of duplicating a second inbox inside Obsidian. Sending replies from a note
 uses the same account via SMTP, and the plugin sends iMIP calendar invitations on behalf of the
-sister plugin [`calendar-notes`](https://github.com/johannes-kaindl/calendar-notes), which owns
+sister plugin [`calendar-notes`](https://git.jkaindl.de/jkaindl/calendar-notes), which owns
 the actual event/attendee model.
+
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/gitea/v/release/jkaindl/mailstone?gitea_url=https%3A%2F%2Fgit.jkaindl.de&label=release)](https://git.jkaindl.de/jkaindl/mailstone/releases)
+[![Obsidian](https://img.shields.io/badge/obsidian-1.13.0%2B%20·%20desktop%20only-purple)](https://obsidian.md)
+
+*Auch auf Deutsch verfügbar: [`README.de.md`](README.de.md).*
 
 ## What it does
 
@@ -40,11 +46,25 @@ a preview pane inside the list, attachment markers, and keyboard navigation.
 
 ## Install
 
-**From the Community Plugins browser** — search for *Mailstone*, install, enable.
+This plugin is **not distributed through the community store**. It lives on its own forge, and
+there are three ways to get it.
 
-**Manually** — download `main.js`, `manifest.json` and `styles.css` from the
-[latest release](https://github.com/johannes-kaindl/mailstone/releases/latest) into
-`<vault>/.obsidian/plugins/mailstone/`, then enable the plugin in Settings → Community plugins.
+**Recommended — via [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader)**,
+which installs and updates plugins from any git forge. Subscribe to this catalog once:
+
+```
+https://git.jkaindl.de/jkaindl/obsidian-plugin-catalog/raw/branch/main/catalog.json
+```
+
+Mailstone then appears in the sideloader's plugin list and updates like any other plugin — no
+manual copying, and every download is checksum-verified. To install just this one plugin without
+the catalog, add its repository URL as a source instead:
+`https://git.jkaindl.de/jkaindl/mailstone`.
+
+**By hand**, if you would rather not add another plugin: download `main.js`, `manifest.json` and
+`styles.css` from the [latest release](https://git.jkaindl.de/jkaindl/mailstone/releases/latest)
+into `<vault>/.obsidian/plugins/mailstone/`, then enable the plugin in Settings → Community
+plugins. Updates then have to be repeated by hand.
 
 **From source** — `npm install && npm run build`, then copy the same three files into that
 folder. `npm run gate` runs the full check suite (lint, type checks, unit and integration tests,
