@@ -32,11 +32,28 @@ Handproben-Protokoll `docs/SMOKE.md`.
 
 ## Ein Sync-Lauf darf `\Seen` nie setzen
 
-Der IMAP-Client (`src/core/imap/client.ts`) ist **rein lesend**, und das ist ein Vertrag
-gegenüber dem Postfach des Nutzers, kein Implementierungsdetail: `EXAMINE` statt `SELECT`,
-`BODY.PEEK[…]` statt `BODY[…]`. Eine Mail, die mailstone gespiegelt hat, muss im Mailprogramm
-weiterhin ungelesen aussehen. Wer hier ein Kommando ergänzt, prüft beide Hälften — ein
-`SELECT` genügt allein schon, um Flags schreibbar zu machen.
+Lesende Pfade nutzen `EXAMINE` und `BODY.PEEK[…]`, nie `SELECT` oder `BODY[…]`. Das ist ein
+Vertrag gegenüber dem Postfach des Nutzers, kein Implementierungsdetail: eine Mail, die
+mailstone gespiegelt hat, muss im Mailprogramm weiterhin ungelesen aussehen — im Ordner
+`Belege` steuert ein anderer Abholer (paperless-ngx) über genau dieses „ungelesen".
+
+**Seit M4 ist der Client nicht mehr rein lesend, sondern in zwei Typen geteilt** — und die
+Grenze bewacht der Compiler, nicht die Aufmerksamkeit eines Reviewers:
+
+| Einstieg | Typ | Kann | Wer nimmt ihn |
+|---|---|---|---|
+| `imapConnect` | `ImapReadSession` | `examine`, `uidSearchAll`, `uidFetchMessageIds`, `uidFetchHeaders`, `uidFetchBody`, `append` | Sync, Inbox-Liste |
+| `imapConnectWritable` | `ImapWriteSession` | zusätzlich `select`, `uidMove` | **nur** `src/core/inbox/actions.ts` |
+
+`SyncService` nimmt eine `ImapReadSession` entgegen; `select` steht ihm damit nicht zur
+Verfügung, ein versehentliches `SELECT` im Sync-Pfad ist ein **Typfehler**. Wer den
+schreibenden Einstieg an einer zweiten Stelle verwendet, öffnet den Vertrag dort — und trägt
+die Stelle hier ein.
+
+Auch der schreibende Pfad setzt **kein** `\Seen`: `UID MOVE` nimmt die Flags der Nachricht mit.
+Eine Nebenwirkung hat er doch, und sie sei benannt: `SELECT` setzt den `\Recent`-Status für
+andere Sitzungen zurück. Das trifft nur die kurze Aktions-Verbindung, nie den Sync, und
+`\Recent` wertet keiner der beteiligten Wege aus.
 
 Der Message-ID-Abgleich läuft über `BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` statt `ENVELOPE`
 (Spec § 3.1): die Normalisierung dafür existiert seit M1, ein Adresslisten-Parser wäre Aufwand

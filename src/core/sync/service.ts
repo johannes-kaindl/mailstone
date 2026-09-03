@@ -10,7 +10,7 @@ import type { NotePlan } from "../mirror/plan";
 import { planSync, type MailIndex } from "../mirror/apply";
 import { parseEml } from "../mime/parse";
 import type { ParsedMail } from "../mime/types";
-import { imapConnect, type ImapSession } from "../imap/client";
+import { imapConnect, type ImapReadSession } from "../imap/client";
 import { isLoopback } from "../send/service";
 import type { UidCacheStore } from "./uid-cache";
 import type { BusyGuard } from "./busy";
@@ -85,7 +85,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
       ...(deps.log ? { log: deps.log } : {}),
     });
     if (!connected.ok) return { ok: false, accountId: account.id, code: connected.code, detail: connected.detail };
-    const session: ImapSession = connected.session;
+    const session: ImapReadSession = connected.session;
 
     try {
       const examined = await session.examine(folder);

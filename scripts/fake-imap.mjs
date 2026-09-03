@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 // Fake-IMAP-Server fuer tests/integration — spricht nur das Subset, das core/imap/client.ts
-// benutzt: CAPABILITY, AUTHENTICATE PLAIN, EXAMINE, UID SEARCH ALL, UID FETCH (Header/Body),
-// LOGOUT. Kein TLS, bindet ausschliesslich an 127.0.0.1. Nie fuer echte Postfaecher gedacht.
+// benutzt: CAPABILITY, AUTHENTICATE PLAIN, EXAMINE, SELECT, UID SEARCH ALL, UID FETCH
+// (Header/Body), UID MOVE, LOGOUT. Kein TLS, bindet ausschliesslich an 127.0.0.1. Nie fuer
+// echte Postfaecher gedacht.
 //
 // Start: `node scripts/fake-imap.mjs` (Port 11143, override per PORT env fuer parallele Laeufe
 // im Integrationstest). Liefert einen festen Ordner mit zwei Mails, unabhaengig vom
 // EXAMINE-Ordnernamen — der Test prueft nur den Dialog gegen den echten Socket, nicht Multi-
 // Ordner-Logik.
+//
+// SELECT und UID MOVE sind absichtlich NUR fuer den schreibenden Pfad da (client.ts
+// imapConnectWritable / select() / uidMove()) — der Sync-Pfad bleibt bei EXAMINE +
+// BODY.PEEK und setzt nie \Seen (AGENTS.md "Ein Sync-Lauf darf \Seen nie setzen"). Dieser Fake
+// unterscheidet Ordner nicht (EXAMINE/SELECT ignorieren den Namen, s.o.) — MAILS ist eine
+// einzige gemeinsame Liste. UID MOVE entfernt die UID daraus: ohne diese Mutation koennte der
+// GUI-Smoke fuer den Posteingang gruen melden, ohne dass je ein MOVE stattgefunden hat.
 import net from "node:net";
 
 const PORT = Number(process.env.PORT ?? 11143);
@@ -61,6 +69,24 @@ function handleLine(socket, line) {
     socket.write(`${tag} OK authenticated\r\n`);
   } else if (cmd.startsWith("EXAMINE")) {
     socket.write(`* ${String(MAILS.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-ONLY] done\r\n`);
+  } else if (cmd.startsWith("SELECT")) {
+    // Wie EXAMINE, aber [READ-WRITE] — das ist die einzige Antwort, die den Ordner fuer
+    // client.ts als schreibbar ausweist (imapConnectWritable liest genau dieses Flag).
+    socket.write(`* ${String(MAILS.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-WRITE] done\r\n`);
+  } else if (cmd.startsWith("UID MOVE")) {
+    // "UID MOVE <uid> <mailbox>" (RFC 6851, per UIDPLUS-Capability oben angekuendigt). Der
+    // Ziel-Ordnername wird bewusst ignoriert (dieser Fake fuehrt keine getrennten Ordner) —
+    // was zaehlt, ist dass die UID aus MAILS verschwindet, sonst prueft der Smoke nur den
+    // Wortlaut der Antwort und nie die Wirkung.
+    const teile = rest.join(" ").split(/\s+/);
+    const uid = Number(teile[2]);
+    const index = MAILS.findIndex((m) => m.uid === uid);
+    if (index === -1) {
+      socket.write(`${tag} NO [NONEXISTENT] Mail nicht gefunden\r\n`);
+    } else {
+      MAILS.splice(index, 1);
+      socket.write(`${tag} OK [COPYUID 1 ${String(uid)} 1] Move completed\r\n`);
+    }
   } else if (cmd === "UID SEARCH ALL") {
     socket.write(`* SEARCH ${MAILS.map((m) => String(m.uid)).join(" ")}\r\n${tag} OK done\r\n`);
   } else if (cmd.startsWith("UID FETCH")) {

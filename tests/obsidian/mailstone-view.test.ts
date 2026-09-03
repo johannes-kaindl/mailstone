@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { WorkspaceLeaf } from "obsidian";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "../../src/obsidian/views/mailstone-view";
 import type { CockpitHost } from "../../src/obsidian/views/cockpit-panel";
+import type { InboxHost } from "../../src/obsidian/views/inbox-panel";
 import { initI18n } from "../../src/i18n/strings";
 
 initI18n("de");
@@ -13,15 +14,39 @@ function fakeHost(onChange?: CockpitHost["onChange"]): CockpitHost {
   };
 }
 
+function fakeInboxHost(onChange?: InboxHost["onChange"], destroy?: InboxHost["destroy"]): InboxHost {
+  return {
+    accounts: () => [], selectedAccountId: () => "", selectAccount: () => undefined,
+    viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenGrund: null }),
+    refresh: () => undefined, ensureLoaded: () => undefined, adopt: () => undefined, archive: () => undefined,
+    openSettings: () => undefined, onChange: onChange ?? (() => () => undefined),
+    destroy: destroy ?? (() => undefined),
+  };
+}
+
+/** Alle Nachfahren mit dieser Klasse — der Fake-El haelt Kinder in `children`. Identisch zu
+ *  `findAll` aus tests/obsidian/cockpit-panel.test.ts:31. */
+function alleMit(el: any, cls: string): any[] {
+  const out: any[] = [];
+  const walk = (n: any): void => {
+    for (const c of n.children ?? []) {
+      if (String(c.className ?? "").split(" ").includes(cls)) out.push(c);
+      walk(c);
+    }
+  };
+  walk(el);
+  return out;
+}
+
 describe("MailstoneView", () => {
   it("meldet den einen View-Type des Plugins", () => {
-    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost());
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost());
     expect(v.getViewType()).toBe(VIEW_TYPE_MAILSTONE);
     expect(v.getIcon()).toBe("mail");
   });
 
   it("baut das Panel beim Oeffnen auf und raeumt beim Schliessen ab", async () => {
-    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost());
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost());
     await v.onOpen();
     expect(v.contentEl.children.length).toBeGreaterThan(0);
     await v.onClose();
@@ -34,11 +59,52 @@ describe("MailstoneView", () => {
     // gruen). Ein nicht abgemeldeter Listener feuerte bei jedem Sync-Lauf weiter und zeichnete
     // in einen abgehaengten DOM — ein Leck pro Oeffnen/Schliessen-Zyklus.
     const unsub = vi.fn();
-    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(() => unsub));
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(() => unsub), fakeInboxHost());
     await v.onOpen();
     expect(unsub).not.toHaveBeenCalled();
     await v.onClose();
     expect(unsub).toHaveBeenCalledTimes(1);
+  });
+
+  it("mountet beide Panels als Tabs", async () => {
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost());
+    await v.onOpen();
+    // Attributselektoren kann der Fake-El NICHT (matchesSimpleSelector versteht nur Tag und
+    // .klasse) — also die Tabs ueber ihre Klasse einsammeln und data-tab dort auslesen. Die
+    // Klasse ist okit-hub-tab, nicht kit-hub-tab — verbindlich ist, was hub.ts nach dem
+    // Vendoring tatsaechlich vergibt (src/vendor/kit-obsidian/hub.ts:186).
+    const ids = alleMit(v.contentEl, "okit-hub-tab").map((el) => el.getAttribute("data-tab"));
+    expect(ids).toContain("cockpit");
+    expect(ids).toContain("inbox");
+  });
+
+  it("bleibt bei EINEM registerView-Typ", () => {
+    expect(VIEW_TYPE_MAILSTONE).toBe("mailstone-cockpit");
+  });
+
+  it("zerstoert beim Schliessen BEIDE Panels", async () => {
+    const abCockpit = vi.fn();
+    const abInbox = vi.fn();
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(() => abCockpit), fakeInboxHost(() => abInbox));
+    await v.onOpen();
+    await v.onClose();
+    expect(abCockpit).toHaveBeenCalled();
+    expect(abInbox).toHaveBeenCalled();
+  });
+
+  it("meldet den Inbox-HOST beim Schliessen ab, nicht nur das Panel (I2-Regression)", async () => {
+    // Der Host haengt sich fuer seine gesamte Lebensdauer an einen plugin-lebenslangen
+    // Emitter (`syncEvents`); `hub.destroy()` raeumt nur die Panels ab. Ohne einen expliziten
+    // `inboxHost.destroy()`-Aufruf aus `onClose()` ueberlebt der Host das Schliessen der
+    // Ansicht und kann bei einem kuenftigen Sync erneut laden() ausloesen — Netzverkehr ohne
+    // sichtbare Oberflaeche. Dieser Test wird ROT, wenn der Aufruf wieder entfernt wird; ein
+    // Test, der nur prueft, dass `destroy` als Methode existiert, faengt das nicht.
+    const hostDestroy = vi.fn();
+    const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost(undefined, hostDestroy));
+    await v.onOpen();
+    expect(hostDestroy).not.toHaveBeenCalled();
+    await v.onClose();
+    expect(hostDestroy).toHaveBeenCalledTimes(1);
   });
 });
 

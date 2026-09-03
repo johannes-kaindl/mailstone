@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
-import { imapConnect } from "../../../src/core/imap/client";
+import { imapConnect, imapConnectWritable } from "../../../src/core/imap/client";
 import { MAX_UNTAGGED_PER_COMMAND } from "../../../src/core/imap/types";
 
 const base = { host: "imap.example.net", port: 993, tls: "implicit" as const, username: "u@example.net", password: "geheim", timers: testTimers };
@@ -95,9 +95,42 @@ describe("imapConnect", () => {
     const r = await imapConnect(fake, { ...base, tls: "none", allowInsecureAuth: true });
     expect(r.ok).toBe(true);
   });
+
+  it("nimmt Capabilities aus dem Response-Code der Auth-Antwort dazu", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK [CAPABILITY IMAP4rev1 MOVE UIDPLUS] authenticated"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.session.capabilities).toContain("MOVE");
+    expect(r.session.capabilities).toContain("UIDPLUS");
+    expect(r.session.capabilities).toContain("AUTH=PLAIN");
+  });
+
+  it("nimmt Capabilities aus einer untagged Zeile nach der Anmeldung dazu", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["* CAPABILITY IMAP4rev1 MOVE", "a002 OK authenticated"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.session.capabilities).toContain("MOVE");
+  });
+
+  it("fuehrt keine Capability doppelt", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR MOVE", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK [CAPABILITY IMAP4rev1 MOVE] authenticated"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.session.capabilities.filter((c) => c === "MOVE")).toHaveLength(1);
+  });
 });
 
-describe("ImapSession", () => {
+describe("ImapReadSession", () => {
   async function session(steps: DialogStep[]) {
     const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth, ...steps]);
     const r = await imapConnect(fake, base);
@@ -187,7 +220,7 @@ describe("ImapSession", () => {
   });
 });
 
-describe("ImapSession.append", () => {
+describe("ImapReadSession.append", () => {
   async function sessionFor(steps: DialogStep[]) {
     const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth, ...steps]);
     const r = await imapConnect(fake, base);
@@ -354,5 +387,136 @@ describe("imapConnect — einheitliche Konventionen", () => {
     const r = await imapConnect(fake, base);
     if (!r.ok) throw new Error("unreachable");
     expect(await r.session.uidFetchBody(7)).not.toBeNull();
+  });
+});
+
+const authWithMove: DialogStep[] = [
+  { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS MOVE", "a001 OK done"] },
+  { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+];
+
+describe("imapConnectWritable", () => {
+  it("oeffnet einen Ordner mit SELECT (nicht EXAMINE) und liefert UIDVALIDITY", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...authWithMove,
+      { expect: /^a003 SELECT "INBOX"$/, send: ["* 4 EXISTS", "* OK [UIDVALIDITY 99] .", "a003 OK [READ-WRITE] selected"] },
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    const sel = await r.session.select("INBOX");
+    expect(sel).toMatchObject({ ok: true, uidValidity: 99, exists: 4 });
+    expect(fake.written.some((l) => /^a003 SELECT /.test(l))).toBe(true);
+    expect(fake.written.some((l) => /EXAMINE/.test(l))).toBe(false);
+  });
+
+  it("meldet folder-missing, wenn SELECT mit NO beantwortet wird", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...authWithMove,
+      { expect: /^a003 SELECT "Fehlt"$/, send: ["a003 NO Mailbox does not exist"] },
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(await r.session.select("Fehlt")).toMatchObject({ ok: false, code: "folder-missing" });
+  });
+});
+
+describe("uidMove", () => {
+  async function writable(steps: DialogStep[]) {
+    const fake = new FakeSocketTransport(["* OK ready"], [...authWithMove, ...steps]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    return { fake, session: r.session };
+  }
+
+  it("verschiebt und meldet Erfolg, wenn COPYUID belegt ist", async () => {
+    const { session, fake } = await writable([
+      { expect: /^a003 UID MOVE 7 "Vault"$/, send: ["a003 OK [COPYUID 99 7 12] Move completed"] },
+    ]);
+    expect(await session.uidMove(7, "Vault")).toEqual({ ok: true });
+    expect(fake.written.some((l) => /^a003 UID MOVE 7 "Vault"$/.test(l))).toBe(true);
+  });
+
+  it("akzeptiert eine untagged EXPUNGE-Zeile als Beleg", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID MOVE 7 "Vault"$/, send: ["* 3 EXPUNGE", "a003 OK Move completed"] },
+    ]);
+    expect(await session.uidMove(7, "Vault")).toEqual({ ok: true });
+  });
+
+  it("meldet 'gone' bei OK OHNE Beleg — RFC 6851: eine UID ohne Treffer ergibt OK", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID MOVE 7 "Vault"$/, send: ["a003 OK Move completed"] },
+    ]);
+    expect(await session.uidMove(7, "Vault")).toMatchObject({ ok: false, code: "gone" });
+  });
+
+  it("meldet 'protocol' bei NO", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID MOVE 7 "Fehlt"$/, send: ["a003 NO [TRYCREATE] Mailbox does not exist"] },
+    ]);
+    expect(await session.uidMove(7, "Fehlt")).toMatchObject({ ok: false, code: "protocol" });
+  });
+
+  it("meldet 'unsupported' ohne MOVE-Capability und sendet NICHTS", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect(await r.session.uidMove(7, "Vault")).toMatchObject({ ok: false, code: "unsupported" });
+    expect(fake.written.some((l) => /UID MOVE/.test(l))).toBe(false);
+  });
+});
+
+describe("uidFetchHeaders", () => {
+  it("liefert Flags und Header-Bytes je UID", async () => {
+    const header = "From: a@example.invalid\r\nSubject: Hallo\r\n\r\n";
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      {
+        // buildUidSet() (core/imap/commands.ts) komprimiert aufeinanderfolgende UIDs zu einem
+        // Bereich (5:6) statt einer Liste (5,6) — dieselbe Funktion, die uidFetchMessageIds
+        // schon nutzt (dort mit 7,9 unbeobachtet, weil nicht konsekutiv).
+        expect: /^a003 UID FETCH 5:6 \(FLAGS BODY\.PEEK\[HEADER\.FIELDS \(FROM SUBJECT DATE MESSAGE-ID\)\]\)$/,
+        send: [
+          `* 1 FETCH (UID 5 FLAGS (\\Seen) BODY[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)] {${header.length}}`,
+          new TextEncoder().encode(header),
+          ")",
+          `* 2 FETCH (UID 6 FLAGS () BODY[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)] {${header.length}}`,
+          new TextEncoder().encode(header),
+          ")",
+          "a003 OK done",
+        ],
+      },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    const rows = await r.session.uidFetchHeaders([5, 6]);
+    expect(rows.size).toBe(2);
+    expect(rows.get(5)?.flags).toEqual(["\\Seen"]);
+    expect(rows.get(6)?.flags).toEqual([]);
+    expect(new TextDecoder().decode(rows.get(5)!.header)).toContain("Subject: Hallo");
+  });
+
+  it("nutzt PEEK und setzt damit kein \\Seen", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      { expect: /^a003 UID FETCH 5 /, send: ["a003 OK done"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    await r.session.uidFetchHeaders([5]);
+    expect(fake.written.some((l) => /BODY\.PEEK\[HEADER\.FIELDS/.test(l))).toBe(true);
+    expect(fake.written.some((l) => /BODY\[HEADER/.test(l))).toBe(false);
+  });
+
+  it("liefert eine leere Map fuer eine leere UID-Liste, ohne zu senden", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect((await r.session.uidFetchHeaders([])).size).toBe(0);
+    expect(fake.written.some((l) => /UID FETCH/.test(l))).toBe(false);
   });
 });

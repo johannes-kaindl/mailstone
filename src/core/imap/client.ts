@@ -8,7 +8,7 @@ import { withTimeout, type TimeoutTimers } from "../../vendor/code-kit/timeout";
 import { normalizeMessageId } from "../mime/headers";
 import { assertNoCrlf, buildUidSet, chunk, encodeMailbox, quoteArg } from "./commands";
 import { findAtomValue, firstLiteral, parseResponse, readRawLine } from "./parser";
-import type { ImapErrorCode, ImapResponse } from "./types";
+import type { ImapErrorCode, ImapItem, ImapResponse } from "./types";
 import { MAX_UNTAGGED_PER_COMMAND } from "./types";
 
 export interface ImapConnectOptions {
@@ -31,12 +31,16 @@ export interface ImapConnectOptions {
   allowInsecureAuth?: boolean;
 }
 
-export interface ImapSession {
+export interface ImapReadSession {
   readonly capabilities: string[];
   examine(mailbox: string): Promise<{ ok: true; uidValidity: number; exists: number } | { ok: false; code: ImapErrorCode; detail: string }>;
   uidSearchAll(): Promise<number[]>;
   /** uid → normalisierte Message-ID; null, wenn die Mail keinen Message-ID-Header hat. */
   uidFetchMessageIds(uids: readonly number[]): Promise<Map<number, string | null>>;
+  /** Flags plus ein schmaler Header-Block je UID — Rohmaterial fuer die Posteingangs-Liste.
+   *  Die Bytes gehen durch denselben parseEml wie eine vollstaendige .eml (Task 6), damit
+   *  Betreff/Absender/Message-ID hier dieselbe Auslegung tragen wie im Sync-Pfad. */
+  uidFetchHeaders(uids: readonly number[]): Promise<Map<number, ImapHeaderRow>>;
   /** Rohe RFC-5322-Bytes via BODY.PEEK[] — null, wenn die UID nicht mehr existiert. */
   uidFetchBody(uid: number): Promise<Uint8Array | null>;
   /** Legt eine Nachricht in einem Ordner ab (RFC 3501 § 6.3.11). Der einzige schreibende
@@ -46,7 +50,28 @@ export interface ImapSession {
   logout(): Promise<void>;
 }
 
-export type ImapConnectResult = { ok: true; session: ImapSession } | { ok: false; code: ImapErrorCode; detail: string };
+/** Schreibfaehige Erweiterung von ImapReadSession — nur ueber imapConnectWritable erreichbar.
+ *  select() ersetzt EXAMINE bewusst nicht: der Sync-Pfad bekommt gar keinen Zugriff auf diese
+ *  Methode, weil er nur eine ImapReadSession in Haenden haelt. */
+export interface ImapWriteSession extends ImapReadSession {
+  /** Oeffnet den Ordner SCHREIBBAR. Der einzige Weg zu einem SELECT in diesem Plugin —
+   *  der Sync bekommt eine ImapReadSession und kann diese Methode nicht sehen. */
+  select(mailbox: string): Promise<{ ok: true; uidValidity: number; exists: number } | { ok: false; code: ImapErrorCode; detail: string }>;
+  uidMove(uid: number, target: string): Promise<UidMoveResult>;
+}
+
+export type UidMoveResult = { ok: true } | { ok: false; code: ImapErrorCode | "unsupported" | "gone"; detail: string };
+
+/** Rohmaterial fuer eine Posteingangs-Zeile: Flags plus die Rohbytes eines schmalen
+ *  Header-Blocks. Geparst wird hier nichts — das tut parseEml (Task 6). */
+export interface ImapHeaderRow {
+  uid: number;
+  flags: string[];
+  header: Uint8Array;
+}
+
+export type ImapConnectResult = { ok: true; session: ImapReadSession } | { ok: false; code: ImapErrorCode; detail: string };
+export type ImapConnectWritableResult = { ok: true; session: ImapWriteSession } | { ok: false; code: ImapErrorCode; detail: string };
 
 const DEFAULT_TIMEOUT_MS = 30000;
 /** UIDs je FETCH-Kommando. 200 haelt die Kommandozeile deutlich unter jeder ueblichen
@@ -175,6 +200,15 @@ function capabilitiesFrom(responses: ImapResponse[]): string[] {
   return out;
 }
 
+/** Capabilities aus einem Response-Code `[CAPABILITY a b c]` einer Tagged-Antwort. Viele Server
+ *  kuendigen MOVE/UIDPLUS erst NACH der Anmeldung an — wer nur die Prae-Auth-Liste liest, haelt
+ *  einen faehigen Server fuer unfaehig. */
+function capabilitiesFromCode(text: string): string[] {
+  const m = /\[CAPABILITY\s+([^\]]+)\]/i.exec(text);
+  if (!m || m[1] === undefined) return [];
+  return m[1].split(/\s+/).filter((v) => v.length > 0).map((v) => v.toUpperCase());
+}
+
 /** `* OK [UIDVALIDITY 42] …` — der Wert steckt im eckigen Klammer-Atom (siehe Tokenizer). */
 function bracketNumber(responses: ImapResponse[], key: string): number | null {
   for (const r of responses) {
@@ -195,19 +229,46 @@ function existsFrom(responses: ImapResponse[]): number {
   return 0;
 }
 
+/** Die FLAGS-Liste eines FETCH-Items. Fehlt sie, ist das kein Fehler — eine Mail ohne
+ *  gesetzte Flags ist der Normalfall im Posteingang. */
+function flagsFrom(items: ImapItem[]): string[] {
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it?.kind !== "atom" || it.value.toUpperCase() !== "FLAGS") continue;
+    const list = items[i + 1];
+    if (list?.kind !== "list") return [];
+    return list.items.filter((v): v is { kind: "atom"; value: string } => v.kind === "atom").map((v) => v.value);
+  }
+  return [];
+}
+
 function messageIdFromHeader(bytes: Uint8Array): string | null {
   const text = new TextDecoder().decode(bytes);
   const m = /^message-id:\s*(.+)$/im.exec(text);
   return m?.[1] ? normalizeMessageId(m[1].trim()) : null;
 }
 
-/** Oeffentlicher Einstieg: faehrt den Dialog (runConnect) und schliesst den Transport auf jedem
+type ConnectedRaw = { ok: true; conn: Connection; capabilities: string[] } | { ok: false; code: ImapErrorCode; detail: string };
+
+/** Oeffentlicher Einstieg: faehrt den Dialog (connectRaw) und schliesst den Transport auf jedem
  *  Fehlerpfad — der Aufrufer bekommt bei `ok:false` kein Session-Handle und kann selbst nicht
  *  schliessen. Im Erfolgsfall bleibt die Verbindung bewusst offen, die Session braucht sie noch.
- *  `result` bleibt undefined, wenn runConnect einen NICHT-NetError wirft (Programmierfehler) —
+ *  `result` bleibt undefined, wenn connectRaw einen NICHT-NetError wirft (Programmierfehler) —
  *  auch dann wird aufgeraeumt, statt den Socket offenzulassen. */
 export async function imapConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectResult> {
-  let result: ImapConnectResult | undefined;
+  const r = await connectRaw(transport, opts);
+  return r.ok ? { ok: true, session: makeReadSession(r.conn, r.capabilities) } : r;
+}
+
+/** Der EINZIGE Weg zu einer schreibfaehigen Sitzung (Spec 2026-09-02 § 2). Wer ihn nimmt,
+ *  oeffnet den Nur-Lese-Vertrag bewusst — der Sync nimmt imapConnect und kann es nicht. */
+export async function imapConnectWritable(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectWritableResult> {
+  const r = await connectRaw(transport, opts);
+  return r.ok ? { ok: true, session: makeWriteSession(r.conn, r.capabilities) } : r;
+}
+
+async function connectRaw(transport: SocketTransport, opts: ImapConnectOptions): Promise<ConnectedRaw> {
+  let result: ConnectedRaw | undefined;
   try {
     result = await runConnect(transport, opts);
     return result;
@@ -216,7 +277,7 @@ export async function imapConnect(transport: SocketTransport, opts: ImapConnectO
   }
 }
 
-async function runConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ImapConnectResult> {
+async function runConnect(transport: SocketTransport, opts: ImapConnectOptions): Promise<ConnectedRaw> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const conn = new Connection(transport, timeoutMs, opts.timers, opts.log);
   try {
@@ -267,14 +328,18 @@ async function runConnect(transport: SocketTransport, opts: ImapConnectOptions):
       : await conn.command(authTag, `LOGIN ${quoteArg(opts.username)} ${quoteArg(opts.password)}`, `LOGIN **** ****`);
     if (auth.status !== "OK") return { ok: false, code: "auth", detail: auth.text };
 
-    return { ok: true, session: makeSession(conn, capabilities) };
+    // Vereinigung aus drei Quellen: Prae-Auth-CAPABILITY, untagged `* CAPABILITY` der
+    // Auth-Antwort und deren Response-Code. Set statt Array-Suche, damit die Reihenfolge
+    // der Quellen keine Duplikate erzeugt.
+    const alle = new Set([...capabilities, ...capabilitiesFrom(auth.untagged), ...capabilitiesFromCode(auth.text)]);
+    return { ok: true, conn, capabilities: [...alle] };
   } catch (e) {
     if (e instanceof NetError) return { ok: false, code: e.code, detail: e.message };
     throw e;
   }
 }
 
-function makeSession(conn: Connection, capabilities: string[]): ImapSession {
+function makeReadSession(conn: Connection, capabilities: string[]): ImapReadSession {
   return {
     capabilities,
 
@@ -322,6 +387,30 @@ function makeSession(conn: Connection, capabilities: string[]): ImapSession {
       return out;
     },
 
+    async uidFetchHeaders(uids) {
+      const out = new Map<number, ImapHeaderRow>();
+      if (uids.length === 0) return out;
+      for (const batch of chunk(uids, HEADER_BATCH)) {
+        const tag = conn.nextTag();
+        const r = await conn.command(
+          tag,
+          `UID FETCH ${buildUidSet(batch)} (FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])`,
+        );
+        if (r.status !== "OK") throw new NetError("protocol", `UID FETCH (Headerliste) abgelehnt: ${r.text}`);
+        for (const resp of r.untagged) {
+          const list = resp.items.find((i) => i.kind === "list");
+          if (list?.kind !== "list") continue;
+          const uidText = findAtomValue(list.items, "UID");
+          const header = firstLiteral(list.items);
+          if (!uidText || !header) continue;
+          const uid = Number(uidText);
+          if (!Number.isSafeInteger(uid) || uid <= 0) continue;
+          out.set(uid, { uid, flags: flagsFrom(list.items), header });
+        }
+      }
+      return out;
+    },
+
     async uidFetchBody(uid) {
       const tag = conn.nextTag();
       const r = await conn.command(tag, `UID FETCH ${String(uid)} (BODY.PEEK[])`);
@@ -361,6 +450,44 @@ function makeSession(conn: Connection, capabilities: string[]): ImapSession {
       } finally {
         if (!conn.transport.closed) await conn.transport.close().catch(() => undefined);
       }
+    },
+  };
+}
+
+function makeWriteSession(conn: Connection, capabilities: string[]): ImapWriteSession {
+  const lesend = makeReadSession(conn, capabilities);
+  return {
+    ...lesend,
+
+    async select(mailbox) {
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `SELECT ${quoteArg(encodeMailbox(mailbox))}`);
+      if (r.status === "NO") return { ok: false, code: "folder-missing", detail: r.text };
+      if (r.status !== "OK") return { ok: false, code: "protocol", detail: r.text };
+      const uidValidity = bracketNumber(r.untagged, "UIDVALIDITY");
+      if (uidValidity === null) return { ok: false, code: "protocol", detail: "keine UIDVALIDITY in der SELECT-Antwort" };
+      return { ok: true, uidValidity, exists: existsFrom(r.untagged) };
+    },
+
+    async uidMove(uid, target) {
+      // Vorher pruefen und NICHTS senden: ohne MOVE gibt es keinen sicheren Weg. Der
+      // Fallback COPY+STORE+EXPUNGE ist bewusst nicht gebaut (Spec 2026-09-02 § 3d) — ein
+      // UID-loses EXPUNGE entfernt auch fremd markierte Nachrichten.
+      if (!capabilities.includes("MOVE")) {
+        return { ok: false, code: "unsupported", detail: "Server kuendigt MOVE nicht an" };
+      }
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `UID MOVE ${String(uid)} ${quoteArg(encodeMailbox(target))}`);
+      if (r.status !== "OK") return { ok: false, code: "protocol", detail: r.text };
+
+      // RFC 6851 § 3.3: eine UID, die keine Nachricht trifft, ergibt OK. Der Status allein
+      // belegt also nichts — erst COPYUID oder eine EXPUNGE-Zeile tun es.
+      const copyUid = /\[COPYUID\s/i.test(r.text);
+      const expunged = r.untagged.some((u) => /^\d+\s+EXPUNGE\b/i.test(u.text));
+      if (!copyUid && !expunged) {
+        return { ok: false, code: "gone", detail: "UID nicht mehr vorhanden — erneut synchronisieren" };
+      }
+      return { ok: true };
     },
   };
 }

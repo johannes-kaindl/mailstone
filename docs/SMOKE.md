@@ -350,3 +350,91 @@ Nummer 5 und 6 sind dieselbe Familie wie die Nachlese der Handprobe darüber: ei
 Postfach-Logik (dafür `tests/integration/` gegen den Fake-IMAP über einen echten Socket) und
 alles, was ein Urteil verlangt: ob die Anordnung gefällt, ob eine Meldung verständlich ist.
 Dafür bleibt die Hand-Runde.
+
+## M4 Task 10 — Posteingang im GUI-Smoke, Fake-IMAP kann SELECT und UID MOVE (2026-09-03)
+
+**Baseline war 12/12 grün** (Abschnitt „M4 — getrackter GUI-Smoke-Treiber" oben, 2026-09-02,
+gegen den deployten Branch-Stand). Dazu gekommen: drei Punkte für den Posteingangs-Tab,
+`npm run smoke:gui` fährt jetzt fünfzehn.
+
+- **V11** Inbox-Tab existiert, ist klickbar, zeigt seinen Inhalt (Inbox-Panel sichtbar,
+  Cockpit-Panel `is-hidden`).
+- **V12** bei leerem Ordner erscheint der Empty-State (`.mailstone-inbox-empty`) mit einem
+  sichtbaren Handlungsangebot (CTA „Einstellungen öffnen").
+- **V13** die Tab-Wahl übersteht einen Wechsel hin und zurück — Beleg für das „mount-once"-
+  Muster: eine selbst gesetzte Marke am Panel-`div` überlebt Cockpit→Inbox→Cockpit→Inbox,
+  also wurde das Element nie neu gebaut.
+
+Alle drei prüfen Verdrahtung, keine Postfach-Logik — dieselbe Grenze wie V1–V10. Sie brauchen
+keine IMAP-Gegenstelle: das Panel lädt erst nach einem Refresh-Klick, den kein Punkt auslöst,
+darum ist die Inbox in jedem frischen View-Zustand „leer" — genau der Zustand, den V12 zeigen
+soll.
+
+**Fake-IMAP (`scripts/fake-imap.mjs`) erweitert um `SELECT` (wie `EXAMINE`, aber
+`[READ-WRITE]`) und `UID MOVE <uid> <mailbox>` (`OK [COPYUID 1 <uid> 1] Move completed`, UID
+verschwindet aus `MAILS`).** Manuell gegen einen echten Socket geprüft (`SELECT` → `[UIDVALIDITY
+4242] … [READ-WRITE] done`; `UID MOVE 7 Vault` → UID 7 verschwindet aus der nächsten `UID
+SEARCH ALL`; `UID MOVE 999 Vault` → `NO [NONEXISTENT]`), zusätzlich `npm run test:integration`
+grün (2 Testdateien, 3 Tests — die vorhandenen `fake-imap.test.ts`-Fälle decken `SELECT`/`UID
+MOVE` selbst nicht ab, das ist eine bekannte Lücke, kein neuer Befund dieser Runde). Ohne diese
+Erweiterung wäre der GUI-Smoke für die drei neuen Punkte blind gewesen — er hätte grün melden
+können, ohne dass je ein `MOVE` stattfand; der GUI-Smoke selbst spricht aber gar kein IMAP (er
+prüft nur DOM-Verdrahtung, s. o.), die Erweiterung sichert also strukturell den schreibenden
+Server-Pfad ab, nicht diesen konkreten Lauf.
+
+### Ergebnis: 15/15 grün
+
+Gegen Obsidian 1.13.7, Staging-Vault `mailstone`, deployter Stand `0.2.0`, `shasum -a 1`
+zwischen gebauter und deployter `main.js` vorab geprüft. `data.json` byte-gleich
+zurückgeschrieben.
+
+### Gegenprobe (CORE-TEST-02)
+
+Inbox-Panel aus der Panel-Liste in `mailstone-view.ts` genommen (`buildHubInto(this.contentEl,
+[cockpit], "cockpit")` statt `[cockpit, inbox]`), neu deployt (`shasum` bestätigt den neuen
+Stand), erneut gefahren:
+
+| Lauf | Ergebnis |
+|---|---|
+| intakt | 15/15 grün |
+| Inbox-Panel ausgebaut | **12/15 — genau V11, V12, V13 rot** („Inbox-Tab nicht im DOM"), kein anderer Punkt fällt mit |
+| zurückgebaut | 15/15 grün |
+
+**Review-Befund, Fix-Runde 1 (2026-09-03): die grobe Gegenprobe oben belegt Kopplung, nicht
+Trennschärfe.** Alle drei Punkte hängen zusammen am Inbox-Panel — das zeigt nicht, dass jeder
+seine eigene Zusage prüft. Zwei gezieltere Gegenproben, je eine pro Zusage, Panel bleibt dabei
+intakt; jede einzeln gefahren und danach vollständig zurückgebaut (`git diff` leer), bevor die
+nächste kam:
+
+- **V12 gezielt (nur den CTA-Knopf ausgebaut):** `inbox-panel.ts`, den `createEl("button", …
+  cta …)`-Zweig im Empty-State entfernt (Empty-State-Absatz bleibt, CTA fehlt). Neu deployt
+  (`shasum` bestätigt), gefahren: **14/15 — genau V12 rot** (`CTA da: false`), V11 und V13
+  blieben grün.
+- **V13 gezielt (mount-once selbst gebrochen, nicht das Panel):** `src/vendor/kit-obsidian/hub.ts`
+  (vendorte Kit-Datei, nur für diese Probe temporär angefasst und exakt zurückgebaut — kein
+  Re-Vendoring, kein bleibender Diff), `setTab()` so geändert, dass der Ziel-Tab beim Wechsel
+  ein **frisches** `<div>` bekommt und `panel.mount()` erneut aufgerufen wird, statt nur
+  `is-hidden` umzublenden — die Panel-Instanz und ihr Host bleiben dieselben, nur die
+  DOM-Identität wechselt. Neu deployt (`shasum` bestätigt), gefahren: **14/15 — genau V13 rot**
+  (Marke nach Hin-und-zurück nicht mehr da, weil das Div ausgetauscht wurde), V11 und V12
+  blieben grün. (Ein erster Lauf dieser Probe zeigte zusätzlich V10 rot mit der bekannten
+  Fokus-Drossel-Meldung „nur 15 Proben in 2,5 s" — ein Refokus-Ausrutscher, keine Folge der
+  Änderung; ein sofortiger zweiter Lauf zeigte wieder nur V13 rot.)
+- Danach `hub.ts` exakt zurückgebaut (`git diff` leer), neu deployt, `shasum` bestätigt: **15/15
+  grün** — das ist die letzte, zählende Messung.
+
+Damit ist belegt: V11 hängt an der bloßen Existenz/Sichtbarkeit des Panels (die grobe Probe
+oben ist seine eigene Gegenprobe, da die beiden gezielten Proben zeigen, dass V12 und V13
+unabhängig auslösen), V12 an seinem eigenen CTA, V13 an der DOM-Identität des Panel-Divs — drei
+verschiedene Zusagen, kein Punkt, der nur zusammen mit den anderen auslöst.
+
+### Störung durch einen fremden Lock-Doppelerwerb — und wie sie behandelt wurde
+
+Der CDP-Lock wurde beim ersten Erwerb (`07:18:05 UTC` / `09:18:05` CEST) zeitgleich mit einer
+Nachbar-Session (`vim-dojo`) vergeben — ein bekannter Nicht-Atomaritätsfehler im Lock-Skript,
+gemeldet über den Koordinator. Die Nachbar-Session fuhr in der Minute danach Fokus-Klicks gegen
+Port 9222. Der erste 15/15-Lauf dieser Runde fiel in dieses Fenster und wurde deshalb
+**verworfen, ohne gewertet zu werden** — nicht wegen eines roten Punkts, sondern weil er nicht
+belegt war. Alle drei oben genannten Läufe (intakt → kaputt → intakt) wurden danach neu
+gefahren, vollständig zwischen `07:22:47` und `07:29:26 UTC`, außerhalb des gemeldeten Fensters
+`09:18:05–09:18:59 CEST` — deshalb zählen sie.

@@ -15,7 +15,7 @@
 - **`src/core/**` ist obsidian-, DOM- und node-frei.** `npm run check:pure` verbietet dort zusätzlich `process` und `window`. Sockets, Dateisystem und Secrets werden aus `src/obsidian/**` hineingereicht.
 - **Volles Gate ist `npm run gate`** — Lint, drei Typprüfungen, Unit, **Integration**, `check:pure`, Build und Bundle-Test. `npm test` allein sieht die Integrationstests nicht.
 - **Kit-Module nur über `npm run kit:sync`** (Herkunfts-Header + `VENDOR.json`), nie von Hand editieren. Vendor-Stand ist obsidian-kit `0.28.0`.
-- **Lesen setzt nie `\Seen`:** `EXAMINE` + `BODY.PEEK` auf allen lesenden Pfaden. Schreibend ist genau ein Pfad (Task 4).
+- **Lesen setzt nie `\Seen`:** `EXAMINE` + `BODY.PEEK` auf allen lesenden Pfaden. Schreibend ist genau ein Pfad: `core/inbox/actions.ts` (Task 5).
 - **Alle sichtbaren Texte** kommen aus `src/i18n/strings.ts` (englischer Wert + Key), nie als Literal in der UI.
 - **Kommentare und Bezeichner in `.ts`-Dateien schreiben Umlaute als `ae`/`oe`/`ue`** — so hält es das ganze Repo (`uebernommen`, `Rueckkanal`, `gehoert`). In `.md` stehen echte Umlaute.
 - **Ein einziger `registerView`-Typ** (`mailstone-cockpit`, UI-STANDARD § 1). Der Posteingang ist ein Tab, keine zweite View.
@@ -558,7 +558,7 @@ EOF
 - Consumes: `imapConnectWritable`, `ImapWriteSession`, `UidMoveResult` (Tasks 2–3); `BusyGuard` aus `src/core/sync/busy.ts`
 - Produces:
   ```ts
-  export type InboxActionCode = "busy" | "unsupported" | "gone" | "folder-missing" | "no-target-folder" | "connect" | "tls" | "auth" | "protocol" | "timeout" | "tls-required" | "no-secret";
+  export type InboxActionCode = "busy" | "unsupported" | "gone" | "folder-missing" | "no-target-folder" | "connect" | "tls" | "auth" | "protocol" | "timeout" | "tls-required" | "no-secret" | "closed";
   export type InboxActionResult = { ok: true } | { ok: false; code: InboxActionCode; detail: string };
   export interface InboxActionDeps {
     connect(): Promise<ImapConnectWritableResult>;
@@ -683,7 +683,9 @@ export type InboxActionCode =
   | "no-target-folder"  // Zielordner nicht konfiguriert — es gibt nichts anzusteuern
   | "unsupported"       // Server kann kein sicheres Verschieben (kein MOVE)
   | "gone"              // Quell-UID trifft nichts mehr — erneut synchronisieren
-  | "folder-missing" | "connect" | "tls" | "tls-required" | "auth" | "no-secret" | "protocol" | "timeout";
+  // Die restlichen sind genau die ImapErrorCode-Werte (types.ts:7 + net/types.ts:22) —
+  // `closed` gehoert dazu, sonst ist `code: verbunden.code` ein Typfehler.
+  | "folder-missing" | "connect" | "tls" | "tls-required" | "auth" | "no-secret" | "protocol" | "timeout" | "closed";
 
 export type InboxActionResult = { ok: true } | { ok: false; code: InboxActionCode; detail: string };
 
@@ -824,7 +826,7 @@ describe("toInboxRow", () => {
     expect((await toInboxRow({ uid: 1, flags: [], header: h }, new Set(["anders@example.invalid"]))).imVault).toBe(false);
   });
 
-  it("erkennt dieselbe Mail trotz spitzer Klammern und Grossschreibung im Index", async () => {
+  it("erkennt dieselbe Mail trotz spitzer Klammern und Whitespace im Index", async () => {
     // Der Abgleich laeuft ueber normalizeMessageId auf BEIDEN Seiten — sonst waere der
     // Badge eine Heuristik statt eines exakten Treffers.
     const h = header("Message-ID:  <ABC@Example.Invalid>  \r\nSubject: X");
@@ -923,15 +925,18 @@ export interface InboxViewModel {
  */
 export async function toInboxRow(row: ImapHeaderRow, bekannteIds: ReadonlySet<string>): Promise<InboxRow> {
   const mail = await parseEml(row.header);
-  const id = mail.id;
   // Beide Seiten normalisieren: der Index kann Rohformen aus aelteren Staenden tragen.
   const bekannt = new Set([...bekannteIds].map((v) => normalizeMessageId(v)).filter((v): v is string => v !== null));
   return {
     uid: row.uid,
     from: mail.from?.name !== undefined && mail.from.name.length > 0 ? mail.from.name : (mail.from?.address ?? ""),
-    subject: mail.subject ?? "",
-    date: mail.date ?? "",
-    imVault: id !== null && bekannt.has(id),
+    subject: mail.subject,
+    // `ParsedMail.date` ist ein Date, kein String. Die Zeile traegt einen ISO-String, damit das
+    // ViewModel anzeigefertig und vergleichbar bleibt und kein Date durch die reine Schicht wandert.
+    date: mail.date === null ? "" : mail.date.toISOString(),
+    // Kein Null-Check: `id` ist immer gesetzt — fehlt der Header, erzeugt der Parser
+    // `noid-<sha256[:32]>`, und so eine synthetische Id trifft nie einen Index-Eintrag.
+    imVault: bekannt.has(mail.id),
     ungelesen: !row.flags.includes("\\Seen"),
   };
 }
@@ -951,7 +956,9 @@ export function buildInboxViewModel(input: InboxInput): InboxViewModel {
 }
 ```
 
-**Hinweis für die Umsetzung:** `mail.from` und `mail.date` sind laut der Messung vom 2026-09-02 vorhanden (`from` als `{name, address}`, `date` als ISO-String). Stimmen die Feldnamen nicht mit `src/core/mime/types.ts` überein, gilt **die Typdatei**, nicht dieser Plan — dann die Zugriffe anpassen, nicht die Typen.
+**Die Felder von `ParsedMail`, am Typ abgelesen** (`src/core/mime/types.ts`) — nicht aus einer Laufzeitausgabe geschlossen: `from: MailAddress | null`, `subject: string` (nie undefined), `date: Date | null`, `id: string` (nie null; ohne Header `noid-<sha256[:32]>`).
+
+⚠️ Eine frühere Messung ließ `date` wie einen ISO-String aussehen — sie lief durch `JSON.stringify`, und `Date.toJSON()` liefert genau diese Form. Es ist ein `Date`. Wer `mail.date ?? ""` schreibt, bekommt einen Typfehler; die Umwandlung oben ist Absicht. Stimmen weitere Feldnamen nicht mit der Typdatei überein, gilt **die Typdatei**, nicht dieser Plan.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1261,18 +1268,38 @@ In `src/i18n/strings.ts` neben den `cockpit.*`-Einträgen:
 
 - [ ] **Step 2: Write the failing test**
 
-Neue Datei `tests/obsidian/inbox-panel.test.ts`, gebaut nach dem Muster von `tests/obsidian/cockpit-panel.test.ts` (**diese Datei zuerst lesen** — sie zeigt, wie der Obsidian-Mock und der Host-Doppelgänger hier aufgebaut werden):
+Neue Datei `tests/obsidian/inbox-panel.test.ts`.
+
+⚠️ **Es gibt hier kein DOM.** `vitest.config.ts:7` fährt `environment: "node"`; `document.createElement` und `querySelector` stehen nicht zur Verfügung. Panels werden im Repo über `makeFakeEl` aus `tests/vendor/kit/obsidian-mock` geprüft, dessen `querySelectorAll` **ausschließlich** Tag-Namen und `.klasse` versteht (`matchesSimpleSelector`, `obsidian-mock.ts:49` — bewusst kein CSS-Parser). Deshalb der lokale `findAll`-Helfer, wörtlich wie in `tests/obsidian/cockpit-panel.test.ts:31`.
 
 ```ts
 import { describe, it, expect, vi } from "vitest";
+import { makeFakeEl } from "../vendor/kit/obsidian-mock";
 import { InboxPanel, type InboxHost } from "../../src/obsidian/views/inbox-panel";
 import type { InboxViewModel } from "../../src/core/view/inbox-vm";
+import { initI18n } from "../../src/i18n/strings";
+
+initI18n("de");
+
+/** Alle Nachfahren mit dieser Klasse — der Fake-El haelt Kinder in `children`.
+ *  Uebernommen aus tests/obsidian/cockpit-panel.test.ts. */
+function findAll(el: any, cls: string): any[] {
+  const out: any[] = [];
+  const walk = (n: any): void => {
+    for (const c of n.children ?? []) {
+      if (String(c.className ?? "").split(" ").includes(cls)) out.push(c);
+      walk(c);
+    }
+  };
+  walk(el);
+  return out;
+}
 
 const zeile = { uid: 7, from: "Jürgen", subject: "Rechnung", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
 
-function host(vm: Partial<InboxViewModel>, over: Partial<InboxHost> = {}): InboxHost {
+function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): InboxHost {
   return {
-    accounts: () => [{ id: "a1", label: "Konto" }] as never,
+    accounts: () => [],
     selectedAccountId: () => "a1",
     selectAccount: vi.fn(),
     viewModel: () => ({ state: "gefuellt", rows: [zeile], fehlerCode: null, aktionenAktiv: true, ...vm }),
@@ -1287,42 +1314,56 @@ function host(vm: Partial<InboxViewModel>, over: Partial<InboxHost> = {}): Inbox
 
 describe("InboxPanel", () => {
   it("erfuellt den HubPanel-Vertrag", () => {
-    const p = new InboxPanel(host({}));
+    const p = new InboxPanel(host());
     expect(p.id).toBe("inbox");
     expect(typeof p.label).toBe("string");
     expect(typeof p.icon).toBe("string");
   });
 
   it("zeichnet je Mail eine Zeile mit Absender und Betreff", () => {
-    const el = document.createElement("div");
-    new InboxPanel(host({})).mount(el);
-    expect(el.textContent).toContain("Jürgen");
-    expect(el.textContent).toContain("Rechnung");
+    const el = makeFakeEl();
+    new InboxPanel(host()).mount(el);
+    expect(findAll(el, "mailstone-inbox-row")).toHaveLength(1);
+    expect(String(el.textContent)).toContain("Jürgen");
+    expect(String(el.textContent)).toContain("Rechnung");
   });
 
   it("zeigt den Empty-State samt Handlungsangebot, wenn nichts da ist", () => {
-    const el = document.createElement("div");
+    const el = makeFakeEl();
     new InboxPanel(host({ state: "leer", rows: [] })).mount(el);
-    expect(el.querySelector(".mailstone-inbox-empty")).not.toBeNull();
+    expect(findAll(el, "mailstone-inbox-empty")).toHaveLength(1);
   });
 
   it("zeichnet keine Aktionsknoepfe, solange aktionenAktiv false ist", () => {
-    const el = document.createElement("div");
+    const el = makeFakeEl();
     new InboxPanel(host({ aktionenAktiv: false })).mount(el);
-    expect(el.querySelectorAll("button.mailstone-inbox-action")).toHaveLength(0);
+    expect(findAll(el, "mailstone-inbox-action")).toHaveLength(0);
   });
 
-  it("meldet einen Fehlerzustand sichtbar", () => {
-    const el = document.createElement("div");
+  it("zeichnet zwei Aktionsknoepfe je Zeile, wenn sie aktiv sind", () => {
+    const el = makeFakeEl();
+    new InboxPanel(host()).mount(el);
+    expect(findAll(el, "mailstone-inbox-action")).toHaveLength(2);
+  });
+
+  it("meldet einen Fehlerzustand mit Zustandsklasse UND aria-label — Farbe nie allein", () => {
+    const el = makeFakeEl();
     new InboxPanel(host({ state: "fehler", rows: [], fehlerCode: "auth" })).mount(el);
-    expect(el.querySelector(".mailstone-inbox-status.is-error")).not.toBeNull();
+    const ind = findAll(el, "mailstone-inbox-status")[0];
+    expect(String(ind.className).split(" ")).toContain("is-error");
+    expect(ind.getAttribute("aria-label")).toBeTruthy();
+  });
+
+  it("blendet die Kontowahl aus, solange es nur ein Konto gibt", () => {
+    const eins = makeFakeEl();
+    new InboxPanel(host()).mount(eins);
+    expect(findAll(eins, "mailstone-inbox-account")).toHaveLength(0);
   });
 
   it("raeumt beim destroy auf", () => {
-    const el = document.createElement("div");
     const unsub = vi.fn();
     const p = new InboxPanel(host({}, { onChange: () => unsub }));
-    p.mount(el);
+    p.mount(makeFakeEl());
     p.destroy();
     expect(unsub).toHaveBeenCalled();
   });
@@ -1647,32 +1688,55 @@ python3 ~/.claude/hooks/obsidian-cdp-lock.py release
 ```
 Erwartet: 12/12. **Ohne diese Baseline ist ein grüner Lauf danach nicht von „anders grün" zu unterscheiden** — der Treiber ist beim Umbau selbst der Prüfling. Zahl und Datum in `docs/SMOKE.md` notieren. Läuft kein Obsidian mit offenem Vault: `open "obsidian://open?vault=mailstone"` — **kein Neustart**, es hängen regelmäßig fremde Vaults an der Instanz.
 
-- [ ] **Step 2: ⛔ ZUERST `tools/sync-kit.sh` reparieren — der Aufruf ist heute destruktiv**
+- [ ] **Step 2: ZUERST `tools/sync-kit.sh` auf feste Refs umstellen**
 
-**`npm run kit:sync` NICHT ausführen, bevor dieser Schritt erledigt ist.** Gemessen (Cockpit-Task „sync-kit.sh liest aus dem Kit-Arbeitsstand (CORE-META-22)", Nachtrag 2026-09-02): das Skript liest per `cat "$KIT/src/pure/$f.ts"` aus dem **Arbeitsstand** des Kit-Verzeichnisses statt aus einem Ref. Das Kit steht inzwischen auf 0.29.0-9, und die hier vendorten Module `timeout`, `sha256`, `filename-template`, `settings`, `i18n` liegen dort **nicht mehr** unter `src/pure/` (nach `code-kit` gezogen). In einer Sandbox reproduziert: die erste Zieldatei wird durch einen **102-Byte-Stummel aus nur der Stempelzeile** ersetzt, dann bricht `set -e` ab und lässt die übrigen Module alt — ein halb zerstörter Vendor-Ordner, der wie ein gültiges Vendoring aussieht.
+⚠️ **Korrigiert am 2026-09-03, nachdem der Schaden selbst gemessen wurde.** Dieser Schritt behauptete zuvor, `npm run kit:sync` sei „heute destruktiv" und erzeuge einen 102-Byte-Stummel. **Das trifft für mailstone nicht zu** — die Behauptung stammte aus dem Cockpit-Task eines Sweeps und wurde ungeprüft übernommen. Nachgemessen:
 
-Vorgehen: `tools/sync-kit.sh` auf das Muster aus `vault-rag/tools/sync-kit.sh` umstellen — **alle Quellen vorprüfen, bevor irgendetwas geschrieben wird**, dann `.tmp` + `mv` nur bei Erfolg, und `git show <ref>:<pfad>` statt `cat` aus dem Arbeitsstand. Zuletzt so umgestellt in `epub-exporter` (`9fc4495`), dort auch die Zwei-Ref-Variante für getrennt gepinnte Vendor-Ordner. Dabei die Pfade der fünf verschobenen Module auf ihren neuen Ort ziehen.
+- **Alle 11 Quellen existieren.** Der Stummel-Fall kann hier gar nicht eintreten, weil mailstone die fünf pure-Module bereits aus `code-kit` liest (`$CODEKIT/src/ts/pure/`, Zeile 16), nicht aus `obsidian-kit/src/pure/`. Genau daran hing die Meldung.
+- **Alle 11 vendorten Dateien sind zwischen dem vendorten Stand (obsidian-kit 0.28.0 / code-kit 0.1.0) und HEAD (0.30.0 / 0.5.0) inhaltlich unverändert.** Gegenprobe: derselbe Diff findet im Kit-Repo 21 geänderte Dateien insgesamt, greift also.
+- **`src/obsidian/hub.ts` existiert bereits in 0.28.0 und ist identisch mit HEAD** — der Hub braucht kein Kit-Upgrade.
+
+Ein Lauf würde heute also nur die VENDOR.json-Stempel von 0.28.0/0.1.0 auf 0.30.0/0.5.0 heben, sonst nichts.
+
+**Der wirkliche Defekt bleibt und ist die Reparatur wert — er ist eine Zeitbombe, kein akuter Schaden:** Das Skript liest per `cat` aus dem **Arbeitsstand** der Nachbar-Repos, ist damit an deren HEAD gekoppelt statt an den eigenen Pin; es stempelt mit `describe --tags` + `rev-parse HEAD` einen Stand, den der kopierte Inhalt nicht tragen muss; und es schreibt ohne `.tmp` + `mv`, sodass eine je fehlende Quelle den Stummel doch erzeugte. Sobald sich im Kit ein hier vendortes Modul ändert oder verschwindet, zündet genau das.
+
+**Vorgehen** — Muster `vault-rag/tools/sync-kit.sh`, Zwei-Ref-Variante wie `epub-exporter` (`9fc4495`), weil mailstone aus **zwei** Quellen vendort:
+
+1. `KIT_REF=${KIT_REF:-0.28.0}` und `CODEKIT_REF=${CODEKIT_REF:-0.1.0}` — die Stände, die heute vendort sind. Ein Upgrade wird damit eine **Entscheidung** (Ref heben, Tests fahren), kein Nebeneffekt eines Sync-Laufs.
+2. `git -C "$REPO" show "$REF:$pfad"` statt `cat "$REPO/$pfad"` — reproduzierbar und unempfindlich gegen eine parallele Session im Nachbar-Repo.
+3. **Vorprüfung aller Quellen, bevor irgendetwas geschrieben wird** (`git cat-file -e "$REF:$pfad"`). Ein Abbruch mitten im Lauf ist zu spät: er rettet nur die Datei, an der er auslöst, und lässt die vorherigen überschrieben zurück.
+4. Schreiben nach `.tmp`, `mv` nur bei Erfolg.
+5. Stempel aus der **gelesenen Ref** (`rev-parse --short "$REF^{commit}"`), nicht aus `HEAD`.
+6. **Kein Datum in `VENDOR.json`.** Es macht die Reproduzierbarkeitsprobe unmöglich — mit Datum erzeugt jeder Lauf einen Diff. Das Feld entfällt, wie in `vault-rag`.
 
 Eigener Commit, bevor irgendetwas vendort wird:
 
 ```bash
-git add tools/sync-kit.sh
+git add tools/sync-kit.sh src/vendor/*/VENDOR.json tests/vendor/kit/VENDOR.json
 git commit -F - <<'EOF'
-fix(kit): sync-kit.sh liest aus einem Ref statt aus dem Arbeitsstand
+fix(kit): sync-kit.sh liest aus festen Refs statt aus dem Arbeitsstand
 
-Vorher las das Skript per cat aus dem Kit-Arbeitsverzeichnis und war
-damit an dessen HEAD gekoppelt statt an den eigenen Pin. Seit dem Umzug
-von fuenf Modulen nach code-kit findet es sie dort nicht mehr: die
-erste Zieldatei wurde zu einem 102-Byte-Stummel, danach brach set -e ab
-und liess den Rest alt - ein halb zerstoerter Vendor-Ordner, der wie
-ein gueltiges Vendoring aussieht. Jetzt alle Quellen vorpruefen, dann
-.tmp + mv nur bei Erfolg (Muster vault-rag, zuletzt epub-exporter).
+Vorher las das Skript per cat aus den Arbeitsverzeichnissen der
+Nachbar-Repos und war damit an deren HEAD gekoppelt statt an den
+eigenen Pin: ein Sync-Lauf haette obsidian-kit still von 0.28.0 auf
+0.30.0 und code-kit von 0.1.0 auf 0.5.0 gehoben. Der Stempel kam
+zudem aus describe+HEAD und beglaubigte einen Stand, den der kopierte
+Inhalt nicht tragen muss. Jetzt feste Refs, Vorpruefung aller Quellen
+vor dem ersten Schreibvorgang, .tmp + mv nur bei Erfolg, Stempel aus
+der gelesenen Ref. Das Datum entfaellt - es machte die Probe "zweiter
+Lauf ohne Diff" unmoeglich.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-Danach zur Gegenprobe einmal ohne Änderung laufen lassen: `npm run kit:sync && git diff --stat src/vendor/` muss **leer** sein — ein Vendoring, das ohne Kit-Änderung Diffs erzeugt, ist nicht reproduzierbar.
+**Gegenprobe, zweiteilig — beide Hälften sind nötig:**
+```bash
+npm run kit:sync && git diff --stat src/vendor/ tests/vendor/   # muss LEER sein
+KIT_REF=0.27.0 npm run kit:sync                                  # muss mit FEHLER abbrechen und NICHTS schreiben
+git diff --stat src/vendor/ tests/vendor/                        # muss weiterhin leer sein
+```
+Die erste Hälfte belegt Reproduzierbarkeit, die zweite den Schreibschutz. Eine Gegenprobe, die den Defekt nicht einbaut, beweist nichts — falls `0.27.0` alle Quellen enthält, stattdessen eine Ref wählen, in der eine fehlt.
 
 - [ ] **Step 3: Hub aus dem Kit vendoren**
 
@@ -1690,10 +1754,11 @@ In `tests/obsidian/mailstone-view.test.ts`:
 
 ```ts
   it("mountet beide Panels als Tabs", async () => {
-    const view = new MailstoneView(leafDoppel(), cockpitHostDoppel(), inboxHostDoppel());
+    const view = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost());
     await view.onOpen();
-    const tabs = view.contentEl.querySelectorAll("[data-tab]");
-    const ids = [...tabs].map((el) => el.getAttribute("data-tab"));
+    // Attributselektoren kann der Fake-El NICHT (matchesSimpleSelector versteht nur Tag und
+    // .klasse) — also die Tabs ueber ihre Klasse einsammeln und data-tab dort auslesen.
+    const ids = alleMit(view.contentEl, "kit-hub-tab").map((el) => el.getAttribute("data-tab"));
     expect(ids).toContain("cockpit");
     expect(ids).toContain("inbox");
   });
@@ -1701,8 +1766,21 @@ In `tests/obsidian/mailstone-view.test.ts`:
   it("bleibt bei EINEM registerView-Typ", () => {
     expect(VIEW_TYPE_MAILSTONE).toBe("mailstone-cockpit");
   });
+
+  it("zerstoert beim Schliessen BEIDE Panels", async () => {
+    const abCockpit = vi.fn();
+    const abInbox = vi.fn();
+    const view = new MailstoneView(new WorkspaceLeaf(), fakeHost(() => abCockpit), fakeInboxHost(() => abInbox));
+    await view.onOpen();
+    await view.onClose();
+    expect(abCockpit).toHaveBeenCalled();
+    expect(abInbox).toHaveBeenCalled();
+  });
 ```
-(`leafDoppel`/`cockpitHostDoppel` gibt es in der Datei bereits — `inboxHostDoppel` nach demselben Muster ergänzen.)
+
+Dazu in der Datei ergänzen: `fakeInboxHost` nach dem Muster des vorhandenen `fakeHost` (alle `InboxHost`-Methoden als No-Ops, `viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenAktiv: false })`) und den `alleMit`-Helfer — identisch zu `findAll` aus `tests/obsidian/cockpit-panel.test.ts:31`.
+
+⚠️ **Die Tab-Klasse ist zu prüfen, nicht zu raten:** `kit-hub-tab` ist der erwartete Name, aber verbindlich ist, was `src/vendor/kit-obsidian/hub.ts` nach dem Vendoring in Step 3 tatsächlich vergibt. Dort nachsehen und den Test darauf setzen; stimmt der Name nicht, ist der Test falsch, nicht der Hub.
 
 - [ ] **Step 5: Run test to verify it fails**
 

@@ -1,15 +1,22 @@
 import { ItemView, type App, type WorkspaceLeaf } from "obsidian";
 import { t } from "../../vendor/code-kit/i18n";
+import { buildHubInto, type HubController } from "../../vendor/kit-obsidian/hub";
 import { CockpitPanel, type CockpitHost } from "./cockpit-panel";
+import { InboxPanel, type InboxHost } from "./inbox-panel";
 
-/** Der EINE registerView-Type dieses Plugins (UI-STANDARD §1). Kommt mit M4 der
- *  Posteingang dazu, wird er ein zweiter Tab dieser View — kein zweiter Type. */
+/** Der EINE registerView-Type dieses Plugins (UI-STANDARD §1). Cockpit und Posteingang sind
+ *  zwei Tabs EINER View, kein zweiter Type — beide Panels erfuellen den HubPanel-Vertrag und
+ *  bleiben nach dem Mount durchgaengig im DOM, der Tab-Wechsel blendet nur um. */
 export const VIEW_TYPE_MAILSTONE = "mailstone-cockpit";
 
 export class MailstoneView extends ItemView {
-  private panel: CockpitPanel | null = null;
+  private hub: HubController<"cockpit" | "inbox"> | null = null;
 
-  constructor(leaf: WorkspaceLeaf, private readonly host: CockpitHost) {
+  constructor(
+    leaf: WorkspaceLeaf,
+    private readonly host: CockpitHost,
+    private readonly inboxHost: InboxHost,
+  ) {
     super(leaf);
   }
 
@@ -18,17 +25,22 @@ export class MailstoneView extends ItemView {
   getIcon(): string { return "mail"; }
 
   async onOpen(): Promise<void> {
-    // Direkter Mount statt buildHubInto: bei einem Panel waere die Tab-Leiste ein Knopf
-    // ohne Wahl. Das Panel erfuellt den HubPanel-Vertrag bereits — mit dem zweiten Tab
-    // wird aus dieser Zeile `buildHubInto(this.contentEl, [cockpit, inbox], "cockpit")`.
-    this.panel = new CockpitPanel(this.host);
-    this.panel.mount(this.contentEl);
+    const cockpit = new CockpitPanel(this.host);
+    const inbox = new InboxPanel(this.inboxHost);
+    // Zwei Tabs, also traegt die Leiste jetzt eine Wahl — der Grund, aus dem sie beim
+    // einzelnen Panel bewusst fehlte.
+    this.hub = buildHubInto(this.contentEl, [cockpit, inbox], "cockpit");
   }
 
   async onClose(): Promise<void> {
-    this.panel?.destroy();
-    this.panel = null;
+    this.hub?.destroy();
+    this.hub = null;
     this.contentEl.empty();
+    // Regression-Fix (I2-Re-Review): der Inbox-Host haengt sich fuer seine gesamte Lebensdauer
+    // an einen plugin-lebenslangen Emitter (`syncEvents`). `hub.destroy()` raeumt nur die
+    // Panels ab, nicht den Host dahinter — ohne diesen Aufruf ueberlebt der Listener das
+    // Schliessen der Ansicht und kann bei jedem kuenftigen Sync erneut laden().
+    this.inboxHost.destroy();
   }
 }
 
