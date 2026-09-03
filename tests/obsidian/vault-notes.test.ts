@@ -53,6 +53,37 @@ describe("vaultPlanExecutor", () => {
     expect(c.split("\n").filter((z: string, i: number) => z !== alteZeilen[i])).toEqual(["zustand: detached"]);
   });
 
+  // M1-Nachlese Punkt 5 (2026-08-23, offen bis 2026-09-03): `ensureFolder` prueft erst
+  // `exists` und ruft dann `createFolder` — zwischen beiden kann ein anderer Vorgang denselben
+  // Ordner anlegen (Sync und ein Kommando laufen nebeneinander). Der Wurf des Nachbarn darf den
+  // eigenen Plan nicht scheitern lassen; existiert der Ordner danach, war der Zweck erfuellt.
+  it("ein nebenlaeufig erzeugter Ordner laesst create nicht scheitern", async () => {
+    const app = makeApp();
+    let erzeugt = false;
+    const echt = app.vault.createFolder.bind(app.vault);
+    app.vault.createFolder = async (pfad: string): Promise<void> => {
+      // Der Nachbar war schneller: der Ordner entsteht, und Obsidian wirft trotzdem.
+      erzeugt = true;
+      await echt(pfad);
+      throw new Error("Folder already exists.");
+    };
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const r = await ex.execute([{ kind: "create", path: "Mail/2026/x.md", emlPath: "Mail/2026/_eml/x.eml", content: "x", eml: new Uint8Array([1]), mailId: "a@x", zoneHash: "h" }]);
+    expect(erzeugt).toBe(true);
+    expect(r.errors).toEqual([]);
+    expect(r.created).toBe(1);
+  });
+
+  it("ein echter Ordner-Fehler bleibt ein Fehler", async () => {
+    const app = makeApp();
+    app.vault.createFolder = (): Promise<void> => Promise.reject(new Error("Kein Schreibrecht"));
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const r = await ex.execute([{ kind: "create", path: "Mail/2026/x.md", emlPath: "Mail/2026/_eml/x.eml", content: "x", eml: new Uint8Array([1]), mailId: "a@x", zoneHash: "h" }]);
+    expect(r.created).toBe(0);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]?.message).toContain("Kein Schreibrecht");
+  });
+
   it("Fehler bei einem Plan stoppt die anderen nicht und landet in errors", async () => {
     const app = makeApp();
     const echt = app.vault.create;

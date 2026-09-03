@@ -279,3 +279,57 @@ describe("setFrontmatterField", () => {
     expect(r.ok && r.content).toBe("---\nmail_state: detached\n---\nnur Text");
   });
 });
+
+// M1-Nachlese Punkt 1, das Ende-zu-Ende-Stueck: eine CRLF-Notiz bleibt nach einem Sync-Merge
+// vollstaendig CRLF, und der Zonen-Hash traegt ueber den Wechsel hinweg — sonst meldete der
+// naechste Lauf einen Konflikt, den niemand verursacht hat.
+describe("mergeNote in einer CRLF-Notiz", () => {
+  const crlf = [
+    "---",
+    "mail_id: a@x",
+    "---",
+    "eigene Notiz",
+    "",
+    "%% mailstone:begin %%",
+    "## Nachricht",
+    "alt",
+    "%% mailstone:end %%",
+    "",
+  ].join("\r\n");
+
+  it("schreibt die Zone mit CRLF und mischt keine Zeilenenden", () => {
+    const r = mergeNote({
+      existing: crlf,
+      derived: { mail_id: "a@x" },
+      managed: ["mail_id"],
+      block: "## Nachricht\nneu",
+      expectedZoneHash: null,
+    });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    if (!r.ok) return;
+    expect(r.content).toContain("## Nachricht\r\nneu");
+    expect(/[^\r]\n/.test(r.content)).toBe(false);
+  });
+
+  it("meldet beim naechsten Lauf keinen Zonen-Konflikt", () => {
+    const erst = mergeNote({
+      existing: crlf,
+      derived: { mail_id: "a@x" },
+      managed: ["mail_id"],
+      block: "## Nachricht\nneu",
+      expectedZoneHash: null,
+    });
+    expect(erst.ok).toBe(true);
+    if (!erst.ok) return;
+    // Zweiter Lauf mit dem Hash, den der erste zurueckgegeben hat — genau so haelt der Sync ihn.
+    const zweit = mergeNote({
+      existing: erst.content,
+      derived: { mail_id: "a@x" },
+      managed: ["mail_id"],
+      block: "## Nachricht\nneu",
+      expectedZoneHash: erst.zoneHash,
+    });
+    expect(zweit).toMatchObject({ ok: true, changed: false });
+  });
+});
+

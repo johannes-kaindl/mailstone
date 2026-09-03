@@ -140,7 +140,9 @@ export function mergeNote(input: MergeInput): MergeResult {
     return { ok: false, code: "zone-edited" };
   }
 
-  const tail = `${before}${wrapBlock(input.block)}${after}`;
+  // Zeilenende der Notiz, nicht des gerenderten Blocks: eine CRLF-Notiz bleibt CRLF.
+  const eol: "\n" | "\r\n" = (doc ? doc.eol : input.existing).includes("\r\n") ? "\r\n" : "\n";
+  const tail = `${before}${wrapBlock(input.block, eol)}${after}`;
   const build = (skip: Set<string>): string | null => {
     if (!doc) {
       // Notiz ohne Frontmatter: einen frischen Block aus den abgeleiteten Keys voranstellen.

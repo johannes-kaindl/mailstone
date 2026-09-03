@@ -18,3 +18,28 @@ describe("fences", () => {
     expect(zoneHash("a\n")).toBe(zoneHash("a"));
   });
 });
+
+// M1-Nachlese Punkt 1 (2026-08-23, offen bis 2026-09-03): der Frontmatter-Rewrite ist EOL-treu,
+// die Zone war es nicht — `wrapBlock` schrieb immer LF und erzeugte in einer CRLF-Notiz
+// gemischte Zeilenenden. Der Sync schreibt unbeaufsichtigt, also faellt so etwas niemandem auf.
+describe("Zeilenenden", () => {
+  it("wrapBlock schreibt den Block mit dem Zeilenende der Notiz", () => {
+    const out = wrapBlock("## Nachricht\n\nHallo", "\r\n");
+    expect(out).toBe(`${BLOCK_BEGIN}\r\n## Nachricht\r\n\r\nHallo\r\n${BLOCK_END}`);
+    expect(/[^\r]\n/.test(out)).toBe(false);
+  });
+
+  it("wrapBlock bleibt ohne Angabe bei LF", () => {
+    expect(wrapBlock("x")).toBe(`${BLOCK_BEGIN}\nx\n${BLOCK_END}`);
+  });
+
+  // Die Falle an diesem Fix, nicht der Fix selbst: der Zonen-Hash wird beim Planen aus dem
+  // frisch gerenderten (LF-)Block gebildet und beim naechsten Lauf aus dem, was in der Notiz
+  // steht. Schriebe wrapBlock CRLF, ohne dass zoneHash die Zeilenenden vereinheitlicht, meldete
+  // jede CRLF-Notiz beim naechsten Sync "von Hand geaendert" — ein Konflikt, den niemand
+  // verursacht hat.
+  it("zoneHash ist unabhaengig vom Zeilenende", () => {
+    expect(zoneHash("a\r\nb")).toBe(zoneHash("a\nb"));
+  });
+});
+

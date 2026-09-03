@@ -12,7 +12,16 @@ async function ensureFolder(app: App, path: string): Promise<void> {
   let cur = "";
   for (const p of parts) {
     cur = cur ? `${cur}/${p}` : p;
-    if (!(await app.vault.adapter.exists(cur))) await app.vault.createFolder(cur);
+    if (await app.vault.adapter.exists(cur)) continue;
+    try {
+      await app.vault.createFolder(cur);
+    } catch (e) {
+      // Zwischen `exists` und `createFolder` kann ein anderer Vorgang denselben Ordner angelegt
+      // haben — Sync und Kommandos laufen nebeneinander. Der Wurf des Nachbarn ist dann kein
+      // Fehler, sein Ergebnis ist genau das gewuenschte. Geprueft wird die Wirkung, nicht der
+      // Fehlertext: der ist nicht Teil der API und je nach Obsidian-Version anders formuliert.
+      if (!(await app.vault.adapter.exists(cur))) throw e;
+    }
   }
 }
 

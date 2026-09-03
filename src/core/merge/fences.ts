@@ -21,10 +21,19 @@ export function splitBody(body: string): { before: string; block: string | null;
   return { before: body.slice(0, i), block: inner, after: body.slice(j + BLOCK_END.length) };
 }
 
-export function wrapBlock(block: string): string {
-  return `${BLOCK_BEGIN}\n${block}\n${BLOCK_END}`;
+/** Setzt die verwaltete Zone in die Marker. `eol` ist das Zeilenende der Zielnotiz: der
+ *  Frontmatter-Rewrite ist EOL-treu, und die Zone muss es auch sein, sonst mischt ein
+ *  unbeaufsichtigter Sync in einer CRLF-Notiz die Zeilenenden (M1-Nachlese Punkt 1). Der
+ *  gerenderte Block kommt immer mit LF an und wird hier umgesetzt. */
+export function wrapBlock(block: string, eol: "\n" | "\r\n" = "\n"): string {
+  const inner = eol === "\n" ? block : block.replace(/\r?\n/g, eol);
+  return `${BLOCK_BEGIN}${eol}${inner}${eol}${BLOCK_END}`;
 }
 
+/** Vergleichswert fuer "hat jemand die Zone von Hand geaendert?". Zeilenenden zaehlen dabei
+ *  NICHT: der Hash entsteht einmal aus dem frisch gerenderten Block (LF) und einmal aus dem,
+ *  was in der Notiz steht (deren EOL) — ohne diese Vereinheitlichung meldete jede CRLF-Notiz
+ *  einen Konflikt, den niemand verursacht hat. */
 export function zoneHash(block: string): string {
-  return sha256HexUtf8(block.trim());
+  return sha256HexUtf8(block.replace(/\r\n/g, "\n").trim());
 }
