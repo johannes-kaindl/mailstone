@@ -1688,32 +1688,55 @@ python3 ~/.claude/hooks/obsidian-cdp-lock.py release
 ```
 Erwartet: 12/12. **Ohne diese Baseline ist ein grüner Lauf danach nicht von „anders grün" zu unterscheiden** — der Treiber ist beim Umbau selbst der Prüfling. Zahl und Datum in `docs/SMOKE.md` notieren. Läuft kein Obsidian mit offenem Vault: `open "obsidian://open?vault=mailstone"` — **kein Neustart**, es hängen regelmäßig fremde Vaults an der Instanz.
 
-- [ ] **Step 2: ⛔ ZUERST `tools/sync-kit.sh` reparieren — der Aufruf ist heute destruktiv**
+- [ ] **Step 2: ZUERST `tools/sync-kit.sh` auf feste Refs umstellen**
 
-**`npm run kit:sync` NICHT ausführen, bevor dieser Schritt erledigt ist.** Gemessen (Cockpit-Task „sync-kit.sh liest aus dem Kit-Arbeitsstand (CORE-META-22)", Nachtrag 2026-09-02): das Skript liest per `cat "$KIT/src/pure/$f.ts"` aus dem **Arbeitsstand** des Kit-Verzeichnisses statt aus einem Ref. Das Kit steht inzwischen auf 0.29.0-9, und die hier vendorten Module `timeout`, `sha256`, `filename-template`, `settings`, `i18n` liegen dort **nicht mehr** unter `src/pure/` (nach `code-kit` gezogen). In einer Sandbox reproduziert: die erste Zieldatei wird durch einen **102-Byte-Stummel aus nur der Stempelzeile** ersetzt, dann bricht `set -e` ab und lässt die übrigen Module alt — ein halb zerstörter Vendor-Ordner, der wie ein gültiges Vendoring aussieht.
+⚠️ **Korrigiert am 2026-09-03, nachdem der Schaden selbst gemessen wurde.** Dieser Schritt behauptete zuvor, `npm run kit:sync` sei „heute destruktiv" und erzeuge einen 102-Byte-Stummel. **Das trifft für mailstone nicht zu** — die Behauptung stammte aus dem Cockpit-Task eines Sweeps und wurde ungeprüft übernommen. Nachgemessen:
 
-Vorgehen: `tools/sync-kit.sh` auf das Muster aus `vault-rag/tools/sync-kit.sh` umstellen — **alle Quellen vorprüfen, bevor irgendetwas geschrieben wird**, dann `.tmp` + `mv` nur bei Erfolg, und `git show <ref>:<pfad>` statt `cat` aus dem Arbeitsstand. Zuletzt so umgestellt in `epub-exporter` (`9fc4495`), dort auch die Zwei-Ref-Variante für getrennt gepinnte Vendor-Ordner. Dabei die Pfade der fünf verschobenen Module auf ihren neuen Ort ziehen.
+- **Alle 11 Quellen existieren.** Der Stummel-Fall kann hier gar nicht eintreten, weil mailstone die fünf pure-Module bereits aus `code-kit` liest (`$CODEKIT/src/ts/pure/`, Zeile 16), nicht aus `obsidian-kit/src/pure/`. Genau daran hing die Meldung.
+- **Alle 11 vendorten Dateien sind zwischen dem vendorten Stand (obsidian-kit 0.28.0 / code-kit 0.1.0) und HEAD (0.30.0 / 0.5.0) inhaltlich unverändert.** Gegenprobe: derselbe Diff findet im Kit-Repo 21 geänderte Dateien insgesamt, greift also.
+- **`src/obsidian/hub.ts` existiert bereits in 0.28.0 und ist identisch mit HEAD** — der Hub braucht kein Kit-Upgrade.
+
+Ein Lauf würde heute also nur die VENDOR.json-Stempel von 0.28.0/0.1.0 auf 0.30.0/0.5.0 heben, sonst nichts.
+
+**Der wirkliche Defekt bleibt und ist die Reparatur wert — er ist eine Zeitbombe, kein akuter Schaden:** Das Skript liest per `cat` aus dem **Arbeitsstand** der Nachbar-Repos, ist damit an deren HEAD gekoppelt statt an den eigenen Pin; es stempelt mit `describe --tags` + `rev-parse HEAD` einen Stand, den der kopierte Inhalt nicht tragen muss; und es schreibt ohne `.tmp` + `mv`, sodass eine je fehlende Quelle den Stummel doch erzeugte. Sobald sich im Kit ein hier vendortes Modul ändert oder verschwindet, zündet genau das.
+
+**Vorgehen** — Muster `vault-rag/tools/sync-kit.sh`, Zwei-Ref-Variante wie `epub-exporter` (`9fc4495`), weil mailstone aus **zwei** Quellen vendort:
+
+1. `KIT_REF=${KIT_REF:-0.28.0}` und `CODEKIT_REF=${CODEKIT_REF:-0.1.0}` — die Stände, die heute vendort sind. Ein Upgrade wird damit eine **Entscheidung** (Ref heben, Tests fahren), kein Nebeneffekt eines Sync-Laufs.
+2. `git -C "$REPO" show "$REF:$pfad"` statt `cat "$REPO/$pfad"` — reproduzierbar und unempfindlich gegen eine parallele Session im Nachbar-Repo.
+3. **Vorprüfung aller Quellen, bevor irgendetwas geschrieben wird** (`git cat-file -e "$REF:$pfad"`). Ein Abbruch mitten im Lauf ist zu spät: er rettet nur die Datei, an der er auslöst, und lässt die vorherigen überschrieben zurück.
+4. Schreiben nach `.tmp`, `mv` nur bei Erfolg.
+5. Stempel aus der **gelesenen Ref** (`rev-parse --short "$REF^{commit}"`), nicht aus `HEAD`.
+6. **Kein Datum in `VENDOR.json`.** Es macht die Reproduzierbarkeitsprobe unmöglich — mit Datum erzeugt jeder Lauf einen Diff. Das Feld entfällt, wie in `vault-rag`.
 
 Eigener Commit, bevor irgendetwas vendort wird:
 
 ```bash
-git add tools/sync-kit.sh
+git add tools/sync-kit.sh src/vendor/*/VENDOR.json tests/vendor/kit/VENDOR.json
 git commit -F - <<'EOF'
-fix(kit): sync-kit.sh liest aus einem Ref statt aus dem Arbeitsstand
+fix(kit): sync-kit.sh liest aus festen Refs statt aus dem Arbeitsstand
 
-Vorher las das Skript per cat aus dem Kit-Arbeitsverzeichnis und war
-damit an dessen HEAD gekoppelt statt an den eigenen Pin. Seit dem Umzug
-von fuenf Modulen nach code-kit findet es sie dort nicht mehr: die
-erste Zieldatei wurde zu einem 102-Byte-Stummel, danach brach set -e ab
-und liess den Rest alt - ein halb zerstoerter Vendor-Ordner, der wie
-ein gueltiges Vendoring aussieht. Jetzt alle Quellen vorpruefen, dann
-.tmp + mv nur bei Erfolg (Muster vault-rag, zuletzt epub-exporter).
+Vorher las das Skript per cat aus den Arbeitsverzeichnissen der
+Nachbar-Repos und war damit an deren HEAD gekoppelt statt an den
+eigenen Pin: ein Sync-Lauf haette obsidian-kit still von 0.28.0 auf
+0.30.0 und code-kit von 0.1.0 auf 0.5.0 gehoben. Der Stempel kam
+zudem aus describe+HEAD und beglaubigte einen Stand, den der kopierte
+Inhalt nicht tragen muss. Jetzt feste Refs, Vorpruefung aller Quellen
+vor dem ersten Schreibvorgang, .tmp + mv nur bei Erfolg, Stempel aus
+der gelesenen Ref. Das Datum entfaellt - es machte die Probe "zweiter
+Lauf ohne Diff" unmoeglich.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-Danach zur Gegenprobe einmal ohne Änderung laufen lassen: `npm run kit:sync && git diff --stat src/vendor/` muss **leer** sein — ein Vendoring, das ohne Kit-Änderung Diffs erzeugt, ist nicht reproduzierbar.
+**Gegenprobe, zweiteilig — beide Hälften sind nötig:**
+```bash
+npm run kit:sync && git diff --stat src/vendor/ tests/vendor/   # muss LEER sein
+KIT_REF=0.27.0 npm run kit:sync                                  # muss mit FEHLER abbrechen und NICHTS schreiben
+git diff --stat src/vendor/ tests/vendor/                        # muss weiterhin leer sein
+```
+Die erste Hälfte belegt Reproduzierbarkeit, die zweite den Schreibschutz. Eine Gegenprobe, die den Defekt nicht einbaut, beweist nichts — falls `0.27.0` alle Quellen enthält, stattdessen eine Ref wählen, in der eine fehlt.
 
 - [ ] **Step 3: Hub aus dem Kit vendoren**
 
