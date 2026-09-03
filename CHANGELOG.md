@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Behoben
+- **Der Zustandswechsel einer Notiz schreibt nur noch die eine Zeile, die er meint.** Bisher lief
+  er über Obsidians `processFrontMatter`, und das liest den Frontmatter als YAML und schreibt ihn
+  komplett neu: eigene Felder verlieren ihre Formatierung (aus `to: [adresse]` wird eine
+  Block-Liste) und **YAML-Kommentare verschwinden ganz**. Wer im Frontmatter einer Mail-Notiz
+  eigene Felder pflegt, behält sie jetzt unverändert
+
 ### Intern
 - Der Nur-Lese-Vertrag des Sync-Laufs (`EXAMINE` + `BODY.PEEK`, nie `SELECT` oder `BODY[]`) wird
   jetzt über einen echten Socket belegt: der Fake-IMAP-Server protokolliert jede empfangene
