@@ -16,7 +16,8 @@ export function splitReferences(raw: string | null | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
   for (const m of raw.matchAll(/<([^<>\s]*)>/g)) {
-    const id = m[1]!.trim();
+    // Kein .trim(): die Capture-Gruppe schliesst Whitespace bereits aus (M1-Nachlese Punkt 6).
+    const id = m[1]!;
     if (id && !out.includes(id)) out.push(id);
   }
   return out;
