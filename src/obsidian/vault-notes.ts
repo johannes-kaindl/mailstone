@@ -3,6 +3,7 @@ import type { NotePlan } from "../core/mirror/plan";
 import type { PlanExecutionResult, PlanExecutor, ZoneHashStore } from "../core/mirror/execute";
 import type { MailIndex } from "../core/mirror/apply";
 import type { MailProfile } from "../core/mirror/profile";
+import { setFrontmatterField } from "../core/merge/merge";
 
 export type { PlanExecutionResult, PlanExecutor, ZoneHashStore };
 
@@ -61,9 +62,25 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
           } else if (p.kind === "setState") {
             const f = app.vault.getAbstractFileByPath(normalizePath(p.path));
             if (!(f instanceof TFile)) { skipped.push(missingTarget(p)); continue; }
-            await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
-              fm[p.stateField] = p.state;
-            });
+            // Zeilenweise statt ueber `fileManager.processFrontMatter`: die API liest den Block
+            // als YAML und schreibt ihn komplett neu — Kommentare gehen dabei verloren und die
+            // Formatierung fremder Felder wird umgeschrieben (an einem echten Postfach gemessen,
+            // M3-Nachlese 2026-08-30). Dieselbe Zurueckhaltung uebt der Rest des Moduls schon.
+            const vorher = await app.vault.read(f);
+            const gesetzt = setFrontmatterField({ existing: vorher, key: p.stateField, value: p.state });
+            if (gesetzt.ok) {
+              if (gesetzt.changed) await app.vault.modify(f, gesetzt.content);
+            } else {
+              // Rueckfall fuer den einen Fall, den der zeilenweise Weg nicht kann: das Feld liegt
+              // als Block-Skalar vor. Dann ist eine Re-Serialisierung besser als ein stiller
+              // Nicht-Schreibvorgang — der Zustand einer Notiz darf nicht an ihrer Formatierung
+              // haengenbleiben.
+              await app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+                fm[p.stateField] = p.state;
+              });
+            }
+            // Gezaehlt wird der ausgefuehrte Plan, nicht der Schreibvorgang: steht der Zustand
+            // schon richtig, ist der Plan trotzdem erledigt.
             stateChanged++;
           } else {
             skipped.push(p);

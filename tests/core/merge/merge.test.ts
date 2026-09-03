@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeFrontmatterOnly, mergeNote, newNote } from "../../../src/core/merge/merge";
+import { mergeFrontmatterOnly, mergeNote, newNote, setFrontmatterField } from "../../../src/core/merge/merge";
 import { zoneHash } from "../../../src/core/merge/fences";
 
 const derived = { mail_id: "a@x", mail_source: "s", mail_state: "live", mail_synced: "2026-08-23T15:00:00+02:00", title: "Hi", from: "a@x" };
@@ -210,5 +210,72 @@ describe("mergeFrontmatterOnly", () => {
 
   it("laesst eine Notiz ohne Frontmatter unveraendert", () => {
     expect(mergeFrontmatterOnly({ existing: "nur Text", values: { mail_id: "a" } })).toEqual({ ok: true, content: "nur Text", changed: false });
+  });
+});
+
+// M3-Nachlese, Befund aus der Live-Probe am echten Postfach (2026-08-30): der Zustandswechsel
+// lief ueber `fileManager.processFrontMatter`, und das re-serialisiert den GANZEN
+// Frontmatter-Block — aus `to: [adresse]` wurde eine Block-Liste. Einmalig und ohne
+// Datenverlust, aber sobald ein Nutzer eigene Felder mit bewusster Formatierung fuehrt
+// (Block-Skalare, Kommentare, Flow-Listen), schreibt die API sie um. Der Rest dieses Moduls
+// arbeitet aus genau diesem Grund zeilenweise; setState war die letzte Ausnahme.
+describe("setFrontmatterField", () => {
+  const note = [
+    "---",
+    "mail_id: a@x",
+    "to: [wer@example.net]",
+    "mail_state: live",
+    "beschreibung: |",
+    "  mehrzeilig",
+    "  und handgesetzt",
+    "# ein Kommentar",
+    "---",
+    "## Notizen",
+    "",
+    "%% mailstone:begin %%",
+    "## Nachricht",
+    "%% mailstone:end %%",
+    "",
+  ].join("\n");
+
+  it("ersetzt genau die eine Zeile und laesst den Rest byte-identisch", () => {
+    const r = setFrontmatterField({ existing: note, key: "mail_state", value: "detached" });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    if (!r.ok) return;
+    expect(r.content).toContain("mail_state: detached");
+    // Das ist der Befund: eine Flow-Liste bleibt eine Flow-Liste, ein fremdes Block-Skalar
+    // bleibt eines, und der Kommentar ueberlebt.
+    expect(r.content).toContain("to: [wer@example.net]");
+    expect(r.content).toContain("beschreibung: |");
+    expect(r.content).toContain("  und handgesetzt");
+    expect(r.content).toContain("# ein Kommentar");
+    expect(r.content.slice(r.content.indexOf("## Notizen"))).toBe(note.slice(note.indexOf("## Notizen")));
+  });
+
+  it("legt den Key an, wenn er fehlt — anders als mergeFrontmatterOnly", () => {
+    const ohne = "---\nmail_id: a@x\n---\ntext\n";
+    const r = setFrontmatterField({ existing: ohne, key: "mail_state", value: "detached" });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    expect(r.ok && r.content).toBe("---\nmail_id: a@x\nmail_state: detached\n---\ntext\n");
+  });
+
+  it("meldet changed: false, wenn der Wert schon stimmt", () => {
+    expect(setFrontmatterField({ existing: note, key: "mail_state", value: "live" })).toMatchObject({ ok: true, changed: false });
+  });
+
+  it("meldet frontmatter-unparseable, wenn der Key selbst ein Block-Skalar ist", () => {
+    expect(setFrontmatterField({ existing: note, key: "beschreibung", value: "x" }))
+      .toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("meldet frontmatter-unparseable, wenn der Block nicht geschlossen ist", () => {
+    expect(setFrontmatterField({ existing: "---\nmail_id: a@x\nohne Ende", key: "mail_state", value: "live" }))
+      .toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("stellt einer Notiz ohne Frontmatter einen frischen Block voran", () => {
+    const r = setFrontmatterField({ existing: "nur Text", key: "mail_state", value: "detached" });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    expect(r.ok && r.content).toBe("---\nmail_state: detached\n---\nnur Text");
   });
 });

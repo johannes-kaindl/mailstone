@@ -25,6 +25,34 @@ describe("vaultPlanExecutor", () => {
     expect(c).toContain("zustand: detached");
     expect(c).toContain('up: "[[P]]"');
   });
+  // M3-Nachlese, an einem echten Postfach gemessen (2026-08-30): der Zustandswechsel lief ueber
+  // `fileManager.processFrontMatter`, und das re-serialisiert den ganzen Block — aus
+  // `to: [adresse]` wurde eine Block-Liste. Der Mock bildet genau dieses Verhalten ab
+  // (memory-vault.ts:94 serialisiert den kompletten Frontmatter neu), dieser Test war vor der
+  // Umstellung auf `setFrontmatterField` also rot.
+  it("setState laesst die Formatierung fremder Felder unangetastet", async () => {
+    const app = makeApp();
+    const vorher = [
+      "---",
+      "mail_id: b@x",
+      "to: [wer@example.net]",
+      "zustand: live",
+      "# ein Kommentar",
+      "---",
+      "text",
+    ].join("\n");
+    await app.vault.create("Mail/y.md", vorher);
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    await ex.execute([{ kind: "setState", path: "Mail/y.md", mailId: "b@x", state: "detached", stateField: "zustand" }]);
+    const c = await app.vault.adapter.read("Mail/y.md");
+    expect(c).toContain("zustand: detached");
+    expect(c).toContain("to: [wer@example.net]");
+    expect(c).toContain("# ein Kommentar");
+    // Genau eine Zeile hat sich geaendert.
+    const alteZeilen = vorher.split("\n");
+    expect(c.split("\n").filter((z: string, i: number) => z !== alteZeilen[i])).toEqual(["zustand: detached"]);
+  });
+
   it("Fehler bei einem Plan stoppt die anderen nicht und landet in errors", async () => {
     const app = makeApp();
     const echt = app.vault.create;

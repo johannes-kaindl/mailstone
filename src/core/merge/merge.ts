@@ -179,6 +179,39 @@ export function mergeNote(input: MergeInput): MergeResult {
  * Keys, die im Frontmatter nicht vorkommen, werden ignoriert statt angelegt: ein Kommando,
  * das `in_reply_to` setzt, soll es dort, wo es die Mail nie gab, auch nicht erfinden.
  */
+/**
+ * Setzt EINEN Frontmatter-Key zeilenweise — der Ersatz fuer `fileManager.processFrontMatter`
+ * im Zustandswechsel (`setState`). Der Unterschied ist nicht die Wirkung, sondern der Kollateral:
+ * die Obsidian-API liest den Block als YAML und schreibt ihn komplett neu, wodurch die
+ * Formatierung fremder Felder umgeschrieben wird (aus `to: [adresse]` wird eine Block-Liste —
+ * an einem echten Postfach gemessen, M3-Nachlese 2026-08-30). Hier bleibt jede nicht betroffene
+ * Zeile byte-identisch, wie im ganzen uebrigen Modul.
+ *
+ * Anders als `mergeFrontmatterOnly` LEGT diese Funktion den Key an, wenn er fehlt: der Zustand
+ * einer gespiegelten Mail ist eine Aussage ueber die Notiz, kein Feld der Nachricht, das man
+ * nicht erfinden darf — und `processFrontMatter` tat es ebenfalls.
+ *
+ * `frontmatter-unparseable` heisst hier: der Block schliesst nicht, ODER der Key selbst liegt
+ * als Block-Skalar vor (den koennte nur eine echte YAML-Implementierung ersetzen). Der Aufrufer
+ * darf in diesem Fall auf die API zurueckfallen — sie kann es, um den Preis der
+ * Re-Serialisierung.
+ */
+export function setFrontmatterField(input: { existing: string; key: string; value: FmVal }):
+  | { ok: true; content: string; changed: boolean }
+  | { ok: false; code: MergeErrorCode } {
+  const doc = readFm(input.existing);
+  if (!doc) {
+    if (input.existing.startsWith("---")) return { ok: false, code: "frontmatter-unparseable" };
+    // Notiz ohne Frontmatter: frischen Block voranstellen, wie es processFrontMatter tut.
+    return { ok: true, content: `${fmBlock({ [input.key]: toFm(input.value) }, [input.key])}${input.existing}`, changed: true };
+  }
+  const raw = rewriteFm(doc, { [input.key]: input.value }, [input.key], new Set());
+  if (raw === null) return { ok: false, code: "frontmatter-unparseable" };
+  const body = input.existing.slice(doc.open.length + doc.raw.length + doc.close.length);
+  const content = `${doc.open}${raw}${doc.close}${body}`;
+  return { ok: true, content, changed: content !== input.existing };
+}
+
 export function mergeFrontmatterOnly(input: { existing: string; values: Record<string, FmVal> }):
   | { ok: true; content: string; changed: boolean }
   | { ok: false; code: MergeErrorCode } {
