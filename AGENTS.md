@@ -55,6 +55,13 @@ Eine Nebenwirkung hat er doch, und sie sei benannt: `SELECT` setzt den `\Recent`
 andere Sitzungen zurück. Das trifft nur die kurze Aktions-Verbindung, nie den Sync, und
 `\Recent` wertet keiner der beteiligten Wege aus.
 
+**Gemessen wird der Vertrag am Kommandotext, nicht am Flag** (`tests/integration/fake-imap.test.ts`
+seit 2026-09-03): der Fake-IMAP protokolliert jede empfangene Zeile, der Test prüft den ganzen
+Dialog eines Sync-Laufs auf **Abwesenheit** von `SELECT` und `BODY[`. Ein `\Seen`-Vergleich wäre
+hier der falsche Test — `EXAMINE` ist nach RFC 3501 § 6.3.2 read-only, ein RFC-treuer Server setzt
+dort auch bei `BODY[]` keine Flags. Er bliebe also grün, während dieses Plugin seine Zusage bricht;
+grün wäre dann die Zusage des *Servers*. Wer den Vertrag erweitert, erweitert diesen Test.
+
 Der Message-ID-Abgleich läuft über `BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` statt `ENVELOPE`
 (Spec § 3.1): die Normalisierung dafür existiert seit M1, ein Adresslisten-Parser wäre Aufwand
 ohne Ertrag.
@@ -99,5 +106,7 @@ genügen — `tests/obsidian/main-cockpit.test.ts`). Außerhalb bleiben genau dr
 sie ist `docs/SMOKE.md` der einzige Beleg: `registerView` und die Ribbon-Umstellung (der
 vendorte `Plugin`-Mock verwirft Titel **und** Callback von `addRibbonIcon`), das
 `onLayoutReady`-Gate, und alles Sichtbare — ob ein Element Pixel hat, wo ein Knopf sitzt, ob
-eine Animation läuft. Ein GUI-Smoke-Treiber (`scripts/gui-smoke.ts`) fehlt noch; er ist Teil
-von M4.
+eine Animation läuft. Dafür gibt es seit M4 den getrackten Treiber `npm run smoke:gui`
+(`scripts/gui-smoke.ts`, 15 Prüfpunkte gegen ein **laufendes** Obsidian) — er braucht den
+CDP-Lock des Dachs und ein offenes Fenster für den Staging-Vault, das Protokoll steht in
+`docs/SMOKE.md`.
