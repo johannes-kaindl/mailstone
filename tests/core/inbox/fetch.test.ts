@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { fetchInbox, INBOX_LIMIT, type InboxFetchDeps } from "../../../src/core/inbox/fetch";
 import { createBusyGuard } from "../../../src/core/sync/busy";
 import type { ImapReadSession } from "../../../src/core/imap/client";
+import { NetError } from "../../../src/core/net/types";
 
 function header(felder: string): Uint8Array {
   return new TextEncoder().encode(`${felder}\r\n\r\n`);
@@ -95,5 +96,24 @@ describe("fetchInbox", () => {
     const s = fakeSession({ examine: vi.fn(async () => ({ ok: false as const, code: "protocol" as const, detail: "x" })) });
     await fetchInbox({ connect: async () => ({ ok: true, session: s }), busy, bekannteIds: () => new Set() }, { folder: "INBOX" });
     expect(busy.isBusy()).toBe(false);
+  });
+
+  it("I4: reicht den Code eines NetError durch, statt ihn pauschal auf 'protocol' zu bilden", async () => {
+    const s = fakeSession({ uidSearchAll: vi.fn(async () => { throw new NetError("timeout", "keine Antwort"); }) });
+    const r = await fetchInbox(deps(s), { folder: "INBOX" });
+    expect(r).toMatchObject({ ok: false, code: "timeout" });
+  });
+
+  it("Kleinbefund: ein leerer Ordnername liefert den Empty-State statt eines Fehlers, ohne zu verbinden", async () => {
+    const connect = vi.fn();
+    const r = await fetchInbox({ connect, busy: createBusyGuard(), bekannteIds: () => new Set() }, { folder: "" });
+    expect(r).toMatchObject({ ok: true, rows: [] });
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("erkennt eine bekannte Message-ID trotz Klammern/Whitespace im Index (Kleinbefund: Normalisierung vor der Schleife statt pro Zeile)", async () => {
+    const r = await fetchInbox(deps(fakeSession(), new Set([" <m2@x.invalid> "])), { folder: "INBOX" });
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.rows.find((z) => z.uid === 2)?.imVault).toBe(true);
   });
 });

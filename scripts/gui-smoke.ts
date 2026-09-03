@@ -735,10 +735,15 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
 // ── Posteingang (Hub-Tabs: Cockpit / Inbox) ────────────────────────────────────────────
 //
 // Diese drei Punkte pruefen Verdrahtung wie die zehn davor — nicht Postfach-Logik (dafuer
-// `tests/integration/` gegen den erweiterten Fake-IMAP). Sie brauchen keine IMAP-Gegenstelle:
-// das Panel zeigt seinen Inhalt erst nach einem Refresh-Klick, den kein Punkt hier ausloest,
-// darum ist die Inbox in jedem frischen View-Zustand "leer" — genau der Zustand, den V12
-// belegen soll.
+// `tests/integration/` gegen den erweiterten Fake-IMAP).
+//
+// Seit dem Nachlade-Fix (I2, Abschluss-Review) laedt der Tab sich beim ERSTEN
+// Sichtbarwerden von selbst — ist zu diesem Zeitpunkt das Testkonto mit dem toten Port
+// (TOTER_PORT) gesetzt, versucht `laden()` tatsaechlich eine Verbindung dorthin (die sofort
+// mit ECONNREFUSED scheitert, also schnell bleibt) und die Inbox landet in "fehler", nicht
+// in "leer". V12 verlaesst sich deshalb NICHT mehr auf einen impliziten "frischen"
+// View-Zustand, sondern leert `settings.accounts` und klickt danach explizit
+// "Aktualisieren" — der Knopf loest immer neu, unabhaengig vom Once-Gate des ersten Ladens.
 
 /** Klickt einen Hub-Tab per `data-tab` und meldet, ob der Button ueberhaupt im DOM stand. */
 async function tabKlicken(cdp: Cdp, tabId: string): Promise<boolean> {
@@ -798,6 +803,13 @@ async function v12_leererOrdnerZeigtEmptyState(cdp: Cdp): Promise<void> {
     pruefe("V12 leerer Ordner zeigt Empty-State mit Handlungsangebot", false, "Inbox-Tab nicht im DOM");
     return;
   }
+  // Seit dem Nachlade-Fix (I2) laedt der Tab sich selbst beim ERSTEN Sichtbarwerden — hier
+  // ist er das schon durch V11, das zuvor mit dem toten Testkonto gegen den Tab klickte und
+  // dabei einen Fehlerzustand hinterliess. `setTab` auf einen bereits aktiven Tab ist ein
+  // No-Op (hub.ts), ein zweiter `tabKlicken`-Aufruf loest also KEIN erneutes `onShow` aus.
+  // Der "Aktualisieren"-Knopf tut das immer, unabhaengig vom Once-Gate — deshalb hier explizit
+  // geklickt, statt sich auf einen impliziten Tab-Wechsel zu verlassen.
+  await clickReal(cdp, `document.querySelector(".mailstone-inbox-refresh")`, 150);
   await warte(600);
   const messung = await evaluieren<{ emptyDa: boolean; ctaDa: boolean; ctaSichtbar: boolean }>(
     cdp,

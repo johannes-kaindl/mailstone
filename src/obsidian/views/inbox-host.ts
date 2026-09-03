@@ -14,8 +14,11 @@ export interface InboxHostDeps {
   /** Bestaetigung vor einem Server-Verschieben — am Server nicht rueckgaengig zu machen. */
   confirmMove: (kind: "adopt" | "archive", zielordner: string) => Promise<boolean>;
   targetFolder: (accountId: string, kind: "adopt" | "archive") => string;
-  /** Nach erfolgreichem Uebernehmen: die Notiz entsteht im Sync, nicht in der Aktion. */
-  syncNow: (accountId: string) => void;
+  /** Nach erfolgreichem Uebernehmen: die Notiz entsteht im Sync, nicht in der Aktion. Die
+   *  Zusage ist absichtlich Teil des Vertrags (I1): sie loest sich erst, wenn `runSync` seinen
+   *  eigenen Busy-Guard wieder freigegeben hat — der Host wartet genau darauf, bevor er selbst
+   *  neu laedt, sonst kollidiert das Nachladen mit dem noch laufenden Sync. */
+  syncNow: (accountId: string) => Promise<void>;
   notifyError: (code: string) => void;
   openSettings: () => void;
   /** Haengt an den Emittern `synced`/`changed` — die Liste ist eine Momentaufnahme und
@@ -34,6 +37,9 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
   let rows: readonly InboxRow[] = [];
   let fehlerCode: string | null = null;
   let kannVerschieben = false;
+  // I2: der Tab soll sich beim ERSTEN Sichtbarwerden von selbst fuellen, aber nicht bei jedem
+  // Tab-Wechsel neu laden — buildHubInto ruft onShow() bei jeder Aktivierung, nicht nur einmal.
+  let ersteLadungAusgeloest = false;
   const horcher = new Set<() => void>();
 
   function melde(): void {
@@ -41,7 +47,14 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
   }
 
   async function laden(): Promise<void> {
+    // I5: das erste Konto kann NACH der Host-Erzeugung angelegt worden sein, oder das
+    // gewaehlte wurde geloescht — `kontoId` wird sonst nur einmal beim Erzeugen ausgewertet
+    // und der Aktualisieren-Knopf bliebe bis zum Schliessen/Neuoeffnen der Seitenleiste tot.
+    if (!deps.accounts().some((a) => a.id === kontoId)) {
+      kontoId = deps.accounts()[0]?.id ?? "";
+    }
     if (kontoId.length === 0) { zustand = "bereit"; rows = []; melde(); return; }
+    const vorher = zustand;
     zustand = "laedt";
     melde();
     const r = await deps.fetchInbox(kontoId);
@@ -50,6 +63,12 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
       kannVerschieben = r.kannVerschieben;
       zustand = "bereit";
       fehlerCode = null;
+    } else if (r.code === "busy") {
+      // I1: ein Guard-Zusammenstoss (Uebernehmen -> syncNow -> Nachladen, oder der
+      // Intervall-Wecker waehrend eines laufenden Ladevorgangs) ist keine Fehlermeldung wert
+      // — die vorhandene Liste bleibt stehen statt durch "Ein anderer Vorgang laeuft gerade."
+      // ersetzt zu werden.
+      zustand = vorher;
     } else {
       zustand = "fehler";
       fehlerCode = r.code;
@@ -59,6 +78,12 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
 
   async function verschieben(kind: "adopt" | "archive", uid: number): Promise<void> {
     const ziel = deps.targetFolder(kontoId, kind);
+    if (ziel.length === 0) {
+      // Kleinbefund: die Pruefung gehoert VOR die Bestaetigung — der Dialog fragte sonst nach
+      // einem Ordner, den es noch gar nicht gibt, und meldete den Fehler erst danach.
+      deps.notifyError("no-target-folder");
+      return;
+    }
     if (!(await deps.confirmMove(kind, ziel))) return;
     const r = kind === "adopt" ? await deps.adopt(kontoId, uid) : await deps.archive(kontoId, uid);
     if (!r.ok) {
@@ -68,9 +93,24 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
       if (r.code === "gone") void laden();
       return;
     }
-    if (kind === "adopt") deps.syncNow(kontoId);
+    if (kind === "adopt") {
+      // I1: erst NACH dem Sync-Abschluss neu laden. `runSync` belegt den Busy-Guard SYNCHRON,
+      // vor seinem ersten `await` — ein `laden()` direkt daneben traf ihn noch besetzt und
+      // zeigte "busy" anstelle der (laengst erfolgreichen) Liste.
+      await deps.syncNow(kontoId);
+    }
     void laden();
   }
+
+  // I2 (Teil B): ein Sync macht die Liste veraltet — neu LADEN statt nur neu zu zeichnen, sonst
+  // aktualisiert sich weder die Zeilenmenge noch der "liegt im Vault"-Badge (Spec § 8). `laden()`
+  // haelt bei `busy` selbst den vorherigen Zustand (I1), ein Zusammenstoss mit einem parallel
+  // laufenden Nachladen ist also unschaedlich. Einmalig fuer die Lebensdauer des Hosts verdrahtet
+  // (kein `destroy()` am Host, dieselbe Lebensdauer wie die View). Nur NACH dem ersten
+  // `ensureLoaded()`: sonst loest ein Sync im Hintergrund eine IMAP-Verbindung fuer einen Tab
+  // aus, den niemand je geoeffnet hat — das erste Laden bleibt bewusst lazy (Spec § 8 "beim
+  // Oeffnen des Tabs"), das Nachladen danach folgt derselben Regel.
+  deps.onChange(() => { if (ersteLadungAusgeloest) void laden(); });
 
   return {
     accounts: () => deps.accounts(),
@@ -78,13 +118,17 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
     selectAccount: (id) => { kontoId = id; void laden(); },
     viewModel: (): InboxViewModel => buildInboxViewModel({ zustand, rows, fehlerCode, kannVerschieben, busy: deps.isBusy() }),
     refresh: () => { void laden(); },
+    ensureLoaded: () => {
+      if (ersteLadungAusgeloest) return;
+      ersteLadungAusgeloest = true;
+      void laden();
+    },
     adopt: (uid) => { void verschieben("adopt", uid); },
     archive: (uid) => { void verschieben("archive", uid); },
     openSettings: () => deps.openSettings(),
     onChange: (cb) => {
       horcher.add(cb);
-      const ab = deps.onChange(cb);
-      return () => { horcher.delete(cb); ab(); };
+      return () => { horcher.delete(cb); };
     },
   };
 }

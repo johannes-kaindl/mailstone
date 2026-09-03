@@ -28,8 +28,9 @@ function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): 
     accounts: () => [],
     selectedAccountId: () => "a1",
     selectAccount: vi.fn(),
-    viewModel: () => ({ state: "gefuellt", rows: [zeile], fehlerCode: null, aktionenAktiv: true, ...vm }),
+    viewModel: () => ({ state: "gefuellt", rows: [zeile], fehlerCode: null, aktionenGrund: null, ...vm }),
     refresh: vi.fn(),
+    ensureLoaded: vi.fn(),
     adopt: vi.fn(),
     archive: vi.fn(),
     openSettings: vi.fn(),
@@ -60,10 +61,16 @@ describe("InboxPanel", () => {
     expect(findAll(el, "mailstone-inbox-empty")).toHaveLength(1);
   });
 
-  it("zeichnet keine Aktionsknoepfe, solange aktionenAktiv false ist", () => {
+  it("zeichnet die Aktionsknoepfe deaktiviert MIT Grund als Tooltip, statt sie wegzulassen (I6)", () => {
     const el = makeFakeEl();
-    new InboxPanel(host({ aktionenAktiv: false })).mount(el);
-    expect(findAll(el, "mailstone-inbox-action")).toHaveLength(0);
+    new InboxPanel(host({ aktionenGrund: "unsupported" })).mount(el);
+    const knoepfe = findAll(el, "mailstone-inbox-action");
+    expect(knoepfe).toHaveLength(2);
+    for (const k of knoepfe) {
+      expect(k.disabled).toBe(true);
+      expect(k.getAttribute("aria-disabled")).toBe("true");
+      expect(k.getAttribute("title")).toBeTruthy();
+    }
   });
 
   it("zeichnet zwei Aktionsknoepfe je Zeile, wenn sie aktiv sind", () => {

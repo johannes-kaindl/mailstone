@@ -17,8 +17,8 @@ function fakeHost(onChange?: CockpitHost["onChange"]): CockpitHost {
 function fakeInboxHost(onChange?: InboxHost["onChange"]): InboxHost {
   return {
     accounts: () => [], selectedAccountId: () => "", selectAccount: () => undefined,
-    viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenAktiv: false }),
-    refresh: () => undefined, adopt: () => undefined, archive: () => undefined,
+    viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenGrund: null }),
+    refresh: () => undefined, ensureLoaded: () => undefined, adopt: () => undefined, archive: () => undefined,
     openSettings: () => undefined, onChange: onChange ?? (() => () => undefined),
   };
 }

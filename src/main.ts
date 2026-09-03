@@ -511,8 +511,10 @@ export default class MailstonePlugin extends Plugin {
         return kind === "adopt" ? acc.folders.allowlist : acc.folders.archive;
       },
       // Die Notiz entsteht im Sync, nicht in der Aktion (Spec § 4) — nach einem erfolgreichen
-      // Uebernehmen also einen (nicht-stillen) Lauf fuer GENAU dieses Konto anstossen.
-      syncNow: (accountId) => { void this.runSync(notify, false, [accountId]); },
+      // Uebernehmen also einen (nicht-stillen) Lauf fuer GENAU dieses Konto anstossen. Die
+      // Zusage wird durchgereicht (nicht `void`): der Host wartet auf sie, bevor er selbst neu
+      // laedt (I1) — `runSync` gibt sie ohnehin bereits zurueck.
+      syncNow: (accountId) => this.runSync(notify, false, [accountId]).then(() => undefined),
       notifyError: (code) => notify.error(`inbox.error.${code}`),
       openSettings: () => {
         const setting = (this.app as unknown as {

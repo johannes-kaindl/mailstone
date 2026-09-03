@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { adoptMessage, archiveMessage, type InboxActionDeps } from "../../../src/core/inbox/actions";
 import { createBusyGuard } from "../../../src/core/sync/busy";
 import type { ImapWriteSession } from "../../../src/core/imap/client";
+import { NetError } from "../../../src/core/net/types";
 
 function fakeSession(over: Partial<ImapWriteSession> = {}): ImapWriteSession {
   return {
@@ -68,6 +69,20 @@ describe("adoptMessage", () => {
   it("reicht einen Verbindungsfehler durch", async () => {
     const r = await adoptMessage({ connect: async () => ({ ok: false, code: "auth", detail: "535" }), busy: createBusyGuard() }, req);
     expect(r).toMatchObject({ ok: false, code: "auth" });
+  });
+
+  it("I4: faengt einen NetError aus select/uidMove ab statt ihn als unbehandelte Rejection zu werfen", async () => {
+    const s = fakeSession({ select: vi.fn(async () => { throw new NetError("timeout", "keine Antwort"); }) });
+    const r = await adoptMessage(deps(s), req);
+    expect(r).toMatchObject({ ok: false, code: "timeout" });
+    expect(s.logout).toHaveBeenCalled();
+  });
+
+  it("I4: gibt den Busy-Guard auch nach einem NetError wieder frei", async () => {
+    const busy = createBusyGuard();
+    const s = fakeSession({ uidMove: vi.fn(async () => { throw new NetError("closed", "weg"); }) });
+    await adoptMessage(deps(s, busy), req);
+    expect(busy.isBusy()).toBe(false);
   });
 });
 

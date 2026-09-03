@@ -1,5 +1,6 @@
 import type { ImapConnectWritableResult } from "../imap/client";
 import type { BusyGuard } from "../sync/busy";
+import { NetError } from "../net/types";
 
 /**
  * Die beiden Posteingangs-Aktionen. Sie stehen bewusst NEBEN dem Deskriptor-Rahmen aus
@@ -46,6 +47,14 @@ async function moveMessage(deps: InboxActionDeps, req: InboxActionRequest): Prom
       if (!gewaehlt.ok) return { ok: false, code: gewaehlt.code, detail: gewaehlt.detail };
       const verschoben = await session.uidMove(req.uid, req.targetFolder);
       return verschoben.ok ? { ok: true } : { ok: false, code: verschoben.code, detail: verschoben.detail };
+    } catch (e) {
+      // I4: `session.command` wirft bei Timeout oder geschlossener Verbindung einen NetError,
+      // statt ein Result zurueckzugeben — ohne dieses catch endete er als unbehandelte
+      // Promise-Rejection in `adopt: (uid) => { void verschieben(...) }`, und der Nutzer sah
+      // nach einem Klick auf "Uebernehmen" schlicht nichts. Dasselbe Muster wie
+      // sync/service.ts:249-256.
+      const code: InboxActionCode = e instanceof NetError ? e.code : "protocol";
+      return { ok: false, code, detail: e instanceof Error ? e.message : String(e) };
     } finally {
       // Der Logout gehoert in den finally-Zweig: eine offene Verbindung nach einem
       // Fehlschlag haelt die Sitzung am Server, bis er sie von sich aus abraeumt.

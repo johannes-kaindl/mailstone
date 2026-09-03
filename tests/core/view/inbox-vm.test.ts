@@ -66,13 +66,23 @@ describe("buildInboxViewModel", () => {
     expect(buildInboxViewModel({ zustand: "bereit", rows: [], fehlerCode: null, kannVerschieben: true, busy: false }).state).toBe("leer");
   });
 
-  it("schaltet Aktionen ab, solange ein anderer Vorgang laeuft", () => {
+  it("schaltet Aktionen mit Grund 'busy' ab, solange ein anderer Vorgang laeuft", () => {
     const vm = buildInboxViewModel({ zustand: "bereit", rows: [zeile], fehlerCode: null, kannVerschieben: true, busy: true });
-    expect(vm).toMatchObject({ state: "gefuellt", aktionenAktiv: false });
+    expect(vm).toMatchObject({ state: "gefuellt", aktionenGrund: "busy" });
   });
 
-  it("schaltet Aktionen ab, wenn der Server kein MOVE kann", () => {
+  it("schaltet Aktionen mit Grund 'unsupported' ab, wenn der Server kein MOVE kann", () => {
     const vm = buildInboxViewModel({ zustand: "bereit", rows: [zeile], fehlerCode: null, kannVerschieben: false, busy: false });
-    expect(vm.aktionenAktiv).toBe(false);
+    expect(vm.aktionenGrund).toBe("unsupported");
+  });
+
+  it("meldet 'unsupported' statt 'busy', wenn beides gleichzeitig gilt (Grund bleibt der dauerhafte)", () => {
+    const vm = buildInboxViewModel({ zustand: "bereit", rows: [zeile], fehlerCode: null, kannVerschieben: false, busy: true });
+    expect(vm.aktionenGrund).toBe("unsupported");
+  });
+
+  it("aktionenGrund ist null, wenn Aktionen erlaubt sind", () => {
+    const vm = buildInboxViewModel({ zustand: "bereit", rows: [zeile], fehlerCode: null, kannVerschieben: true, busy: false });
+    expect(vm.aktionenGrund).toBeNull();
   });
 });

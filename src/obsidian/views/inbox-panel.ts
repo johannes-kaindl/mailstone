@@ -2,7 +2,7 @@ import { setIcon } from "obsidian";
 import { t } from "../../vendor/code-kit/i18n";
 import type { Account } from "../../core/settings";
 import type { Unsubscribe } from "../../core/sync/events";
-import type { InboxRow, InboxViewModel } from "../../core/view/inbox-vm";
+import type { InboxAktionenGrund, InboxRow, InboxViewModel } from "../../core/view/inbox-vm";
 
 /** Schmaler Vertrag zum Plugin (UI-STANDARD §4): lesend oder `void`, kein Rueckkanal —
  *  wie `CockpitHost`. Die Aktionen melden ihr Ergebnis ueber `onChange`, nicht als Rueckgabe. */
@@ -12,19 +12,35 @@ export interface InboxHost {
   selectAccount(id: string): void;
   viewModel(): InboxViewModel;
   refresh(): void;
+  /** Loest beim ERSTEN Sichtbarwerden des Tabs einen Ladevorgang aus, jeden weiteren Aufruf
+   *  ignoriert der Host (I2) — `onShow()` feuert bei buildHubInto bei jeder Tab-Aktivierung,
+   *  nicht nur beim ersten Mal. */
+  ensureLoaded(): void;
   adopt(uid: number): void;
   archive(uid: number): void;
   openSettings(): void;
   onChange(cb: () => void): Unsubscribe;
 }
 
-/** Fehlercode -> i18n-Key. Geschlossen gehalten, damit kein Code stumm durchfaellt:
- *  ein unbekannter landet auf einer allgemeinen Zeile statt auf einer leeren. */
+/** Fehlercode -> i18n-Key, deckungsgleich mit `InboxActionCode` (13 Werte). Vollstaendig
+ *  gehalten statt mit einem Fallback: ein Fallback auf einen plausiblen Text (z. B. "busy")
+ *  waere eine STILLE FALSCHAUSSAGE — schlimmer als ein sichtbarer Rohschluessel, weil sie
+ *  niemand meldet (Befund I3). Faellt ein Code hier durch, wirft `t()` bei fehlendem Schluessel
+ *  keinen Fehler, sondern zeigt den rohen Schluessel — ein sichtbarer statt ein stiller Defekt. */
 const FEHLER_KEYS: Record<string, string> = {
   unsupported: "inbox.error.unsupported",
   gone: "inbox.error.gone",
   busy: "inbox.error.busy",
   "no-target-folder": "inbox.error.no-target-folder",
+  "no-secret": "inbox.error.no-secret",
+  "folder-missing": "inbox.error.folder-missing",
+  connect: "inbox.error.connect",
+  tls: "inbox.error.tls",
+  "tls-required": "inbox.error.tls-required",
+  auth: "inbox.error.auth",
+  protocol: "inbox.error.protocol",
+  timeout: "inbox.error.timeout",
+  closed: "inbox.error.closed",
 };
 
 function datum(iso: string): string {
@@ -52,6 +68,11 @@ export class InboxPanel {
   }
 
   onShow(): void {
+    // I2: der Tab soll sich beim Oeffnen von selbst fuellen (Spec § 8), statt "Keine
+    // Nachrichten" ueber ein Postfach zu behaupten, das nie abgefragt wurde. `ensureLoaded()`
+    // laedt nur beim ersten Aufruf; das Re-Render danach zeigt sofort den aktuellen Stand
+    // (bei jedem weiteren Tab-Wechsel den unveraenderten).
+    this.host.ensureLoaded();
     this.render();
   }
 
@@ -99,7 +120,9 @@ export class InboxPanel {
       const zeile = root.createDiv({ cls: "mailstone-inbox-error" });
       const el = zeile.createSpan({ cls: "mailstone-inbox-status is-error", attr: { "aria-label": t("inbox.aria.error") } });
       setIcon(el, "circle-x");
-      zeile.createSpan({ text: t(FEHLER_KEYS[vm.fehlerCode ?? ""] ?? "inbox.error.busy") });
+      // Kein Fallback mehr auf einen plausiblen Text (I3): fehlt ein Schluessel hier, zeigt
+      // `t()` den rohen `inbox.error.*`-Key an — ein sichtbarer Defekt statt einer stillen Luege.
+      zeile.createSpan({ text: t(FEHLER_KEYS[vm.fehlerCode ?? ""] ?? `inbox.error.${vm.fehlerCode ?? "unknown"}`) });
       return;
     }
 
@@ -111,10 +134,10 @@ export class InboxPanel {
       return;
     }
 
-    for (const row of vm.rows) this.renderRow(root, row, vm.aktionenAktiv);
+    for (const row of vm.rows) this.renderRow(root, row, vm.aktionenGrund);
   }
 
-  private renderRow(root: HTMLElement, row: InboxRow, aktionenAktiv: boolean): void {
+  private renderRow(root: HTMLElement, row: InboxRow, aktionenGrund: InboxAktionenGrund): void {
     const zeile = root.createDiv({ cls: `mailstone-inbox-row${row.ungelesen ? " is-unread" : ""}` });
 
     const kopf = zeile.createDiv({ cls: "mailstone-inbox-row-head" });
@@ -128,11 +151,23 @@ export class InboxPanel {
     meta.createSpan({ text: row.from });
     meta.createSpan({ text: datum(row.date) });
 
-    if (!aktionenAktiv) return;
+    // I6: die Knoepfe bleiben IMMER da (Spec § 3d "nicht anklickbar, Grund als Tooltip") —
+    // ein fehlendes MOVE oder ein laufender Sync sperrt sie statt sie zu entfernen. Wortlos
+    // verschwundene Knoepfe erklaeren dem Nutzer nichts; ein `disabled`-Button mit `title`
+    // schon. Zugleich behaelt die Zeile damit ihre Hoehe waehrend eines Sync-Laufs, statt bei
+    // jedem Busy-Wechsel zu springen (zweiter Teil desselben Befunds).
     const knoepfe = zeile.createDiv({ cls: "mailstone-inbox-actions" });
+    const grund = aktionenGrund === null ? null : t(`inbox.actions.${aktionenGrund}`);
     const uebernehmen = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.adopt") });
-    uebernehmen.addEventListener("click", () => this.host.adopt(row.uid));
     const archivieren = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.archive") });
+    for (const btn of [uebernehmen, archivieren]) {
+      btn.disabled = grund !== null;
+      if (grund !== null) {
+        btn.setAttribute("title", grund);
+        btn.setAttribute("aria-disabled", "true");
+      }
+    }
+    uebernehmen.addEventListener("click", () => this.host.adopt(row.uid));
     archivieren.addEventListener("click", () => this.host.archive(row.uid));
   }
 }
