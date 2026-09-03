@@ -400,6 +400,34 @@ Stand), erneut gefahren:
 | Inbox-Panel ausgebaut | **12/15 — genau V11, V12, V13 rot** („Inbox-Tab nicht im DOM"), kein anderer Punkt fällt mit |
 | zurückgebaut | 15/15 grün |
 
+**Review-Befund, Fix-Runde 1 (2026-09-03): die grobe Gegenprobe oben belegt Kopplung, nicht
+Trennschärfe.** Alle drei Punkte hängen zusammen am Inbox-Panel — das zeigt nicht, dass jeder
+seine eigene Zusage prüft. Zwei gezieltere Gegenproben, je eine pro Zusage, Panel bleibt dabei
+intakt; jede einzeln gefahren und danach vollständig zurückgebaut (`git diff` leer), bevor die
+nächste kam:
+
+- **V12 gezielt (nur den CTA-Knopf ausgebaut):** `inbox-panel.ts`, den `createEl("button", …
+  cta …)`-Zweig im Empty-State entfernt (Empty-State-Absatz bleibt, CTA fehlt). Neu deployt
+  (`shasum` bestätigt), gefahren: **14/15 — genau V12 rot** (`CTA da: false`), V11 und V13
+  blieben grün.
+- **V13 gezielt (mount-once selbst gebrochen, nicht das Panel):** `src/vendor/kit-obsidian/hub.ts`
+  (vendorte Kit-Datei, nur für diese Probe temporär angefasst und exakt zurückgebaut — kein
+  Re-Vendoring, kein bleibender Diff), `setTab()` so geändert, dass der Ziel-Tab beim Wechsel
+  ein **frisches** `<div>` bekommt und `panel.mount()` erneut aufgerufen wird, statt nur
+  `is-hidden` umzublenden — die Panel-Instanz und ihr Host bleiben dieselben, nur die
+  DOM-Identität wechselt. Neu deployt (`shasum` bestätigt), gefahren: **14/15 — genau V13 rot**
+  (Marke nach Hin-und-zurück nicht mehr da, weil das Div ausgetauscht wurde), V11 und V12
+  blieben grün. (Ein erster Lauf dieser Probe zeigte zusätzlich V10 rot mit der bekannten
+  Fokus-Drossel-Meldung „nur 15 Proben in 2,5 s" — ein Refokus-Ausrutscher, keine Folge der
+  Änderung; ein sofortiger zweiter Lauf zeigte wieder nur V13 rot.)
+- Danach `hub.ts` exakt zurückgebaut (`git diff` leer), neu deployt, `shasum` bestätigt: **15/15
+  grün** — das ist die letzte, zählende Messung.
+
+Damit ist belegt: V11 hängt an der bloßen Existenz/Sichtbarkeit des Panels (die grobe Probe
+oben ist seine eigene Gegenprobe, da die beiden gezielten Proben zeigen, dass V12 und V13
+unabhängig auslösen), V12 an seinem eigenen CTA, V13 an der DOM-Identität des Panel-Divs — drei
+verschiedene Zusagen, kein Punkt, der nur zusammen mit den anderen auslöst.
+
 ### Störung durch einen fremden Lock-Doppelerwerb — und wie sie behandelt wurde
 
 Der CDP-Lock wurde beim ersten Erwerb (`07:18:05 UTC` / `09:18:05` CEST) zeitgleich mit einer
