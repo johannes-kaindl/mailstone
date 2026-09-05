@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Behoben
+- **Denselben Anhang zweimal zu extrahieren legt keine zweite Datei mehr an.** Liegt am
+  Zielnamen bereits eine **byte-gleiche** Datei, wird sie verlinkt statt kopiert. Verglichen
+  werden die Bytes, nicht der Dateiname — zwei gleichnamige, aber verschiedene Anhänge
+  derselben Mail bleiben weiterhin beide extrahierbar
+- **Ein Formular ohne wählbare Option geht gar nicht mehr auf.** Führte das Frontmatter
+  Anhänge, die die `.eml` nicht mehr enthält, erschien ein Dropdown ohne Eintrag, und jeder
+  Absendeversuch scheiterte mit einer technischen Meldung; Abbrechen war der einzige Ausgang.
+  Jetzt erklärt eine Meldung den Grund, bevor das Formular erscheint
+- **Wikilinks werden nicht mehr gebaut, wenn sie nicht tragen.** Ein Notizname mit `#`, `|`,
+  `[`, `]` oder `^` ergab einen Link, der auf etwas anderes zeigte. Solche Ziele bleiben jetzt
+  als reine Message-ID stehen — betrifft `mail.relink` und das Neu-Ableiten beim Re-Render
+- **`mail.relink` zeigt übersprungene Notizen an, statt sie stillschweigend auszulassen.** Eine
+  Notiz mit unlesbarem Frontmatter oder ohne verwaltete Zone erscheint jetzt in der
+  Abschlussmeldung als übersprungen
+- **Eine unbalancierte öffnende `[` in einer Server-Antwort verliert nicht mehr den Rest der
+  Antwort.** Betraf Server, die ein Schlüsselwort-Flag mit eckiger Klammer senden — nach
+  RFC 3501 erlaubt. Bisher gingen alle folgenden Felder derselben Antwort verloren
+
+### Intern
+- `mail.rerender` löst keine Anhangpfade mehr auf, die es nie benutzt (ein Vault-Zugriff je
+  Anhang und Lauf gespart)
+- Der GUI-Smoke-Treiber beendet sich nach einem Abbruch, statt am offenen Debug-Socket
+  hängenzubleiben
+- 685 → 715 Unit-Tests
+
 ## [0.4.0] — 2026-09-05
 
 ### Neu
