@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Neu
+- **Aufgabe aus einer Mail anlegen (M5).** Aus einer Mail-Notiz oder direkt aus dem Posteingang
+  lässt sich jetzt eine Aufgabe im Nachbarplugin TaskNotes anlegen (`mail.createTask`), mit
+  einem Wikilink zurück zur Mail. Nur mit installiertem und aktiviertem TaskNotes verfügbar;
+  ohne TaskNotes bleibt `taskPreset` (s. u.) der Weg für auswertbare Zusatzfelder
 - **`taskPreset` belebt — der Weg ohne TaskNotes (M5 § 5).** In den Settings lassen sich
   jetzt Zusatzfelder eintragen (z. B. `status: open`), die beim ERSTEN Anlegen einer
   Mail-Notiz einmalig ins Frontmatter geschrieben werden — auswertbar in Obsidian Bases.
