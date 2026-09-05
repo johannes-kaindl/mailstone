@@ -35,6 +35,7 @@ function ctxFor(m: ParsedMail, note: { content: string; zoneHash: string | null 
     zoneHash: note.zoneHash,
     linkFor: () => null,
     attachmentPathFor: (n) => `Anhaenge/${n}`,
+    existingAttachment: () => null,
     mail: m,
     ...over,
   };

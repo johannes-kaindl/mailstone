@@ -21,7 +21,7 @@ function ctx(notes: MailNoteRef[]): CommandContext {
     now: NOW, profile,
     target: { mailId: "a@x", path: "Mail/2026/a@x.md", source: "acc/Vault", state: "live" },
     content: notes[0]?.content ?? "", frontmatter: notes[0]?.frontmatter ?? {}, zoneHash: "h",
-    linkFor, attachmentPathFor: (n) => `Anhaenge/${n}`, notes,
+    linkFor, attachmentPathFor: (n) => `Anhaenge/${n}`, existingAttachment: () => null, notes,
   };
 }
 

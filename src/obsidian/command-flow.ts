@@ -57,6 +57,13 @@ async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore):
   return out;
 }
 
+/** Wer die Anhangzugriffe benutzt, ohne sie anzufordern, bekommt sie nicht als stillen
+ *  Fehlwert (falscher Pfad, "nichts vorhanden"), sondern als Ausnahme — der Aufrufer faengt
+ *  sie als `unexpected`. Ein Programmierfehler, kein Nutzerfehler. */
+function anhangzugriffErlaubt(descriptor: CommandDescriptor): void {
+  if (!descriptor.needs?.attachments) throw new Error(`${descriptor.id}: needs.attachments nicht deklariert`);
+}
+
 export async function buildContext(
   deps: CommandFlowDeps,
   descriptor: CommandDescriptor,
@@ -76,6 +83,7 @@ export async function buildContext(
   for (const [id, f] of findMailNotes(app, profile.idField)) index.set(id, f.path.replace(/\.md$/, ""));
 
   const attachmentPaths = new Map<string, string>();
+  const vorhandeneAnhaenge = new Map<string, { path: string; data: Uint8Array }>();
   let mail: Awaited<ReturnType<typeof parseEml>> | undefined;
   if (descriptor.needs?.eml) {
     const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
@@ -90,8 +98,20 @@ export async function buildContext(
     if (!check.ok) return { ok: false, code: check.code };
     mail = parsed;
     // getAvailablePathForAttachment ist async, `plan()` ist synchron — also hier aufloesen.
-    for (const a of parsed.attachments.filter((x) => !x.inline)) {
-      attachmentPaths.set(a.name, await app.fileManager.getAvailablePathForAttachment(a.name, file.path));
+    // Nur fuer Kommandos, die es DEKLARIEREN: `mail.rerender` ruft attachmentPathFor nie, zahlte
+    // die Vault-Zugriffe aber mit (M3b-Nachlese, geparkter Befund 5).
+    if (descriptor.needs.attachments) {
+      for (const a of parsed.attachments.filter((x) => !x.inline)) {
+        const frei = await app.fileManager.getAvailablePathForAttachment(a.name, file.path);
+        attachmentPaths.set(a.name, frei);
+        // Weicht Obsidian auf "<stamm> 1" aus, liegt am blanken Namen bereits eine Datei. Deren
+        // Bytes braucht `plan()`, um zu entscheiden, ob es DIESELBE Anlage ist (dann wird sie
+        // verlinkt) oder eine gleichnamige andere (dann entsteht die zweite Datei).
+        const blank = `${frei.slice(0, frei.lastIndexOf("/") + 1)}${a.name}`;
+        if (blank === frei) continue;
+        const da = app.vault.getAbstractFileByPath(normalizePath(blank));
+        if (da instanceof TFile) vorhandeneAnhaenge.set(a.name, { path: blank, data: new Uint8Array(await app.vault.readBinary(da)) });
+      }
     }
   }
 
@@ -107,7 +127,14 @@ export async function buildContext(
       content: await app.vault.read(file),
       zoneHash: deps.hashes.get(target.mailId),
       linkFor: (id) => index.get(id) ?? null,
-      attachmentPathFor: (name) => attachmentPaths.get(name) ?? `${name}`,
+      attachmentPathFor: (name) => {
+        anhangzugriffErlaubt(descriptor);
+        return attachmentPaths.get(name) ?? `${name}`;
+      },
+      existingAttachment: (name) => {
+        anhangzugriffErlaubt(descriptor);
+        return vorhandeneAnhaenge.get(name) ?? null;
+      },
       ...(mail ? { mail } : {}),
       ...(notes ? { notes } : {}),
     },

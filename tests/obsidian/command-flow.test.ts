@@ -4,10 +4,17 @@ import { makeApp } from "../helpers/memory-vault";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import { RERENDER_COMMAND } from "../../src/core/commands/rerender";
 import { RELINK_COMMAND } from "../../src/core/commands/relink";
+import { EXTRACT_ATTACHMENT_COMMAND } from "../../src/core/commands/extract";
 
 const profile = defaultMailProfile();
 const ZONE = "%% mailstone:begin %%\n## Nachricht\nHallo\n%% mailstone:end %%\n";
+const EML_ANHANG_TEIL = "\r\nContent-Type: text/plain; name=\"a.txt\"\r\nContent-Disposition: attachment; filename=\"a.txt\"\r\n\r\nInhalt\r\n";
 const EML = "Message-ID: <a@x>\r\nFrom: Erika <erika@example.org>\r\nSubject: Termin\r\nDate: Sat, 29 Aug 2026 10:00:00 +0200\r\n\r\nHallo\r\n";
+
+/** Dieselbe Notiz, aber die .eml traegt einen echten Anhang. */
+function vaultMitAnhang() {
+  return vaultWithNote(EML.replace("\r\n\r\nHallo\r\n", EML_ANHANG_TEIL));
+}
 
 async function vaultWithNote(emlBody = EML) {
   const app = makeApp();
@@ -75,8 +82,46 @@ describe("buildContext", () => {
   });
 
   it("loest die Anhangpfade vorab auf, damit attachmentPathFor synchron bleibt", async () => {
-    const app = await vaultWithNote(EML.replace("\r\n\r\nHallo\r\n", "\r\nContent-Type: text/plain; name=\"a.txt\"\r\nContent-Disposition: attachment; filename=\"a.txt\"\r\n\r\nInhalt\r\n"));
-    const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    const app = await vaultMitAnhang();
+    const r = await buildContext(deps(app), EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
     expect(r.ok && r.ctx.attachmentPathFor("a.txt")).toBe("Anhaenge/a.txt");
+  });
+
+  it("loest sie NICHT fuer ein Kommando ohne needs.attachments — mail.rerender ruft attachmentPathFor nie", async () => {
+    const app = await vaultMitAnhang();
+    const spy = vi.spyOn(app.fileManager, "getAvailablePathForAttachment");
+    await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("reicht Pfad und Bytes einer am Zielnamen bereits liegenden Datei durch", async () => {
+    const app = await vaultMitAnhang();
+    await app.vault.createBinary("Anhaenge/a.txt", new TextEncoder().encode("alt").buffer);
+    const r = await buildContext(deps(app), EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // Obsidian weicht auf " 1" aus — genau daran ist zu erkennen, dass am blanken Namen etwas liegt.
+    expect(r.ctx.attachmentPathFor("a.txt")).toBe("Anhaenge/a 1.txt");
+    expect(r.ctx.existingAttachment("a.txt")).toEqual({ path: "Anhaenge/a.txt", data: new TextEncoder().encode("alt") });
+  });
+
+  it("wirft, wenn ein Kommando ohne needs.attachments die Anhangzugriffe doch benutzt", async () => {
+    // Sonst laege hier ein stiller Fehlwert: ein neues Kommando, das `needs.attachments` zu
+    // deklarieren vergisst, bekaeme einen falschen Pfad und ein "nichts vorhanden" zurueck,
+    // ohne dass irgendetwas auffiele.
+    const app = await vaultMitAnhang();
+    const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(() => r.ctx.attachmentPathFor("a.txt")).toThrow(/needs\.attachments/);
+    expect(() => r.ctx.existingAttachment("a.txt")).toThrow(/needs\.attachments/);
+  });
+
+  it("liefert null, wenn am Zielnamen noch nichts liegt", async () => {
+    const app = await vaultMitAnhang();
+    const r = await buildContext(deps(app), EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.ctx.existingAttachment("a.txt")).toBeNull();
   });
 });

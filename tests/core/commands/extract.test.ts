@@ -50,6 +50,7 @@ function ctx(over: Partial<CommandContext> = {}): CommandContext {
     zoneHash: "gespeichert",
     linkFor: () => null,
     attachmentPathFor: (n) => `Anhaenge/${n}`,
+    existingAttachment: () => null,
     mail: mail(),
     ...over,
   };
@@ -153,5 +154,55 @@ describe("mail.extractAttachment", () => {
       expect(erste.plan.attachment?.data).toEqual(new Uint8Array([1, 1]));
       expect(zweite.plan.attachment?.data).toEqual(new Uint8Array([2, 2]));
     });
+  });
+});
+
+describe("derselbe Anhang ein zweites Mal (M3b-Nachlese, entschieden 2026-09-05)", () => {
+  const gleicheBytes = new Uint8Array([66, 69]);
+
+  /** Zweiter Aufruf auf denselben Anhang: am unnummerierten Zielnamen liegt bereits eine Datei,
+   *  und `getAvailablePathForAttachment` weicht deshalb auf " 1" aus. */
+  function zweiterAufruf(over: Partial<CommandContext> = {}): CommandContext {
+    return ctx({
+      attachmentPathFor: () => "Anhaenge/einladung 1.ics",
+      existingAttachment: () => ({ path: "Anhaenge/einladung.ics", data: gleicheBytes }),
+      ...over,
+    });
+  }
+
+  it("verlinkt die vorhandene Datei, statt eine byte-gleiche Kopie zu schreiben", () => {
+    const r = EXTRACT_ATTACHMENT_COMMAND.plan({ name: "einladung.ics" }, zweiterAufruf());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.attachment).toBeUndefined();
+    expect(r.plan.diff).toEqual([{ field: "attachment", after: "Anhaenge/einladung.ics" }]);
+    const note = r.plan.notes[0];
+    expect(note?.kind).toBe("update");
+    if (note?.kind !== "update") return;
+    expect(note.content).toContain("[[Anhaenge/einladung.ics]]");
+    expect(note.content).not.toContain("einladung 1.ics");
+  });
+
+  it("meldet nothing-to-do, wenn der Link auf die vorhandene Datei schon steht", () => {
+    const mitLink = insertAttachmentLink(NOTE, "[[Anhaenge/einladung.ics]]");
+    expect(mitLink.ok).toBe(true);
+    if (!mitLink.ok) return;
+    expect(EXTRACT_ATTACHMENT_COMMAND.plan({ name: "einladung.ics" }, zweiterAufruf({ content: mitLink.content })))
+      .toEqual({ ok: false, code: "nothing-to-do" });
+  });
+
+  it("schreibt sehr wohl eine zweite Datei, wenn am Zielnamen ANDERE Bytes liegen", () => {
+    // Der Fall, den ein Basename-Vergleich falsch abgewiesen haette: zwei gleichnamige, aber
+    // verschiedene Anhaenge derselben Mail — der erste liegt schon im Vault.
+    const c = ctx({
+      mail: mailWithDuplicateAttachments(),
+      frontmatter: { mail_id: "a@x", attachments: ["invoice.pdf", "invoice.pdf"] },
+      attachmentPathFor: () => "Anhaenge/invoice 1.pdf",
+      existingAttachment: () => ({ path: "Anhaenge/invoice.pdf", data: new Uint8Array([1, 1]) }),
+    });
+    const r = EXTRACT_ATTACHMENT_COMMAND.plan({ name: "invoice.pdf (2)" }, c);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.attachment).toEqual({ path: "Anhaenge/invoice 1.pdf", data: new Uint8Array([2, 2]) });
   });
 });

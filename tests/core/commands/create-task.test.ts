@@ -10,7 +10,7 @@ function ctx(fm: Record<string, unknown>, mailId = "a@x"): CommandContext {
     now: new Date("2026-09-05T08:00:00Z"), profile,
     target: { mailId, path: "Mail/2026/x.md", source: "acc/Vault", state: "live" },
     content: "", frontmatter: { mail_id: mailId, ...fm }, zoneHash: null,
-    linkFor: () => null, attachmentPathFor: (n) => `Anhaenge/${n}`,
+    linkFor: () => null, attachmentPathFor: (n) => `Anhaenge/${n}`, existingAttachment: () => null,
   };
 }
 

@@ -66,8 +66,14 @@ export interface CommandContext extends CommandProbe {
   zoneHash: string | null;
   /** mail_id -> Notizpfad OHNE Endung; null, wenn es die Notiz nicht gibt. */
   linkFor(id: string): string | null;
-  /** Zielpfad fuer eine Anlage im Anhangordner des Vaults (Port: getAvailablePathForAttachment). */
+  /** Zielpfad fuer eine Anlage im Anhangordner des Vaults (Port: getAvailablePathForAttachment).
+   *  Weicht auf "<name> 1" aus, wenn am unnummerierten Namen schon etwas liegt. */
   attachmentPathFor(name: string): string;
+  /** Die Datei, die am UNNUMMERIERTEN Zielnamen bereits liegt — Pfad und Bytes —, sonst null.
+   *  Vorab aufgeloest, weil `plan()` synchron ist. Pflichtfeld statt optional: ein fehlender
+   *  Zugriff wuerde sich als "nichts vorhanden" tarnen und die Doppelerkennung lautlos
+   *  abschalten. */
+  existingAttachment(name: string): { path: string; data: Uint8Array } | null;
   /** Nur gefuellt bei `needs.eml` — geparste und gegen `target.mailId` geprueft (s. eml.ts). */
   mail?: ParsedMail;
   /** Nur gefuellt bei `needs.allNotes`. */
@@ -109,8 +115,11 @@ export interface CommandDescriptor {
   schemaFor?(ctx: CommandContext): ObjectSchema;
   /** Was `plan()` braucht. Die Obsidian-Schicht laedt NUR das — eine .eml zu parsen oder
    *  jede Mail-Notiz zu lesen kostet, und `appliesTo()` laeuft bei JEDEM Oeffnen der
-   *  Kommandopalette (checkCallback). */
-  needs?: { eml?: true; allNotes?: true };
+   *  Kommandopalette (checkCallback). `attachments` setzt `eml` voraus und kostet je
+   *  nicht-inline Anhang einen Vault-Zugriff; wer es nicht deklariert, bekommt
+   *  `attachmentPathFor`/`existingAttachment` als WERFENDE Attrappen statt stiller
+   *  Fehlwerte. */
+  needs?: { eml?: true; allNotes?: true; attachments?: true };
   /** Bekommt bewusst nur den `CommandProbe`, nicht den vollen Kontext — s. dort. */
   appliesTo(probe: CommandProbe): boolean;
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult;
