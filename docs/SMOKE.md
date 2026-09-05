@@ -438,3 +438,71 @@ Port 9222. Der erste 15/15-Lauf dieser Runde fiel in dieses Fenster und wurde de
 belegt war. Alle drei oben genannten Läufe (intakt → kaputt → intakt) wurden danach neu
 gefahren, vollständig zwischen `07:22:47` und `07:29:26 UTC`, außerhalb des gemeldeten Fensters
 `09:18:05–09:18:59 CEST` — deshalb zählen sie.
+
+## M5 Task 8 — TaskNotes-Kopplung im GUI-Smoke, Stub statt echtem Nachbarplugin (2026-09-05)
+
+**Baseline war 15/15 grün** (Abschnitt „M4 Task 10" oben), gegen den deployten Stand VOR
+dieser Änderung gemessen (Vault `mailstone`, Port 9222, deployte Version `0.2.0` — der
+Branch-Stand war zu diesem Zeitpunkt noch nicht ausgerollt). Dazu gekommen: fünf Punkte für
+`mail.createTask` (M5), `npm run smoke:gui` fährt jetzt zwanzig.
+
+Kein bestehender Prüfpunkt setzte „TaskNotes ist nicht installiert" voraus — die Härtung aus
+dem Task-Brief (Zustand herstellen statt annehmen) hatte an dieser Stelle nichts zu tun, weil
+M5 der erste Anlass ist, der TaskNotes im GUI-Smoke überhaupt berührt.
+
+Alle fünf Punkte arbeiten mit einem **Stub** statt einem echten TaskNotes: `readTaskNotesApi`
+(`src/obsidian/tasknotes-bridge.ts`) prüft nur `apiVersion === 1`, `typeof tasks.create ===
+"function"` und `typeof model.config === "function"` — ein Objekt genau dieser Form an
+`app.plugins.plugins.tasknotes.api` genügt, kein echtes Nachbarplugin nötig. `tasks.create` des
+Stubs ruft nie echten TaskNotes-Code, sondern merkt sich jeden Aufruf in
+`window.__smokeTaskCreateCalls`.
+
+- **T-A** `mail.createTask` fehlt in der Befehlspalette, wenn kein TaskNotes da ist — gemessen
+  direkt an `app.commands.commands["mailstone:mail-createTask"].checkCallback(true)`, derselben
+  Funktion, die Obsidian vor jedem Rendern der Palette aufruft (Prüfstelle 1, `main.ts`).
+- **T-B** dasselbe Kommando erscheint, sobald der Stub installiert ist —
+  `checkCallback(true) === true`.
+- **T-C** das Formular (`SchemaFormModal`) zeigt ein Titel-Feld und ein Fälligkeits-Feld als
+  `input[type=date]` — die Felder heißen im DOM `title`/`due` (`SchemaFormModal` übergibt den
+  Schema-Schlüssel unübersetzt an `setName()`).
+- **T-D** nach dem Ausfüllen (Titel + Fälligkeit) und zwei Bestätigungen (Formular-Submit,
+  Plan-Vorschau-Ausführen — beide `.mod-cta`) landet genau ein Aufruf mit dem eingegebenen
+  Titel und Datum in `window.__smokeTaskCreateCalls`.
+- **T-E** die dritte Zeilen-Aktion im Posteingang (Aufgabe erstellen) erscheint nur mit
+  TaskNotes. Ein echter Posteingangs-Eintrag ist über den normalen Weg nicht herstellbar (s.
+  Kopfkommentar in `gui-smoke.ts`: `Account["imap"]["tls"]` kennt nur `implicit`/`starttls`,
+  der getrackte Fake-IMAP spricht kein TLS) — der Punkt ersetzt deshalb `host.viewModel`
+  (`createInboxHost` liefert ein reines Objekt mit Funktionseigenschaften, keine Klasse mit
+  privaten Feldern) durch eine feste Zeile und misst die Knopfzahl vor/nach dem Stub (2 → 3).
+  `canCreateTask()` selbst bleibt unverändert die echte Funktion und liest bei jedem Render neu,
+  ob der Stub da ist — erfunden ist nur die Zeile, nicht die Prüflogik.
+
+Voraussetzung für T-A..T-D ist eine aktive Mail-Notiz (`mail_id`-Frontmatter) — `probeFor()`
+liest `app.workspace.getActiveFile()` synchron, `appliesTo()` von `mail.createTask` ist für
+jede Mail-Notiz `true`. Der Treiber legt sie an, macht sie aktiv und räumt sie am Ende
+wieder ab.
+
+### Ergebnis: 20/20 grün
+
+Gegen Obsidian 1.13.7, Staging-Vault `mailstone`, deployte Version `0.3.0` (ein `npm run
+deploy` war vor dem ersten TaskNotes-Lauf nötig — der Stand `0.2.0` aus der Baseline enthielt
+`mail.createTask` noch nicht, die ersten fünf T-Punkte liefen deshalb einmal komplett rot mit
+„Kommando nicht registriert", bevor deploy nachgeholt wurde). `data.json` byte-gleich
+zurückgeschrieben.
+
+### Gegenprobe (CORE-TEST-02), jede der fünf einzeln
+
+Jede Änderung einzeln eingebaut, `npm run deploy` + `npm run smoke:gui`, danach exakt
+zurückgebaut (`git diff --stat` leer bestätigt) und neu deployt, bevor die nächste kam:
+
+| Punkt | Bruch | Ergebnis | Rückbau |
+|---|---|---|---|
+| T-A | Prüfstelle 1 in `main.ts` mit `false &&` stillgelegt (Kommando immer sichtbar) | **T-A rot** (`checkCallback(true) lieferte true`), T-B weiterhin grün | bestätigt, `git diff` leer |
+| T-B | `isTaskNotesApi()` in `tasknotes-bridge.ts` gibt hart `false` zurück | **T-B rot** (`lieferte false`), dazu kaskadierend T-C/D/E rot (Kommando bzw. Stub nie akzeptiert — konsistent, kein neuer Befund) | bestätigt, `git diff` leer |
+| T-C | `format: "date"` aus dem `due`-Feld in `create-task.ts` entfernt | **T-C rot** (`als input[type=date]: false`), dazu kaskadierend T-D rot (Formularfelder für T-D nicht mehr auffindbar) | bestätigt, `git diff` leer |
+| T-D | `buildTaskInput()` in `tasknotes-bridge.ts` lässt `due` weg | **T-D rot** (Aufruf ohne `due`-Feld) | bestätigt, `git diff` leer |
+| T-E | `canCreateTask()`-Gate in `inbox-panel.ts` mit `true \|\|` umgangen (dritter Knopf immer da) | **T-E rot** (`Knoepfe ohne TaskNotes: 3`) | bestätigt, `git diff` leer |
+
+Nach jedem Rückbau lief der volle Satz wieder auf 20/20, zuletzt bestätigt im Abschlusslauf
+dieser Runde. Damit hängt jeder der fünf neuen Punkte an genau der Zusage, die er im Namen
+trägt — keiner bewacht nur zufällig durch einen Nachbarpunkt mit.

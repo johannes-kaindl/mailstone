@@ -79,6 +79,13 @@ const PLUGIN_ID = "mailstone";
 const VIEW_TYPE = "mailstone-cockpit";
 /** Konto-Id des Testkontos. Distinkt genug, dass ein Rest im Vault als Testrest erkennbar ist. */
 const SMOKE_ACCOUNT_ID = "gui-smoke-testkonto";
+/** Fremder Plugin-Slot, den `readTaskNotesApi` abtastet (`src/obsidian/tasknotes-bridge.ts`).
+ *  Ein Stub genuegt: die Bruecke prueft nur `apiVersion`, `tasks.create` und `model.config`
+ *  (typeof-Pruefung, kein `hasCapability`) — ein echtes TaskNotes braucht dieser Treiber nicht. */
+const TASKNOTES_PLUGIN_ID = "tasknotes";
+/** Pfad der Mail-Notiz, die T-A..T-D fuer `checkCallback`/`probeFor` brauchen (Spec § 3: das
+ *  Kommando gilt fuer jede Notiz mit gesetztem `mail_id`-Feld). */
+const TASKNOTES_NOTIZ_PFAD = "gui-smoke-tasknotes-notiz.md";
 
 interface Pruefpunkt {
   readonly name: string;
@@ -879,6 +886,239 @@ async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
   );
 }
 
+// ── TaskNotes-Kopplung (M5) ────────────────────────────────────────────────────────────
+//
+// Fuenf Pruefpunkte, alle mit einem STUB statt eines echten TaskNotes (Task-8-Brief): die
+// Bruecke (`src/obsidian/tasknotes-bridge.ts`) prueft nur `apiVersion`/`tasks.create`/
+// `model.config` per typeof — ein Objekt an genau dieser Stelle im Plugin-Register genuegt.
+// `app.plugins.plugins` ist ein PLAIN OBJECT (kein Klassensystem), ein Eintrag darin laesst
+// sich also ohne echtes Fremd-Plugin setzen und wieder entfernen.
+
+/** Installiert bzw. entfernt den TaskNotes-Stub. Ruft `tasks.create` NIE echt aus TaskNotes
+ *  auf — der Stub merkt sich jeden Aufruf in `window.__smokeTaskCreateCalls` (T-D liest das). */
+async function taskNotesStubSetzen(cdp: Cdp, an: boolean): Promise<void> {
+  await evaluieren(
+    cdp,
+    an
+      ? `window.__smokeTaskCreateCalls = [];
+         app.plugins.plugins[${JSON.stringify(TASKNOTES_PLUGIN_ID)}] = {
+           api: {
+             apiVersion: 1,
+             tasks: { create: (data) => { window.__smokeTaskCreateCalls.push(data); return Promise.resolve({ path: "Tasks/gui-smoke.md" }); } },
+             model: { config: () => ({ defaults: { status: "open", priority: "normal", taskTag: "task" }, fieldMapping: {} }) },
+           },
+         };
+         return true;`
+      : `delete app.plugins.plugins[${JSON.stringify(TASKNOTES_PLUGIN_ID)}];
+         delete window.__smokeTaskCreateCalls;
+         return true;`,
+  );
+}
+
+/** Legt die Mail-Notiz an, die `probeFor`/`checkCallback` fuer `mail.createTask` braucht
+ *  (Spec § 3: jede Notiz mit `mail_id` gilt), und macht sie zur aktiven Datei — `checkCallback`
+ *  liest `app.workspace.getActiveFile()` synchron. */
+async function taskNotesNotizAnlegenUndOeffnen(cdp: Cdp): Promise<void> {
+  await evaluieren(
+    cdp,
+    `const inhalt = "---\\nmail_id: gui-smoke-tasknotes-mail\\n---\\n\\nGUI-Smoke-Notiz fuer die TaskNotes-Kopplung.\\n";
+     const bestehend = app.vault.getAbstractFileByPath(${JSON.stringify(TASKNOTES_NOTIZ_PFAD)});
+     if (bestehend) await app.vault.delete(bestehend);
+     const datei = await app.vault.create(${JSON.stringify(TASKNOTES_NOTIZ_PFAD)}, inhalt);
+     await app.workspace.getLeaf(true).openFile(datei);
+     return true;`,
+  );
+  // metadataCache aktualisiert das Frontmatter asynchron — probeFor() liest es aus dem Cache,
+  // nicht aus der Datei selbst. Ohne die Wartezeit sah der allererste Pruefpunkt eine leere
+  // Frontmatter-Zone und "kein Kommando" haette hier den falschen Grund gehabt.
+  await warte(500);
+}
+
+async function taskNotesNotizAufraeumen(cdp: Cdp): Promise<void> {
+  await evaluieren(
+    cdp,
+    `const datei = app.vault.getAbstractFileByPath(${JSON.stringify(TASKNOTES_NOTIZ_PFAD)});
+     if (datei) await app.vault.delete(datei);
+     return true;`,
+  ).catch(() => undefined);
+}
+
+/** Was die Befehlspalette fuer dieses Kommando tatsaechlich zeigen wuerde — dieselbe Funktion,
+ *  die Obsidian selbst vor dem Rendern jedes Eintrags aufruft (`checking: true`). */
+async function createTaskCheckCallback(cdp: Cdp): Promise<boolean | null> {
+  return evaluieren<boolean | null>(
+    cdp,
+    `const cmd = app.commands.commands[${JSON.stringify(PLUGIN_ID + ":mail-createTask")}];
+     return cmd && typeof cmd.checkCallback === "function" ? cmd.checkCallback(true) : null;`,
+  );
+}
+
+async function ta_kommandoFehltOhneTaskNotes(cdp: Cdp): Promise<void> {
+  await taskNotesStubSetzen(cdp, false);
+  const sichtbar = await createTaskCheckCallback(cdp);
+  pruefe(
+    "T-A mail.createTask fehlt ohne TaskNotes",
+    sichtbar === false,
+    sichtbar === null ? "Kommando nicht registriert" : `checkCallback(true) lieferte ${String(sichtbar)}`,
+  );
+}
+
+async function tb_kommandoErscheintMitStub(cdp: Cdp): Promise<void> {
+  await taskNotesStubSetzen(cdp, true);
+  const sichtbar = await createTaskCheckCallback(cdp);
+  pruefe(
+    "T-B mail.createTask erscheint mit TaskNotes-Stub",
+    sichtbar === true,
+    sichtbar === null ? "Kommando nicht registriert" : `checkCallback(true) lieferte ${String(sichtbar)}`,
+  );
+}
+
+/** Sucht einen Setting-Item im obersten Modal ueber seinen Namen — `SchemaFormModal` uebergibt
+ *  den Schluessel (`title`/`due`) unuebersetzt an `setName()` (schema-form-modal.ts). */
+function settingControlAusdruck(feld: string): string {
+  return `[...document.querySelectorAll(".modal .setting-item")]
+            .find(el => el.querySelector(".setting-item-name")?.textContent === ${JSON.stringify(feld)})
+            ?.querySelector(".setting-item-control")`;
+}
+
+async function tc_modalZeigtTitelUndFaelligkeit(cdp: Cdp): Promise<void> {
+  await evaluieren(cdp, `app.commands.executeCommandById(${JSON.stringify(PLUGIN_ID + ":mail-createTask")}); return true;`);
+  await warte(800);
+  const messung = await evaluieren<{ modalDa: boolean; titelDa: boolean; faelligkeitDa: boolean; typDatum: boolean }>(
+    cdp,
+    `const modalDa = !!document.querySelector(".modal");
+     const titel = ${settingControlAusdruck("title")};
+     const faelligkeit = ${settingControlAusdruck("due")};
+     const dateInput = faelligkeit ? faelligkeit.querySelector("input[type=date]") : null;
+     return {
+       modalDa,
+       titelDa: !!titel && !!titel.querySelector("input"),
+       faelligkeitDa: !!faelligkeit,
+       typDatum: !!dateInput,
+     };`,
+  );
+  pruefe(
+    "T-C Modal zeigt Titel-Feld und Faelligkeit als Datumsfeld",
+    messung.modalDa && messung.titelDa && messung.faelligkeitDa && messung.typDatum,
+    !messung.modalDa
+      ? `kein Modal offen — ${await klartext(cdp)}`
+      : `Titel-Feld da: ${String(messung.titelDa)}, Faelligkeit-Feld da: ${String(messung.faelligkeitDa)}, ` +
+        `als input[type=date]: ${String(messung.typDatum)}`,
+  );
+  // Das Modal bleibt fuer T-D offen — dort wird es ausgefuellt statt neu geoeffnet, sonst
+  // pruefte T-D nur, dass IRGENDEIN Aufruf tasks.create trifft, nicht der aus dieser Eingabe.
+}
+
+async function td_bestaetigungRuftTasksCreate(cdp: Cdp): Promise<void> {
+  const TITEL = "GUI-Smoke Aufgabe";
+  const FAELLIGKEIT = "2026-12-31";
+  const gefuellt = await evaluieren<boolean>(
+    cdp,
+    `const titelInput = (${settingControlAusdruck("title")})?.querySelector("input");
+     const faelligkeitInput = (${settingControlAusdruck("due")})?.querySelector("input[type=date]");
+     if (!titelInput || !faelligkeitInput) return false;
+     const setzen = (el, wert) => {
+       const proto = Object.getPrototypeOf(el);
+       Object.getOwnPropertyDescriptor(proto, "value").set.call(el, wert);
+       el.dispatchEvent(new Event("input", { bubbles: true }));
+     };
+     setzen(titelInput, ${JSON.stringify(TITEL)});
+     setzen(faelligkeitInput, ${JSON.stringify(FAELLIGKEIT)});
+     return true;`,
+  );
+  if (!gefuellt) {
+    pruefe("T-D Bestaetigung ruft tasks.create am Stub", false, "Formularfelder nicht gefunden — T-C muss davor gelaufen sein");
+    return;
+  }
+  await clickReal(cdp, `document.querySelector(".modal .modal-button-container .mod-cta")`, 150);
+  await warte(800);
+  const planModalDa = await evaluieren<boolean>(cdp, `return !!document.querySelector(".modal");`);
+  if (!planModalDa) {
+    pruefe("T-D Bestaetigung ruft tasks.create am Stub", false, `kein Vorschau-Modal nach dem Absenden — ${await klartext(cdp)}`);
+    return;
+  }
+  await clickReal(cdp, `document.querySelector(".modal .modal-button-container .mod-cta")`, 150);
+  await warte(800);
+  const aufrufe = await evaluieren<{ title: string; due?: string }[]>(cdp, `return window.__smokeTaskCreateCalls ?? [];`);
+  const treffer = aufrufe.find((a) => a.title === TITEL);
+  pruefe(
+    "T-D Bestaetigung ruft tasks.create am Stub",
+    aufrufe.length === 1 && treffer !== undefined && treffer.due === FAELLIGKEIT,
+    aufrufe.length === 0
+      ? `tasks.create wurde nicht gerufen — ${await klartext(cdp)}`
+      : `${String(aufrufe.length)} Aufruf(e): ${JSON.stringify(aufrufe)}`,
+  );
+}
+
+/** Baut eine feste Posteingangs-Zeile, unabhaengig vom echten IMAP-Weg (der fuer einen
+ *  erfolgreichen Abruf TLS braucht, s. Kopfkommentar) — `host.viewModel` ist eine PLAIN-
+ *  OBJECT-Eigenschaft (`createInboxHost`, `inbox-host.ts`), also ohne echtes Fremd-Plugin
+ *  ersetzbar. `canCreateTask()` bleibt die ECHTE Funktion und liest bei jedem Render frisch,
+ *  ob der TaskNotes-Stub da ist — nur die Zeile selbst ist erfunden.
+ */
+async function inboxFesteZeileEinsetzen(cdp: Cdp): Promise<boolean> {
+  return evaluieren<boolean>(
+    cdp,
+    `const view = app.workspace.getLeavesOfType(${JSON.stringify(VIEW_TYPE)})[0]?.view;
+     const host = view?.inboxHost;
+     if (!host) return false;
+     window.__smokeInboxHostOriginal = window.__smokeInboxHostOriginal ?? host.viewModel;
+     host.viewModel = () => ({
+       state: "gefuellt",
+       rows: [{ uid: 12345, mailId: "gui-smoke-inbox-mail", from: "GUI-Smoke", subject: "GUI-Smoke Testmail",
+                date: new Date().toISOString(), imVault: false, ungelesen: false }],
+       fehlerCode: null,
+       aktionenGrund: null,
+     });
+     return true;`,
+  );
+}
+
+async function inboxAktionsKnoepfeMessen(cdp: Cdp): Promise<number> {
+  if (!(await tabKlicken(cdp, "inbox"))) return -1;
+  await warte(300);
+  await clickReal(cdp, `document.querySelector(".mailstone-inbox-refresh")`, 150);
+  await warte(500);
+  return evaluieren<number>(
+    cdp,
+    `return document.querySelectorAll(".mailstone-inbox-row .mailstone-inbox-actions .mailstone-inbox-action").length;`,
+  );
+}
+
+async function inboxHostWiederherstellen(cdp: Cdp): Promise<void> {
+  await evaluieren(
+    cdp,
+    `const view = app.workspace.getLeavesOfType(${JSON.stringify(VIEW_TYPE)})[0]?.view;
+     const host = view?.inboxHost;
+     if (host && window.__smokeInboxHostOriginal) host.viewModel = window.__smokeInboxHostOriginal;
+     delete window.__smokeInboxHostOriginal;
+     return true;`,
+  ).catch(() => undefined);
+}
+
+async function te_postfachKnopfNurMitTaskNotes(cdp: Cdp): Promise<void> {
+  await cockpitOeffnen(cdp);
+  if (!(await inboxFesteZeileEinsetzen(cdp))) {
+    pruefe("T-E dritter Posteingangs-Knopf nur mit TaskNotes", false, "kein Inbox-Host im offenen Cockpit gefunden");
+    return;
+  }
+  try {
+    await taskNotesStubSetzen(cdp, false);
+    const ohne = await inboxAktionsKnoepfeMessen(cdp);
+    await taskNotesStubSetzen(cdp, true);
+    const mit = await inboxAktionsKnoepfeMessen(cdp);
+    pruefe(
+      "T-E dritter Posteingangs-Knopf nur mit TaskNotes",
+      ohne === 2 && mit === 3,
+      ohne === -1 || mit === -1
+        ? "Inbox-Tab nicht im DOM"
+        : `Knoepfe ohne TaskNotes: ${String(ohne)}, mit TaskNotes: ${String(mit)} (erwartet 2 / 3)`,
+    );
+  } finally {
+    await inboxHostWiederherstellen(cdp);
+  }
+}
+
 // ── Lauf ────────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -958,6 +1198,20 @@ async function main(): Promise<void> {
     await v11_inboxTabOeffnetInhalt(cdp);
     await v12_leererOrdnerZeigtEmptyState(cdp);
     await v13_tabWahlUeberlebtWechsel(cdp);
+    console.log("");
+
+    console.log("── TaskNotes-Kopplung (M5, Stub statt echtem Nachbarplugin)");
+    await taskNotesNotizAnlegenUndOeffnen(cdp);
+    try {
+      await ta_kommandoFehltOhneTaskNotes(cdp);
+      await tb_kommandoErscheintMitStub(cdp);
+      await tc_modalZeigtTitelUndFaelligkeit(cdp);
+      await td_bestaetigungRuftTasksCreate(cdp);
+      await te_postfachKnopfNurMitTaskNotes(cdp);
+    } finally {
+      await taskNotesNotizAufraeumen(cdp);
+      await taskNotesStubSetzen(cdp, false);
+    }
     console.log("");
   } finally {
     // Aufräumen darf nie am Ergebnis hängen: auch ein abgebrochener Lauf gibt den Vault so
