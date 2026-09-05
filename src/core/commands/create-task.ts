@@ -18,6 +18,9 @@ function createTaskSchema(ctx: CommandContext): ObjectSchema {
       title: {
         type: "string",
         minLength: 1,
+        // Betreff als Vorbelegung (Spec § 3: "Titel (aus dem Betreff vorbelegt)") — nur
+        // gesetzt, wenn es einen gibt, sonst startet das Feld leer statt mit "".
+        ...(subject !== "" ? { default: subject } : {}),
         description: subject !== "" ? `Task title (default: ${subject}).` : "Task title.",
         descriptionKey: "cmd.mail.createTask.field.title",
       },

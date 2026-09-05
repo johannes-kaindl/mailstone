@@ -20,6 +20,7 @@ function deps(over: Partial<CommandExecuteDeps> = {}): CommandExecuteDeps {
     notes: { execute: vi.fn(async () => ({ created: 0, updated: 1, skipped: [], stateChanged: 0, errors: [] })) },
     writeAttachment: vi.fn(async () => undefined),
     openExternal: vi.fn(),
+    createTask: vi.fn(async () => ({ ok: true as const, path: "TaskNotes/Tasks/x.md" })),
     ...over,
   };
 }
@@ -96,5 +97,46 @@ describe("executeCommandPlan", () => {
     const d = deps({ notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [skipped], stateChanged: 0, errors: [] })) } });
     const r = await executeCommandPlan(plan(), d);
     expect(r).toMatchObject({ ok: true, skipped: [skipped] });
+  });
+});
+
+describe("createTask im Plan", () => {
+  const createTaskReq = { title: "Angebot pruefen", due: "2026-12-24", noteLink: "Mail/2026/x" };
+
+  it("ruft den Port mit den Plandaten", async () => {
+    const createTask = vi.fn(async () => ({ ok: true as const, path: "TaskNotes/Tasks/x.md" }));
+    const d = deps({ createTask, notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) } });
+    const r = await executeCommandPlan(plan({ notes: [], createTask: createTaskReq }), d);
+    expect(createTask).toHaveBeenCalledWith(createTaskReq);
+    expect(r).toMatchObject({ ok: true, taskPath: "TaskNotes/Tasks/x.md" });
+  });
+
+  it("meldet task-create-failed, wenn der Port ablehnt", async () => {
+    const d = deps({
+      createTask: vi.fn(async () => ({ ok: false as const, code: "task-create-failed" as const })),
+      notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) },
+    });
+    const r = await executeCommandPlan(plan({ notes: [], createTask: createTaskReq }), d);
+    expect(r).toEqual({ ok: false, code: "task-create-failed" });
+  });
+
+  it("meldet task-create-failed, wenn der Port wirft — Fehler sind Werte, nicht Ausnahmen", async () => {
+    const d = deps({
+      createTask: vi.fn(async () => { throw new Error("kaputt"); }),
+      notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) },
+    });
+    const r = await executeCommandPlan(plan({ notes: [], createTask: createTaskReq }), d);
+    expect(r).toEqual({ ok: false, code: "write-failed" });
+  });
+
+  it("gibt den Busy-Guard auch dann frei, wenn der Port wirft", async () => {
+    const busy = createBusyGuard();
+    const d = deps({
+      busy,
+      createTask: vi.fn(async () => { throw new Error("kaputt"); }),
+      notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) },
+    });
+    await executeCommandPlan(plan({ notes: [], createTask: createTaskReq }), d);
+    expect(busy.isBusy()).toBe(false);
   });
 });

@@ -64,4 +64,14 @@ describe("CREATE_TASK_COMMAND", () => {
   it("gilt fuer jede Mail-Notiz — die TaskNotes-Pruefung sitzt in der Obsidian-Schicht", () => {
     expect(CREATE_TASK_COMMAND.appliesTo({ profile, target: ctx({}).target, frontmatter: { mail_id: "a@x" } })).toBe(true);
   });
+
+  it("belegt das Titelfeld im Schema mit dem Betreff vor (Spec § 3)", () => {
+    const schema = CREATE_TASK_COMMAND.schemaFor?.(ctx({ subject: "Angebot pruefen" }));
+    expect(schema?.properties["title"]).toMatchObject({ default: "Angebot pruefen" });
+  });
+
+  it("hat kein default am Titelfeld, wenn kein Betreff vorliegt", () => {
+    const schema = CREATE_TASK_COMMAND.schemaFor?.(ctx({}));
+    expect(schema?.properties["title"]).not.toHaveProperty("default");
+  });
 });

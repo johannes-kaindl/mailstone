@@ -1,10 +1,13 @@
 // uebernommen aus calendar-notes/src/core/commands/schema.ts, 2026-08-30
-// Mini-JSON-Schema: flache Untermenge fuer Kommando-Eingaben. Zwei Abweichungen von der
+// Mini-JSON-Schema: flache Untermenge fuer Kommando-Eingaben. Drei Abweichungen von der
 // Vorlage: (a) Fehlertexte englisch, weil mailstones core durchgehend sprachfrei ist;
 // (b) `format: date` statt `date-time` — `mail.createTask` nimmt eine Faelligkeit als
-// reines Datum entgegen (M5, 2026-09-05).
+// reines Datum entgegen (M5, 2026-09-05); (c) `default` auf dem string-Zweig — `mail.createTask`
+// belegt das Titelfeld mit dem Betreff der Mail-Notiz vor (M5, 2026-09-05, Ruling zum Task-5-
+// Brief). Kein zweiter Uebergabeweg: Startwerte kommen ausschliesslich ueber das Schema, nie
+// ueber einen zusaetzlichen Modal-Parameter.
 export type FieldSchema =
-  | { type: "string"; format?: "email" | "uri" | "multiline" | "date"; enum?: string[]; minLength?: number; description?: string; descriptionKey?: string }
+  | { type: "string"; format?: "email" | "uri" | "multiline" | "date"; enum?: string[]; minLength?: number; default?: string; description?: string; descriptionKey?: string }
   | { type: "number"; minimum?: number; maximum?: number; description?: string; descriptionKey?: string }
   | { type: "boolean"; description?: string; descriptionKey?: string }
   | { type: "array"; items: { type: "string"; format?: "email" }; description?: string; descriptionKey?: string };

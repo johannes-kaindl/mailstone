@@ -27,6 +27,7 @@ import type { CommandDescriptor } from "./core/commands/types";
 import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/execute";
 import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
+import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-bridge";
 import { trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
 import type { CockpitHost } from "./obsidian/views/cockpit-panel";
@@ -329,6 +330,11 @@ export default class MailstonePlugin extends Plugin {
         // steht gar nicht erst in der Palette — statt dort zu stehen und eine Fehlermeldung
         // zu zeigen.
         checkCallback: (checking: boolean): boolean => {
+          // Pruefstelle 1 (Spec § 3): mail.createTask nur anbieten, wenn TaskNotes da ist und
+          // seine Form stimmt — src/core/** darf die fremde API nicht kennen, appliesTo() weiss
+          // davon also nichts. Faellt die Pruefung durch, FEHLT das Kommando in der Palette,
+          // statt ausgegraut zu erscheinen.
+          if (descriptor.id === "mail.createTask" && readTaskNotesApi(this.app) === null) return false;
           const probe = probeFor(this.app, this.settings.profile);
           if (!probe || !descriptor.appliesTo(probe)) return false;
           if (!checking) void this.runMailCommand(descriptor, notify);
@@ -546,6 +552,7 @@ export default class MailstonePlugin extends Plugin {
       notes: vaultPlanExecutor(this.app, this.hashStore()),
       writeAttachment: writeAttachment(this.app),
       openExternal: (url: string) => { window.open(url); },
+      createTask: (req) => createTaskViaBridge(this.app, req),
     };
   }
 
@@ -572,6 +579,7 @@ export default class MailstonePlugin extends Plugin {
     const staleSkips = staleSkipCount(r.skipped);
     if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
     if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
+    if (r.taskPath) notify.info("notice.command.taskCreated", r.taskPath);
   }
 
   /** Ein Takt des Weckers: nur die faelligen Konten, und die Faelligkeit wird bei jedem Schlag

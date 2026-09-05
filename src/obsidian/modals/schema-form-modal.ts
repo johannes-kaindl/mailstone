@@ -110,7 +110,15 @@ export class SchemaFormModal extends Modal {
       });
       return;
     }
-    setting.addText((c) => c.onChange((v) => { this.values[key] = v; }));
+    setting.addText((c) => {
+      // Analog zum enum-Zweig oben: `default` belegt values[key] UND die Komponente vor,
+      // statt eines zweiten Uebergabewegs am Modal-Konstruktor (M5, mail.createTask).
+      if (field.type === "string" && field.default !== undefined) {
+        this.values[key] = field.default;
+        c.setValue(field.default);
+      }
+      c.onChange((v) => { this.values[key] = v; });
+    });
   }
 
   private submit(): void {
