@@ -107,4 +107,39 @@ describe("tokenize — unausgeglichene eckige Klammern", () => {
       { kind: "nil" },
     ]);
   });
+
+  // Die Gegenrichtung, und sie ist die gefaehrlichere: ein OEFFNENDES [ ohne schliessendes
+  // liess die Tiefe bis zum Zeilenende stehen. Damit griff kein Trennzeichen mehr, das Atom
+  // schluckte auch das ) der umschliessenden Liste, `readList` schloss nie — und ALLE
+  // folgenden Felder derselben FETCH-Antwort gingen verloren.
+  //
+  // Dass ein Server so etwas schicken DARF, steht in RFC 3501 § 9: `[` ist kein
+  // `atom-special` (`]` sehr wohl, ueber `resp-specials`). Ein Atom - etwa ein
+  // Schluesselwort-Flag - darf eine oeffnende eckige Klammer also voellig regelkonform
+  // enthalten, ohne sie je zu schliessen.
+  it("verliert nach einem verirrten [ nicht den Rest der Antwort", () => {
+    expect(tokenize("(FLAGS (\\Seen $Label[1) UID 7)", [])).toEqual([
+      {
+        kind: "list",
+        items: [
+          { kind: "atom", value: "FLAGS" },
+          { kind: "list", items: [{ kind: "atom", value: "\\Seen" }, { kind: "atom", value: "$Label[1" }] },
+          { kind: "atom", value: "UID" },
+          { kind: "atom", value: "7" },
+        ],
+      },
+    ]);
+  });
+
+  it("findAtomValue findet einen Schluessel hinter einem verirrten [", () => {
+    expect(findAtomValue(tokenize("* 1 FETCH$x[1 UID 7", []), "UID")).toBe("7");
+  });
+
+  it("trennt auch bei mehreren verirrten [ weiter", () => {
+    expect(tokenize("A[ B[ C", [])).toEqual([
+      { kind: "atom", value: "A[" },
+      { kind: "atom", value: "B[" },
+      { kind: "atom", value: "C" },
+    ]);
+  });
 });

@@ -64,20 +64,56 @@ export function tokenize(text: string, literals: Uint8Array[]): ImapItem[] {
     throw new NetError("protocol", "unterminierter quoted string (kein schließendes Anführungszeichen)");
   }
 
-  function readAtom(): ImapItem {
-    const start = i;
-    let depth = 0; // eckige Klammern gehoeren zum Atom, inkl. Leerzeichen darin
-    while (i < text.length) {
-      const c = text[i];
+  /**
+   * Ende eines Atoms ab `start`. Mit `klammernZusammenhalten` gehoeren eckige Klammern samt
+   * Inhalt zum Atom (inkl. Leerzeichen und runder Klammern darin) — das braucht
+   * `BODY[HEADER.FIELDS (MESSAGE-ID)]`. Liefert -1, wenn die Zeile mit OFFENER Klammer endet.
+   */
+  function atomEnde(start: number, klammernZusammenhalten: boolean): number {
+    let j = start;
+    let depth = 0;
+    while (j < text.length) {
+      const c = text[j];
       if (c === undefined) break;
-      if (c === "[") depth++;
+      if (klammernZusammenhalten && c === "[") depth++;
       // Nie unter 0: ein schliessendes ] ohne oeffnendes darf die Tiefe nicht negativ machen,
       // sonst ist `depth === 0` nie wieder wahr und kein Trennzeichen greift mehr — der Rest
       // der Zeile wuerde zu einem einzigen Atom verschmelzen.
-      else if (c === "]") depth = Math.max(0, depth - 1);
+      else if (klammernZusammenhalten && c === "]") depth = Math.max(0, depth - 1);
       else if (depth === 0 && DELIM.has(c)) break;
-      i++;
+      j++;
     }
+    return depth > 0 ? -1 : j;
+  }
+
+  /**
+   * ⚠️ Die eckige Klammer ist NICHT symmetrisch, und daran haengt dieser Zweizeiler:
+   * RFC 3501 § 9 zaehlt `]` ueber `resp-specials` zu den `atom-specials`, `[` aber nicht.
+   * Ein Atom — etwa ein Schluesselwort-Flag — darf eine oeffnende eckige Klammer also
+   * voellig regelkonform tragen, ohne sie je zu schliessen.
+   *
+   * Die Klammer-Buchfuehrung existiert nur fuer EINEN Fall: `BODY[…]` samt Leerzeichen und
+   * runden Klammern darin zusammenzuhalten. Blieb die Tiefe bis zum Zeilenende stehen, griff
+   * kein Trennzeichen mehr — das Atom schluckte auch das `)` der umschliessenden Liste,
+   * `readList` schloss nie, und ALLE folgenden Felder derselben FETCH-Antwort gingen
+   * verloren.
+   *
+   * Der naheliegende Fix (ein `)` bei `depth > 0` als Ende behandeln) ist gegengeprueft
+   * SCHAEDLICH: `BODY[HEADER.FIELDS (MESSAGE-ID)]` endete damit nach `(MESSAGE-ID` —
+   * ausgerechnet das Kommando, mit dem der Sync Message-IDs abgleicht. Deshalb wird die
+   * Entscheidung dort getroffen, wo sie eindeutig ist: am ZEILENENDE. Endet die Zeile mit
+   * offener Klammer, war das `[` kein Abschnitts-Oeffner, und das Atom wird ohne
+   * Klammer-Buchfuehrung neu gelesen.
+   *
+   * Was der Fix NICHT kann: ein verirrtes `[`, dem spaeter in derselben Zeile ein fremdes
+   * `]` folgt. Dann geht die Tiefe zurueck auf 0 und nichts faellt auf. Das ist keine Luecke
+   * dieser Loesung, sondern der Grammatik — auch ein Mensch koennte die beiden Faelle an
+   * dieser Zeile nicht unterscheiden.
+   */
+  function readAtom(): ImapItem {
+    const start = i;
+    const ausgeglichen = atomEnde(start, true);
+    i = ausgeglichen >= 0 ? ausgeglichen : atomEnde(start, false);
     const value = text.slice(start, i);
     if (value === "NIL") return { kind: "nil" };
     const lit = LITERAL_AT_END.exec(value);
