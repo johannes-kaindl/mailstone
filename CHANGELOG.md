@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-05
+
 ### Behoben
 - **Denselben Anhang zweimal zu extrahieren legt keine zweite Datei mehr an.** Liegt am
   Zielnamen bereits eine **byte-gleiche** Datei, wird sie verlinkt statt kopiert. Verglichen
