@@ -99,4 +99,26 @@ export function emptyChoiceField(schema: ObjectSchema): string | null {
   return null;
 }
 
+/**
+ * Die Eingabe, die schon feststeht — oder null, wenn der Nutzer etwas zu entscheiden hat.
+ *
+ * Gegenstueck zu `emptyChoiceField`, dieselbe Achse: **keine** Option → das Formular waere
+ * unbedienbar und geht nicht auf; **eine** Option → es gaebe nichts zu waehlen und es muss nicht
+ * aufgehen; **zwei oder mehr** → der Nutzer waehlt. Bestaetigt wird auch im ersten Fall weiterhin
+ * in der Vorschau, es geht also keine Zustimmung verloren, nur ein Klick ohne Inhalt.
+ *
+ * Festgelegt ist ausschliesslich ein Auswahlfeld mit genau einer Option. NICHT festgelegt sind:
+ * ein `default` (eine Vorbelegung ist ein Vorschlag — sie will bearbeitbar sein, sonst waere sie
+ * keine), ein Umschalter (`false` ist sein Startwert, nicht die Entscheidung des Nutzers) und
+ * jedes freie Feld.
+ */
+export function predeterminedInput(schema: ObjectSchema): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const [name, field] of Object.entries(schema.properties)) {
+    if (field.type !== "string" || field.enum?.length !== 1) return null;
+    out[name] = field.enum[0];
+  }
+  return out;
+}
+
 export const EMPTY_SCHEMA: ObjectSchema = { type: "object", properties: {} };

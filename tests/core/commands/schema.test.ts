@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateInput, type ObjectSchema, emptyChoiceField } from "../../../src/core/commands/schema";
+import { validateInput, type ObjectSchema, emptyChoiceField, predeterminedInput } from "../../../src/core/commands/schema";
 
 const schema: ObjectSchema = {
   type: "object",
@@ -98,5 +98,39 @@ describe("emptyChoiceField", () => {
 
   it("liefert null fuer ein Schema ohne Felder — dafuer oeffnet der Ablauf ohnehin kein Formular", () => {
     expect(emptyChoiceField({ type: "object", properties: {} })).toBeNull();
+  });
+});
+
+describe("predeterminedInput", () => {
+  it("liefert den Wert, wenn ein Auswahlfeld genau EINE Option hat", () => {
+    expect(predeterminedInput({ type: "object", properties: { name: { type: "string", enum: ["nur.pdf"] } } }))
+      .toEqual({ name: "nur.pdf" });
+  });
+
+  it("liefert null bei zwei Optionen — da muss der Nutzer waehlen", () => {
+    expect(predeterminedInput({ type: "object", properties: { name: { type: "string", enum: ["a", "b"] } } })).toBeNull();
+  });
+
+  it("liefert null, sobald EIN Feld eine Eingabe braucht — auch neben einer festen Auswahl", () => {
+    expect(predeterminedInput({ type: "object", properties: {
+      name: { type: "string", enum: ["nur.pdf"] },
+      titel: { type: "string" },
+    } })).toBeNull();
+  });
+
+  it("liefert null fuer ein Feld mit `default` — eine Vorbelegung ist ein Vorschlag, keine Festlegung", () => {
+    expect(predeterminedInput({ type: "object", properties: { titel: { type: "string", default: "Betreff" } } })).toBeNull();
+  });
+
+  it("liefert null fuer einen Umschalter — false ist der Startwert, nicht die Entscheidung", () => {
+    expect(predeterminedInput({ type: "object", properties: { flag: { type: "boolean" } } })).toBeNull();
+  });
+
+  it("liefert ein leeres Objekt fuer ein Schema ohne Felder", () => {
+    expect(predeterminedInput({ type: "object", properties: {} })).toEqual({});
+  });
+
+  it("liefert null bei leerer Auswahlliste — den Fall faengt `emptyChoiceField` vorher ab", () => {
+    expect(predeterminedInput({ type: "object", properties: { name: { type: "string", enum: [] } } })).toBeNull();
   });
 });

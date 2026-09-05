@@ -3,11 +3,17 @@ import { mailTargetFor, buildContext, runCommand } from "../../src/obsidian/comm
 
 // Die Modale sind in dieser Datei nur daran interessant, OB sie aufgehen — der Fall unten ist
 // gerade der, in dem keines aufgehen darf.
-const { formularGeoeffnet } = vi.hoisted(() => ({ formularGeoeffnet: vi.fn() }));
+const { formularGeoeffnet, vorschauGeoeffnet } = vi.hoisted(() => ({ formularGeoeffnet: vi.fn(), vorschauGeoeffnet: vi.fn() }));
 vi.mock("../../src/obsidian/modals/schema-form-modal", () => ({
   SchemaFormModal: class {
     constructor() { formularGeoeffnet(); }
     async pick(): Promise<null> { return null; }
+  },
+}));
+vi.mock("../../src/obsidian/modals/plan-preview-modal", () => ({
+  PlanPreviewModal: class {
+    constructor() { vorschauGeoeffnet(); }
+    async confirm(): Promise<boolean> { return false; }
   },
 }));
 import { makeApp } from "../helpers/memory-vault";
@@ -127,6 +133,19 @@ describe("buildContext", () => {
     expect(() => r.ctx.existingAttachment("a.txt")).toThrow(/needs\.attachments/);
   });
 
+  it("wirft bei einem Anhangnamen, den die .eml gar nicht kennt", async () => {
+    // Frueher fiel `attachmentPathFor` hier auf den nackten Dateinamen zurueck — die Anlage waere
+    // in die VAULT-WURZEL geschrieben worden, statt in den Anhangordner. Heute unerreichbar (der
+    // Name kommt immer aus `nonInlineAttachments`), aber es ist derselbe stille Fehlwert, den der
+    // Guard eine Zeile darueber schon ausschliesst.
+    const app = await vaultMitAnhang();
+    const r = await buildContext(deps(app), EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(() => r.ctx.attachmentPathFor("gibtsnicht.pdf")).toThrow(/gibtsnicht\.pdf/);
+    expect(() => r.ctx.existingAttachment("gibtsnicht.pdf")).not.toThrow(); // "nichts vorhanden" ist hier die WAHRE Antwort
+  });
+
   it("liefert null, wenn am Zielnamen noch nichts liegt", async () => {
     const app = await vaultMitAnhang();
     const r = await buildContext(deps(app), EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
@@ -153,5 +172,28 @@ describe("runCommand: ein Formular ohne waehlbare Option geht gar nicht erst auf
     const r = await runCommand(deps(app), {} as never, EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
     expect(r).toEqual({ kind: "error", code: "no-choices" });
     expect(formularGeoeffnet).not.toHaveBeenCalled();
+  });
+});
+
+describe("runCommand: bei genau einer Option gibt es nichts zu fragen", () => {
+  /** Notiz mit EINEM Anhang im Frontmatter, .eml mit genau diesem einen Anhang. */
+  async function vaultMitEinemAnhang() {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\nmail_source: acc/Vault\nmail_state: live\nattachments:\n  - "a.txt (text/plain, 6 B)"\n---\n## Notizen\n\n${ZONE}`);
+    await app.vault.createBinary("Mail/2026/_eml/x.eml", new TextEncoder().encode(EML.replace("\r\n\r\nHallo\r\n", EML_ANHANG_TEIL)).buffer);
+    return app;
+  }
+
+  it("ueberspringt das Formular und geht direkt zur Vorschau", async () => {
+    formularGeoeffnet.mockClear();
+    vorschauGeoeffnet.mockClear();
+    const app = await vaultMitEinemAnhang();
+    const r = await runCommand(deps(app), {} as never, EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+
+    // Beide Aussagen zusammen tragen erst die Behauptung: „nicht geoeffnet" allein waere auch
+    // wahr, wenn der Ablauf vorher abgebrochen haette — die Vorschau belegt, dass er WEITERGING.
+    expect(formularGeoeffnet).not.toHaveBeenCalled();
+    expect(vorschauGeoeffnet).toHaveBeenCalledTimes(1);
+    expect(r).toEqual({ kind: "cancelled" }); // die Vorschau-Attrappe lehnt ab
   });
 });

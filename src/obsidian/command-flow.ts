@@ -2,7 +2,7 @@ import { TFile, normalizePath, type App } from "obsidian";
 import { parseEml } from "../core/mime/parse";
 import { emlPathFor, verifyEml } from "../core/commands/eml";
 import { executeCommandPlan, type CommandExecuteDeps, type CommandExecuteResult } from "../core/commands/execute";
-import { emptyChoiceField } from "../core/commands/schema";
+import { emptyChoiceField, predeterminedInput } from "../core/commands/schema";
 import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type MailNoteRef, type MailTarget } from "../core/commands/types";
 import type { MailProfile } from "../core/mirror/profile";
 import { SchemaFormModal } from "./modals/schema-form-modal";
@@ -130,7 +130,14 @@ export async function buildContext(
       linkFor: (id) => index.get(id) ?? null,
       attachmentPathFor: (name) => {
         anhangzugriffErlaubt(descriptor);
-        return attachmentPaths.get(name) ?? `${name}`;
+        const pfad = attachmentPaths.get(name);
+        // Kein Rueckfall auf den nackten Namen: der waere vault-RELATIV und schriebe die Anlage
+        // in die Wurzel statt in den Anhangordner — ein stiller Fehlwert derselben Bauart, die
+        // der Guard eine Zeile darueber ausschliesst. Unerreichbar, solange der Name aus
+        // `nonInlineAttachments` stammt; genau deshalb soll ein kuenftiger zweiter Aufrufer
+        // laut scheitern statt woanders hin zu schreiben.
+        if (pfad === undefined) throw new Error(`${descriptor.id}: kein aufgeloester Anhangpfad fuer "${name}"`);
+        return pfad;
       },
       existingAttachment: (name) => {
         anhangzugriffErlaubt(descriptor);
@@ -169,8 +176,13 @@ export async function runCommand(
   // entschieden am 2026-09-05).
   if (emptyChoiceField(schema) !== null) return { kind: "error", code: "no-choices" };
 
-  let input: Record<string, unknown> = {};
-  if (Object.keys(schema.properties).length > 0) {
+  // Dieselbe Achse eine Stufe weiter: steht die Eingabe schon fest (nur Auswahlfelder mit je
+  // GENAU einer Option — der Normalfall bei einer Mail mit einem Anhang), gibt es nichts zu
+  // fragen, und das Formular bleibt zu. Bestaetigt wird weiterhin in der Vorschau, es geht also
+  // keine Zustimmung verloren, nur ein Klick ohne Inhalt. Ein Schema ohne Felder faellt in
+  // denselben Zweig ({} ist festgelegt) — das war vorher die eigene `length > 0`-Bedingung.
+  let input = predeterminedInput(schema);
+  if (input === null) {
     const picked = await new SchemaFormModal(deps.app, trTitle(descriptor), schema).pick();
     if (!picked) return { kind: "cancelled" };
     input = picked;
