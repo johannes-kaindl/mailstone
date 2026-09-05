@@ -8,7 +8,7 @@ function acc(id: string): Account {
   return newAccount(id);
 }
 
-const ZEILE = { uid: 1, from: "A", subject: "S", date: "", imVault: false, ungelesen: true };
+const ZEILE = { uid: 1, mailId: "<a@example.invalid>", from: "A", subject: "S", date: "", imVault: false, ungelesen: true };
 
 function deps(over: Partial<InboxHostDeps> = {}): InboxHostDeps {
   return {
@@ -23,6 +23,8 @@ function deps(over: Partial<InboxHostDeps> = {}): InboxHostDeps {
     notifyError: vi.fn(),
     openSettings: vi.fn(),
     onChange: () => () => undefined,
+    taskNotesAvailable: () => false,
+    createTask: vi.fn(async () => ({ kind: "done" as const })),
     ...over,
   };
 }

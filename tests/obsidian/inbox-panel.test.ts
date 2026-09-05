@@ -21,7 +21,7 @@ function findAll(el: any, cls: string): any[] {
   return out;
 }
 
-const zeile = { uid: 7, from: "Jürgen", subject: "Rechnung", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
+const zeile = { uid: 7, mailId: "<7@example.invalid>", from: "Jürgen", subject: "Rechnung", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
 
 function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): InboxHost {
   return {
@@ -33,6 +33,8 @@ function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): 
     ensureLoaded: vi.fn(),
     adopt: vi.fn(),
     archive: vi.fn(),
+    canCreateTask: () => false,
+    createTask: vi.fn(),
     openSettings: vi.fn(),
     onChange: () => () => undefined,
     destroy: vi.fn(),

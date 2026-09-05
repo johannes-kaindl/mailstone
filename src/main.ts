@@ -1,4 +1,4 @@
-import { Notice, Plugin, SuggestModal, getLanguage, type App } from "obsidian";
+import { Notice, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
 import { loadSettings, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
 import { t } from "./vendor/code-kit/i18n";
@@ -14,6 +14,8 @@ import type { SecretStore } from "./core/send/secrets";
 import { imapConnect, imapConnectWritable } from "./core/imap/client";
 import { fetchInbox as fetchInboxCore } from "./core/inbox/fetch";
 import { adoptMessage, archiveMessage, type InboxActionCode } from "./core/inbox/actions";
+import { createTaskFromInbox } from "./core/inbox/create-task-flow";
+import { pollUntil } from "./obsidian/poll";
 import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge } from "./obsidian/calendar-notes-bridge";
 import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
 import { dueAccounts, TICK_MS } from "./core/sync/schedule";
@@ -32,7 +34,7 @@ import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-brid
 import { trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
 import type { CockpitHost } from "./obsidian/views/cockpit-panel";
-import { createInboxHost } from "./obsidian/views/inbox-host";
+import { createInboxHost, type CreateTaskOutcome } from "./obsidian/views/inbox-host";
 import type { InboxHost } from "./obsidian/views/inbox-panel";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "./obsidian/views/mailstone-view";
@@ -519,6 +521,32 @@ export default class MailstonePlugin extends Plugin {
         if (!acc) return "";
         return kind === "adopt" ? acc.folders.allowlist : acc.folders.archive;
       },
+      // Pruefstelle 1 (Spec § 4, dieselbe Logik wie beim Kommando in checkCallback oben):
+      // die dritte Zeilen-Aktion fehlt ganz, statt ausgegraut dazustehen, wenn TaskNotes nicht
+      // erreichbar ist.
+      taskNotesAvailable: () => readTaskNotesApi(this.app) !== null,
+      createTask: async (accountId, uid, mailId) => {
+        const acc = konto(accountId);
+        if (!acc) return { kind: "error", code: "gone", adopted: false };
+        const pw = password(acc);
+        if (!pw.ok) return { kind: "error", code: pw.code, adopted: false };
+        const kette = await createTaskFromInbox(
+          {
+            // imapConnectWritable, nicht imapConnect: dieselbe Begruendung wie bei adopt oben —
+            // schreibfaehige Sitzungen entstehen NUR ueber diesen Weg.
+            connect: () => imapConnectWritable(nodeSocketTransport(), connectOpts(acc, pw.wert)),
+            busy: this.busy,
+            syncAccount: (id) => this.syncService.syncAccount(id),
+            notePathFor: (id) => mailIndex(this.app, this.settings.profile).get(id)?.path ?? null,
+            pollUntil: pollUntil(window),
+          },
+          { uid, sourceFolder: acc.folders.inbox, targetFolder: acc.folders.allowlist, accountId, mailId },
+        );
+        if (!kette.ok) return { kind: "error", code: kette.code, adopted: kette.adopted };
+        // Ab hier ist die Notiz da — derselbe Kommando-Weg wie im Notiz-Fall (Formular +
+        // Vorschau), kein zweiter Formular- und Fehlerpfad (Task-Brief).
+        return this.runCreateTaskForNote(kette.notePath, notify);
+      },
       // Die Notiz entsteht im Sync, nicht in der Aktion (Spec § 4) — nach einem erfolgreichen
       // Uebernehmen also einen (nicht-stillen) Lauf fuer GENAU dieses Konto anstossen. Die
       // Zusage wird durchgereicht (nicht `void`): der Host wartet auf sie, bevor er selbst neu
@@ -583,6 +611,33 @@ export default class MailstonePlugin extends Plugin {
     if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
     if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
     if (r.taskPath) notify.info("notice.command.taskCreated", r.taskPath);
+  }
+
+  /** Task 6, letzter Schritt der Posteingangs-Kette: die Notiz ist jetzt da — ab hier ist der
+   *  Weg identisch zum Notiz-Fall (`mail.createTask` aus der Befehlspalette), deshalb wird er
+   *  nicht zweimal gebaut. `runCommand()` liest `app.workspace.getActiveFile()` selbst, also
+   *  wird die neue Notiz zuerst geoeffnet — derselbe Kompromiss wie ein Nutzer, der die Notiz
+   *  von Hand oeffnet und dann das Kommando ausfuehrt. */
+  private async runCreateTaskForNote(notePath: string, notify: Notifier): Promise<CreateTaskOutcome> {
+    const file = this.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return { kind: "error", code: "not-applicable", adopted: true };
+    await this.app.workspace.getLeaf(false).openFile(file);
+    let outcome: RunResult;
+    try {
+      outcome = await safeRunCommand(() => runCommand(
+        { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
+        this.commandExecuteDeps(),
+        CREATE_TASK_COMMAND,
+      ));
+    } finally {
+      await this.saveSettings();
+    }
+    if (outcome.kind === "cancelled") return { kind: "cancelled" };
+    if (outcome.kind === "error") return { kind: "error", code: outcome.code, adopted: true };
+    const r = outcome.result;
+    if (!r.ok) return { kind: "error", code: r.code, adopted: true };
+    if (r.taskPath) notify.info("notice.command.taskCreated", r.taskPath);
+    return { kind: "done" };
   }
 
   /** Ein Takt des Weckers: nur die faelligen Konten, und die Faelligkeit wird bei jedem Schlag

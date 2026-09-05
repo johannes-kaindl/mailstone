@@ -6,6 +6,9 @@ export type InboxState = "leer" | "laedt" | "fehler" | "gefuellt";
 
 export interface InboxRow {
   uid: number;
+  /** Message-ID der Mail (roh, wie `parseEml` sie liefert) — der Schluessel, unter dem der
+   *  Notiz-Index die entstehende Notiz fuehrt (Task 6: Posteingangs-Weg zu einer Aufgabe). */
+  mailId: string;
   /** Anzeigename des Absenders, ersatzweise seine Adresse. */
   from: string;
   subject: string;
@@ -47,6 +50,7 @@ export async function toInboxRow(row: ImapHeaderRow, bekannteIds: ReadonlySet<st
   const mail = await parseEml(row.header);
   return {
     uid: row.uid,
+    mailId: mail.id,
     from: mail.from?.name !== undefined && mail.from.name.length > 0 ? mail.from.name : (mail.from?.address ?? ""),
     subject: mail.subject,
     // `ParsedMail.date` ist ein Date, kein String. Die Zeile traegt einen ISO-String, damit das
