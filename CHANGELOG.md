@@ -25,6 +25,11 @@ All notable changes to this project are documented here. The format follows
   Antwort.** Betraf Server, die ein Schlüsselwort-Flag mit eckiger Klammer senden — nach
   RFC 3501 erlaubt. Bisher gingen alle folgenden Felder derselben Antwort verloren
 
+### Geändert
+- **Ein Formular ohne echte Auswahl erscheint nicht mehr.** Hat eine Mail genau einen Anhang,
+  fragt `mail.extractAttachment` nicht mehr nach — es gab nichts zu wählen. Die Vorschau
+  bestätigt weiterhin wie bisher, es entfällt nur ein Klick ohne Inhalt
+
 ### Intern
 - `mail.rerender` löst keine Anhangpfade mehr auf, die es nie benutzt (ein Vault-Zugriff je
   Anhang und Lauf gespart)
