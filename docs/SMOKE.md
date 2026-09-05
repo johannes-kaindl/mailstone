@@ -668,3 +668,38 @@ Node-Prozess am Leben, bis irgendeine Seite sie von sich aus schloss. Nach dem F
 im `finally` schließen) läuft der Lauf in rund 30–40 Sekunden durch. Derselbe Fehler wäre in
 einem Treiber, der `process.exit()` am Ende erzwingt, unsichtbar geblieben — hier zeigte er
 sich nur, weil `smoke:e2e` bewusst ohne einen solchen Zwangsausgang endet.
+
+## M3b-Nachlese-Runde — Regressionslauf nach dem Kommando-Umbau (2026-09-05, abends)
+
+Gefahren gegen ein laufendes Obsidian **1.14.0** per CDP, Staging-Vault `mailstone`, Build vom
+Branch `fix/m3b-nachlese-minors` (`4528441`, deployt 20:17). Obsidian lief bereits mit
+`--remote-debugging-port=9222`; **kein Neustart, kein Quit** — drei fremde Vault-Fenster
+(`koda-agent`, `10_Pallas`, `80_Arbeit`) blieben unberührt. CDP-Lock `--exclusive focus`
+gehalten, unmittelbar nach dem Lauf freigegeben.
+
+**Ergebnis: 20/20 grün**, `data.json` byte-gleich zurückgeschrieben, TaskNotes-Slot
+identitätsgeprüft wiederhergestellt.
+
+Der Lauf ist ein **Regressionsbeleg**, kein neuer Prüfumfang: die sieben Befunde der Runde
+liegen im Kommando-Kern (`extract`, `relink`, `schema`, `wikilink`) und in `command-flow`, und
+die Frage war, ob die Kette darüber — Palette, Formular, Vorschau, Ausführung — unverändert
+trägt. Sie tut es. Die neuen Verhaltensweisen selbst (Byte-Vergleich beim zweiten Extrakt,
+`no-choices` statt unbedienbarem Formular) sind **nicht** Teil dieser 20 Prüfpunkte; sie sind
+im Unit-Test gedeckt und je einmal per Mutation gegengeprüft.
+
+### Zwei Beobachtungen über den Lauf, nicht über den Prüfling
+
+1. **Der Treiber hing vorher nach einem Abbruch unbegrenzt.** Der erste Anlauf brach korrekt ab
+   (`requireEigenerBuild`: im Vault lag ein älterer Build) — und lief danach **acht Minuten**
+   weiter, bei 0 % CPU, bis er von Hand beendet wurde. Ursache: der Abbruchpfad schloss die
+   CDP-Verbindung nicht, und `process.exitCode` beendet nichts. Behoben (`886a235`).
+   ⚠️ **Aufgefallen ist es nur durch einen Zufall der Aufrufform:** die Ausgabe lief durch
+   `| tail`, stand also bis zum Prozessende im Puffer — der Lauf sah aus, als hänge er mitten
+   in der Messung. Im Terminal hätte man die Abbruchmeldung gelesen und den Prozess für fertig
+   gehalten, während er den Debug-Port belegte.
+2. **Ein Voll-Reindex über 7.241 Notizen in einem fremden Vault-Fenster hat nicht gestört.**
+   Die Nachbarsession (`vault-rag`) hatte ausdrücklich vor Zeitartefakten gewarnt. Gemessen:
+   Laufzeit ~2,5 min (vergleichbar mit dem lastfreien Lauf um 13:03), V10 fand in 125 von 133
+   Proben das Laufsymbol, und auch die drei Prüfpunkte mit **Obsidian-Neustart** (V5a, V1, V5b)
+   blieben grün. Die Warnung war richtig, die Sorge trug nicht — festgehalten, weil ein
+   Lastverdacht sonst beim nächsten Mal wieder unbelegt im Raum steht.
