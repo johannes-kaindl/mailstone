@@ -118,8 +118,18 @@ export async function buildContext(
  * Die volle Kette: Kontext bauen → (Formular, falls das Schema Felder hat) → Plan →
  * Vorschau → ausfuehren. Jeder Abbruch durch den Nutzer ist `cancelled`, kein Fehler.
  */
-export async function runCommand(deps: CommandFlowDeps, execute: CommandExecuteDeps, descriptor: CommandDescriptor): Promise<RunResult> {
-  const built = await buildContext(deps, descriptor, deps.app.workspace.getActiveFile());
+export async function runCommand(
+  deps: CommandFlowDeps,
+  execute: CommandExecuteDeps,
+  descriptor: CommandDescriptor,
+  // Fix-Runde 1, Important 1 (Task 6): Default bleibt das bisherige Verhalten (Befehlspalette
+  // liest die aktive Notiz), aber ein Aufrufer, dessen "aktive View" keine FileView ist —
+  // z. B. ein Klick im Posteingang, waehrend die MailstoneView den Hauptbereich haelt —, kann
+  // die Ziel-Notiz explizit uebergeben, statt sich auf Obsidians "zuletzt aktive Datei"-
+  // Fallback zu verlassen. `buildContext` nimmt die Datei ohnehin schon als Parameter.
+  file: TFile | null = deps.app.workspace.getActiveFile(),
+): Promise<RunResult> {
+  const built = await buildContext(deps, descriptor, file);
   if (!built.ok) return { kind: "error", code: built.code };
   const ctx = built.ctx;
   if (!descriptor.appliesTo(ctx)) return { kind: "error", code: "not-applicable" };

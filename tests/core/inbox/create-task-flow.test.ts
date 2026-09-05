@@ -15,7 +15,7 @@ function fakeSession(over: Partial<ImapWriteSession> = {}): ImapWriteSession {
   } as unknown as ImapWriteSession;
 }
 
-const req = { uid: 7, sourceFolder: "INBOX", targetFolder: "Vault", accountId: "acc-1", mailId: "<msg-1@example.com>" };
+const req = { uid: 7, sourceFolder: "INBOX", targetFolder: "Vault", accountId: "acc-1", mailId: "msg-1@example.com" };
 
 /** `pollUntil`, das seine Bedingung sofort einmal prueft — kein echtes Warten, damit die
  *  Tests nicht auf eine Uhr angewiesen sind. */
@@ -41,16 +41,29 @@ function deps(over: Partial<CreateTaskFlowDeps> = {}): CreateTaskFlowDeps {
 
 describe("createTaskFromInbox", () => {
   it("uebernimmt, synct gezielt und meldet erst dann die Notiz", async () => {
-    const syncAccount = vi.fn(async () => undefined);
+    // Fix-Runde 1, Minor 7: der vorherige Test belegte die Reihenfolge NICHT — `notePathFor`
+    // lieferte unabhaengig davon, ob `syncAccount` schon lief, ein Treffer waere also auch bei
+    // vertauschter Reihenfolge gruen geblieben. Ein `reihenfolge`-Protokoll (Muster aus
+    // tests/obsidian/inbox-host.test.ts) macht die Behauptung "synct, dann meldet" ueberpruefbar.
+    const reihenfolge: string[] = [];
+    const syncAccount = vi.fn(async () => {
+      reihenfolge.push("sync-start");
+      await Promise.resolve();
+      reihenfolge.push("sync-ende");
+    });
+    const pollUntil: CreateTaskFlowDeps["pollUntil"] = async (pruefen) => {
+      reihenfolge.push("poll");
+      return pruefen();
+    };
     const d = deps({
       syncAccount,
-      // Erst NACH dem Sync taucht die Notiz im Index auf — ein pollUntil, das sofort prueft,
-      // sieht sie also nur, weil syncAccount schon durchgelaufen ist, bevor pollUntil laeuft.
+      pollUntil,
       notePathFor: (mailId) => (mailId === req.mailId ? "Mail/note.md" : null),
     });
     const r = await createTaskFromInbox(d, req);
     expect(r).toEqual({ ok: true, notePath: "Mail/note.md" });
     expect(syncAccount).toHaveBeenCalledWith("acc-1");
+    expect(reihenfolge).toEqual(["sync-start", "sync-ende", "poll"]);
   });
 
   it("bricht ab, wenn das Uebernehmen scheitert — ohne zu synchronisieren", async () => {

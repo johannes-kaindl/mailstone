@@ -8,7 +8,7 @@ function acc(id: string): Account {
   return newAccount(id);
 }
 
-const ZEILE = { uid: 1, mailId: "<a@example.invalid>", from: "A", subject: "S", date: "", imVault: false, ungelesen: true };
+const ZEILE = { uid: 1, mailId: "a@example.invalid", from: "A", subject: "S", date: "", imVault: false, ungelesen: true };
 
 function deps(over: Partial<InboxHostDeps> = {}): InboxHostDeps {
   return {
@@ -122,5 +122,83 @@ describe("createInboxHost — Kleinbefund: fehlender Zielordner VOR der Bestaeti
     await new Promise((r) => setTimeout(r, 0));
     expect(confirmMove).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledWith("no-target-folder");
+  });
+});
+
+// Fix-Runde 1, Minor 6: bisher war `taskNotesAvailable: () => false` der Default in JEDEM
+// Test — die dritte Aktion selbst (Bestaetigung, no-target-folder-Riegel, das
+// `adopted`-gesteuerte Neuladen) war unbelegt.
+describe("createInboxHost — Task 6: dritte Aktion 'Aufgabe erstellen'", () => {
+  async function geladenerHost(over: Partial<InboxHostDeps> = {}) {
+    const h = createInboxHost(deps({ taskNotesAvailable: () => true, ...over }));
+    h.ensureLoaded();
+    await new Promise((r) => setTimeout(r, 0));
+    return h;
+  }
+
+  it("fragt vor dem Verschieben nach Bestaetigung und ruft dann createTask mit Konto, UID und Message-ID", async () => {
+    const confirmMove = vi.fn(async () => true);
+    const createTask = vi.fn(async () => ({ kind: "done" as const }));
+    const h = await geladenerHost({ confirmMove, createTask });
+    h.createTask(ZEILE.uid);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(confirmMove).toHaveBeenCalledWith("createTask", "Allowlist");
+    expect(createTask).toHaveBeenCalledWith("a", ZEILE.uid, ZEILE.mailId);
+  });
+
+  it("ruft createTask nicht, wenn der Nutzer die Bestaetigung ablehnt", async () => {
+    const confirmMove = vi.fn(async () => false);
+    const createTask = vi.fn(async () => ({ kind: "done" as const }));
+    const h = await geladenerHost({ confirmMove, createTask });
+    h.createTask(ZEILE.uid);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it("bricht mit 'no-target-folder' ab, ohne zu bestaetigen und ohne createTask aufzurufen", async () => {
+    const confirmMove = vi.fn(async () => true);
+    const notifyError = vi.fn();
+    const createTask = vi.fn();
+    const h = await geladenerHost({ targetFolder: () => "", confirmMove, notifyError, createTask });
+    h.createTask(ZEILE.uid);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(confirmMove).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith("no-target-folder");
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it("laedt NICHT neu, wenn der Fehler VOR der Uebernahme kam (adopted:false) — die Liste ist unveraendert", async () => {
+    const fetchInbox = vi.fn(async (): Promise<InboxFetchResult> => ({ ok: true, rows: [ZEILE], kannVerschieben: true }));
+    const notifyError = vi.fn();
+    const createTask = vi.fn(async () => ({ kind: "error" as const, code: "busy", adopted: false }));
+    const h = await geladenerHost({ fetchInbox, notifyError, createTask });
+    h.createTask(ZEILE.uid);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(notifyError).toHaveBeenCalledWith("busy");
+    expect(fetchInbox).toHaveBeenCalledTimes(1); // nur das initiale ensureLoaded()
+  });
+
+  it("laedt neu, wenn der Fehler NACH der Uebernahme kam (adopted:true) — die Mail hat den Posteingang verlassen", async () => {
+    const fetchInbox = vi.fn(async (): Promise<InboxFetchResult> => ({ ok: true, rows: [ZEILE], kannVerschieben: true }));
+    const notifyError = vi.fn();
+    const createTask = vi.fn(async () => ({ kind: "error" as const, code: "error.command.task-create-failed", adopted: true }));
+    const h = await geladenerHost({ fetchInbox, notifyError, createTask });
+    h.createTask(ZEILE.uid);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(notifyError).toHaveBeenCalledWith("error.command.task-create-failed");
+    expect(fetchInbox).toHaveBeenCalledTimes(2); // initiales ensureLoaded() + Neuladen danach
+  });
+
+  it("laedt neu bei 'done'", async () => {
+    const fetchInbox = vi.fn(async (): Promise<InboxFetchResult> => ({ ok: true, rows: [ZEILE], kannVerschieben: true }));
+    const createTask = vi.fn(async () => ({ kind: "done" as const }));
+    const h = await geladenerHost({ fetchInbox, createTask });
+    h.createTask(ZEILE.uid);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchInbox).toHaveBeenCalledTimes(2);
   });
 });

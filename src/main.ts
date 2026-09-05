@@ -23,7 +23,7 @@ import { createBusyGuard } from "./core/sync/busy";
 import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
-import { mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
+import { findNotePathForMailId, mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
@@ -536,8 +536,16 @@ export default class MailstonePlugin extends Plugin {
             // schreibfaehige Sitzungen entstehen NUR ueber diesen Weg.
             connect: () => imapConnectWritable(nodeSocketTransport(), connectOpts(acc, pw.wert)),
             busy: this.busy,
-            syncAccount: (id) => this.syncService.syncAccount(id),
-            notePathFor: (id) => mailIndex(this.app, this.settings.profile).get(id)?.path ?? null,
+            // Fix-Runde 1, Important 3: NICHT direkt `syncService.syncAccount` — nur `runSync`
+            // persistiert Zone-Hashes/UID-Cache im `finally` (main.ts runSync-Kommentar). Ohne
+            // diesen Weg blieben auf dem sync-timeout-Pfad geschriebene Notizen unpersistiert
+            // und gaelten beim naechsten Lauf als fremd editiert. Nebengewinn: das Cockpit
+            // zeigt die bis zu 30s laufende Kette als "laeuft" an (cockpitRuns).
+            syncAccount: (id) => this.runSync(notify, false, [id]),
+            // Fix-Runde 1, Minor 4+5: gezielte Suche mit Abbruch beim Treffer statt eines
+            // vollen Index-Aufbaus pro Poll-Tick, und auf beiden Seiten normalisiert — sonst
+            // triff eine von Hand mit spitzen Klammern geschriebene `mail_id` nie.
+            notePathFor: (id) => findNotePathForMailId(this.app, this.settings.profile, id),
             pollUntil: pollUntil(window),
           },
           { uid, sourceFolder: acc.folders.inbox, targetFolder: acc.folders.allowlist, accountId, mailId },
@@ -552,7 +560,10 @@ export default class MailstonePlugin extends Plugin {
       // Zusage wird durchgereicht (nicht `void`): der Host wartet auf sie, bevor er selbst neu
       // laedt (I1) — `runSync` gibt sie ohnehin bereits zurueck.
       syncNow: (accountId) => this.runSync(notify, false, [accountId]).then(() => undefined),
-      notifyError: (code) => notify.error(`inbox.error.${code}`),
+      // Fix-Runde 1, Important 2: die dritte Zeilen-Aktion (Task 6) kann Codes aus dem
+      // Kommando-Weg durchreichen (`error.command.*`), nicht nur InboxActionCode-Werte
+      // (`inbox.error.*`) — ein Punkt im Code heisst "bereits vollstaendig qualifiziert".
+      notifyError: (code) => notify.error(code.includes(".") ? code : `inbox.error.${code}`),
       openSettings: () => {
         const setting = (this.app as unknown as {
           setting?: { open(): void; openTabById(id: string): void };
@@ -615,27 +626,38 @@ export default class MailstonePlugin extends Plugin {
 
   /** Task 6, letzter Schritt der Posteingangs-Kette: die Notiz ist jetzt da — ab hier ist der
    *  Weg identisch zum Notiz-Fall (`mail.createTask` aus der Befehlspalette), deshalb wird er
-   *  nicht zweimal gebaut. `runCommand()` liest `app.workspace.getActiveFile()` selbst, also
-   *  wird die neue Notiz zuerst geoeffnet — derselbe Kompromiss wie ein Nutzer, der die Notiz
-   *  von Hand oeffnet und dann das Kommando ausfuehrt. */
+   *  nicht zweimal gebaut.
+   *
+   *  Fix-Runde 1, Important 1: die Notiz wird NICHT mehr geoeffnet — der Nutzer hat "Aufgabe
+   *  erstellen" geklickt, nicht "Notiz oeffnen", und ein ungefragt umgeschalteter Hauptbereich
+   *  ist eine Nebenwirkung, die niemand bestellt hat. Statt dessen bekommt `runCommand()` die
+   *  Ziel-Notiz explizit als vierten Parameter: ohne den Parameter waere die aktive View beim
+   *  Klick die `MailstoneView` selbst (keine FileView), und `getActiveFile()` griffe auf
+   *  Obsidians "zuletzt aktive Datei"-Fallback zurueck — trifft der die falsche Notiz, entstuende
+   *  eine Aufgabe mit `noteLink` auf die falsche Mail, ohne Fehlermeldung (appliesTo() ist fuer
+   *  jede Mail-Notiz true). */
   private async runCreateTaskForNote(notePath: string, notify: Notifier): Promise<CreateTaskOutcome> {
     const file = this.app.vault.getAbstractFileByPath(notePath);
-    if (!(file instanceof TFile)) return { kind: "error", code: "not-applicable", adopted: true };
-    await this.app.workspace.getLeaf(false).openFile(file);
+    if (!(file instanceof TFile)) return { kind: "error", code: "error.command.not-applicable", adopted: true };
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(
         { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
         this.commandExecuteDeps(),
         CREATE_TASK_COMMAND,
+        file,
       ));
     } finally {
       await this.saveSettings();
     }
     if (outcome.kind === "cancelled") return { kind: "cancelled" };
-    if (outcome.kind === "error") return { kind: "error", code: outcome.code, adopted: true };
+    // Fix-Runde 1, Important 2: diese Codes sind CommandErrorCode/CommandExecuteResult-Werte,
+    // keine InboxActionCode-Werte — `strings.ts` fuehrt sie unter `error.command.*`, nicht
+    // unter `inbox.error.*`. Der volle, bereits qualifizierte Schluessel geht durch bis zum
+    // Host, dessen `notifyError` einen Punkt im Code als "schon qualifiziert" erkennt.
+    if (outcome.kind === "error") return { kind: "error", code: `error.command.${outcome.code}`, adopted: true };
     const r = outcome.result;
-    if (!r.ok) return { kind: "error", code: r.code, adopted: true };
+    if (!r.ok) return { kind: "error", code: `error.command.${r.code}`, adopted: true };
     if (r.taskPath) notify.info("notice.command.taskCreated", r.taskPath);
     return { kind: "done" };
   }

@@ -21,7 +21,7 @@ function findAll(el: any, cls: string): any[] {
   return out;
 }
 
-const zeile = { uid: 7, mailId: "<7@example.invalid>", from: "Jürgen", subject: "Rechnung", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
+const zeile = { uid: 7, mailId: "7@example.invalid", from: "Jürgen", subject: "Rechnung", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
 
 function host(vm: Partial<InboxViewModel> = {}, over: Partial<InboxHost> = {}): InboxHost {
   return {
@@ -64,7 +64,7 @@ describe("InboxPanel", () => {
     expect(findAll(el, "mailstone-inbox-empty")).toHaveLength(1);
   });
 
-  it("zeichnet die Aktionsknoepfe deaktiviert MIT Grund als Tooltip, statt sie wegzulassen (I6)", () => {
+  it("zeichnet die Aktionsknoepfe deaktiviert MIT Grund als Tooltip, statt sie wegzulassen (I6) — ohne TaskNotes", () => {
     const el = makeFakeEl();
     new InboxPanel(host({ aktionenGrund: "unsupported" })).mount(el);
     const knoepfe = findAll(el, "mailstone-inbox-action");
@@ -76,10 +76,41 @@ describe("InboxPanel", () => {
     }
   });
 
-  it("zeichnet zwei Aktionsknoepfe je Zeile, wenn sie aktiv sind", () => {
+  it("zeichnet zwei Aktionsknoepfe je Zeile, wenn sie aktiv sind — ohne TaskNotes", () => {
     const el = makeFakeEl();
     new InboxPanel(host()).mount(el);
     expect(findAll(el, "mailstone-inbox-action")).toHaveLength(2);
+  });
+
+  // Fix-Runde 1, Minor 6: die vorigen beiden Tests belegten nur den TaskNotes-losen Fall
+  // (`canCreateTask: () => false` ist der Default), obwohl Spec § 4 ausdruecklich "kein
+  // Ausgrauen, der Knopf fehlt ganz" verlangt — bisher nur in dieser einen Richtung geprueft.
+  it("zeichnet eine dritte Aktion, wenn TaskNotes erreichbar ist", () => {
+    const el = makeFakeEl();
+    new InboxPanel(host({}, { canCreateTask: () => true })).mount(el);
+    const knoepfe = findAll(el, "mailstone-inbox-action");
+    expect(knoepfe).toHaveLength(3);
+    expect(String(el.textContent)).toContain(t("inbox.createTask"));
+  });
+
+  it("deaktiviert auch die dritte Aktion mit Grund, wenn die anderen gesperrt sind", () => {
+    const el = makeFakeEl();
+    new InboxPanel(host({ aktionenGrund: "busy" }, { canCreateTask: () => true })).mount(el);
+    const knoepfe = findAll(el, "mailstone-inbox-action");
+    expect(knoepfe).toHaveLength(3);
+    for (const k of knoepfe) {
+      expect(k.disabled).toBe(true);
+      expect(k.getAttribute("aria-disabled")).toBe("true");
+    }
+  });
+
+  it("ruft host.createTask(uid) beim Klick auf die dritte Aktion", () => {
+    const createTask = vi.fn();
+    const el = makeFakeEl();
+    new InboxPanel(host({}, { canCreateTask: () => true, createTask })).mount(el);
+    const dritte = findAll(el, "mailstone-inbox-action")[2];
+    dritte.click();
+    expect(createTask).toHaveBeenCalledWith(zeile.uid);
   });
 
   it("meldet einen Fehlerzustand mit Zustandsklasse UND aria-label — Farbe nie allein", () => {
