@@ -217,7 +217,7 @@ nicht geprüft — `window.open` war abgefangen, um die URL zu messen; das Öffn
 Betriebssystemsache. Die Oberfläche lief auf Englisch (`language: auto`); die deutschen Texte deckt
 der i18n-Paritätstest ab, nicht dieser Lauf.
 
-## M5-Handprobe — Verdrahtung (Ribbon, View-Registrierung, Startup-Gate, Register-Persistenz)
+## Verdrahtungs-Handprobe (Bestand seit M4/M5: Ribbon, View-Registrierung, Startup-Gate, Register-Persistenz)
 
 **Was hier steht und warum — Stand nach der Abschluss-Fix-Welle (2026-09-02).** Ursprünglich
 galt die ganze Verdrahtung als unit-untestbar. Das war zu weit gegriffen: nicht die
@@ -276,7 +276,7 @@ für den Prüfling selbst.
 
 ## M4 — getrackter GUI-Smoke-Treiber (2026-09-02)
 
-`npm run smoke:gui` fährt die zehn Punkte der M5-Handprobe seither selbst
+`npm run smoke:gui` fährt die zehn Punkte der Verdrahtungs-Handprobe seither selbst
 (`scripts/gui-smoke.ts`, zwölf Prüfpunkte — V3 und V5 zerfallen in je zwei Hälften, weil
 beide eine Gegenprobe brauchen). Erfüllt CORE-TEST-02 (b): der Hand-Lauf darüber existierte
 genau einmal und wäre beim nächsten Mal wieder Handarbeit gewesen.

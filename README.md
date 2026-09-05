@@ -21,10 +21,12 @@ the actual event/attendee model.
   the counters that are not zero, the error in plain words — and a button to synchronise now,
   for one account or all of them. The last run survives a restart.
 - **An inbox tab.** The last 100 messages from your inbox, with a tick for everything that is
-  already a note. Two actions per row: move it into the vault, or archive it — both server-side,
-  both after a confirmation.
+  already a note. Three actions per row: move it into the vault, archive it — both server-side,
+  both after a confirmation — or, once [TaskNotes](https://github.com/callumalpass/tasknotes) is
+  installed, create a task from it directly.
 - **Commands on a mail note** — re-render from the `.eml`, turn Message-IDs into wikilinks,
-  extract an attachment, reply in your external mail client. Each shows a preview before writing.
+  extract an attachment, reply in your external mail client, create a TaskNotes task from it.
+  Each shows a preview before writing.
 - **Sending.** SMTP through the same account, including iMIP calendar invitations on behalf of
   `calendar-notes`.
 

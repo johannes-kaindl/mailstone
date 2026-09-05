@@ -45,6 +45,11 @@ Grenze bewacht der Compiler, nicht die Aufmerksamkeit eines Reviewers:
 | `imapConnect` | `ImapReadSession` | `examine`, `uidSearchAll`, `uidFetchMessageIds`, `uidFetchHeaders`, `uidFetchBody`, `append` | Sync, Inbox-Liste |
 | `imapConnectWritable` | `ImapWriteSession` | zusätzlich `select`, `uidMove` | **nur** `src/core/inbox/actions.ts` |
 
+Das gilt auf **Konsumenten**-Ebene — der einzige Ort, der die schreibende Session als Typ
+entgegennimmt. **Verdrahtet** (also `imapConnectWritable(...)` aufgerufen) wird sie an drei
+Stellen in `src/main.ts` (Stand M5: Zeilen 524, 534, 557 — Übernehmen, Archivieren, Aufgabe
+anlegen im Posteingangs-Panel), die alle an `actions.ts` durchreichen.
+
 `SyncService` nimmt eine `ImapReadSession` entgegen; `select` steht ihm damit nicht zur
 Verfügung, ein versehentliches `SELECT` im Sync-Pfad ist ein **Typfehler**. Wer den
 schreibenden Einstieg an einer zweiten Stelle verwendet, öffnet den Vertrag dort — und trägt
@@ -151,6 +156,17 @@ sie ist `docs/SMOKE.md` der einzige Beleg: `registerView` und die Ribbon-Umstell
 vendorte `Plugin`-Mock verwirft Titel **und** Callback von `addRibbonIcon`), das
 `onLayoutReady`-Gate, und alles Sichtbare — ob ein Element Pixel hat, wo ein Knopf sitzt, ob
 eine Animation läuft. Dafür gibt es seit M4 den getrackten Treiber `npm run smoke:gui`
-(`scripts/gui-smoke.ts`, 15 Prüfpunkte gegen ein **laufendes** Obsidian) — er braucht den
-CDP-Lock des Dachs und ein offenes Fenster für den Staging-Vault, das Protokoll steht in
+(`scripts/gui-smoke.ts`, 20 Prüfpunkte gegen ein **laufendes** Obsidian, Stand M5) — er braucht
+den CDP-Lock des Dachs und ein offenes Fenster für den Staging-Vault, das Protokoll steht in
 `docs/SMOKE.md`.
+
+**Seit M5 gibt es einen zweiten, getrackten Treiber: `npm run smoke:e2e`**
+(`scripts/e2e-crossplugin.ts`). `smoke:gui` prüft mailstones Hälfte der TaskNotes-Kopplung
+gegen einen Stub auf `app.plugins.plugins.tasknotes` — TaskNotes selbst kennt mailstone dabei
+gar nicht. `smoke:e2e` ist der Naht-Lauf gegen ein **echt installiertes** TaskNotes im
+Staging-Vault: er belegt, dass eine Aufgabe wirklich als Datei im Vault ankommt, mit welcher
+Feldform, und ob ein Fehlschlag als Wert oder als Ausnahme zurückkommt (Spec § 8.1/§ 9). Er
+setzt dieses zweite Plugin voraus und ist deshalb **bewusst nicht Teil von `gate` oder
+`smoke:gui`** — eine Pflichtstrecke darf nicht an einem Nachbarplugin scheitern, das nicht
+jeder Klon hat. Wer ihn ins Gate zieht, macht das Gate von einer Voraussetzung abhängig, die
+dort nicht hingehört.

@@ -246,8 +246,9 @@ davon unberührt — das ist Zahlenerkennung, keine Sprachfrage.
 
 ### 8.1 `tasks.create` — gemessene Form (Task 0, echter Aufruf gegen den Staging-Vault)
 
-Gemessen mit `scripts/probe-tasknotes-create.ts` gegen TaskNotes 4.12.5 im Staging-Vault
-`mailstone` (sechs Aufrufe, danach wieder gelöscht — Messrückstand, kein Fixture).
+Gemessen per direktem Aufruf gegen TaskNotes 4.12.5 im Staging-Vault `mailstone` (sechs Aufrufe,
+danach wieder gelöscht — Messrückstand, kein Fixture; das dafür genutzte Einweg-Skript
+`scripts/probe-tasknotes-create.ts` ist planmäßig nicht Teil des Repos geblieben).
 
 **Akzeptierte Feldnamen:** `title` (einziges Pflichtfeld), `due` (String `YYYY-MM-DD`,
 akzeptiert und im Ergebnis unverändert übernommen), `details` (Freitext-String, unverändert
