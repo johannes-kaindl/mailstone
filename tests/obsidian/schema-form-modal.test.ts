@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { parseFormValues, SchemaFormModal } from "../../src/obsidian/modals/schema-form-modal";
-import { Setting } from "obsidian";
 import type { ObjectSchema } from "../../src/core/commands/schema";
 
 const schema: ObjectSchema = {
@@ -36,26 +35,35 @@ describe("parseFormValues", () => {
   });
 });
 
-/** Alle Knopf-Komponenten unterhalb eines Fake-Elements — der Mock kennt kein querySelector. */
-function knoepfe(el: any): any[] {
+/** Alle Komponenten unterhalb eines Fake-Elements — der Mock kennt kein querySelector.
+ *  Ueber den DOM-Baum statt ueber `Setting.__last`: die Test-Affordanz des Mocks steht nicht
+ *  in Obsidians Typen, und `typecheck:test` prueft gegen die echten. */
+function komponenten(el: unknown): any[] {
   const out: any[] = [];
   const gehe = (n: any): void => {
     if (!n || typeof n !== "object") return;
-    if (n.__component && typeof n.__component.clickCB !== "undefined") out.push(n.__component);
+    if (n.__component) out.push(n.__component);
     for (const k of n.children ?? []) gehe(k);
   };
   gehe(el);
   return out;
 }
 
-/** Formular oeffnen und SOFORT absenden — ohne eine einzige Eingabe. Was dann herauskommt,
- *  ist genau das, was `default` vorbelegt hat. */
-function sofortAbsenden(schema: ObjectSchema): Promise<Record<string, unknown> | null> {
+const knoepfe = (el: unknown): any[] => komponenten(el).filter((c) => "clickCB" in c);
+const eingabe = (el: unknown): any => komponenten(el).find((c) => typeof c.getValue === "function");
+
+/** Formular oeffnen. Absenden ist ein zweiter Schritt: `submit()` schliesst das Modal, und
+ *  `onClose` leert `contentEl` — wer die Komponente danach sucht, findet nichts mehr. */
+function formular(schema: ObjectSchema): { fertig: Promise<Record<string, unknown> | null>; wurzel: unknown } {
   const modal = new SchemaFormModal({} as never, "Titel", schema);
-  const p = modal.pick();
-  const cta = knoepfe((modal as unknown as { contentEl: unknown }).contentEl).find((b) => b.ctaSet);
-  cta?.clickCB?.();
-  return p;
+  const fertig = modal.pick();
+  return { fertig, wurzel: (modal as unknown as { contentEl: unknown }).contentEl };
+}
+
+/** Absenden, ohne eine einzige Eingabe gemacht zu haben — was dann herauskommt, ist genau
+ *  das, was `default` vorbelegt hat. */
+function absenden(f: { wurzel: unknown }): void {
+  knoepfe(f.wurzel).find((b) => b.ctaSet)?.clickCB?.();
 }
 
 // Der `default`-Zweig fuer `format: "date"` und `multiline` kam mit dem M5-Abschluss dazu und
@@ -65,20 +73,25 @@ function sofortAbsenden(schema: ObjectSchema): Promise<Record<string, unknown> |
 describe("SchemaFormModal ehrt `default` im ganzen string-Zweig", () => {
   it("belegt ein Datumsfeld vor — im Wert UND sichtbar in der Komponente", async () => {
     const schema: ObjectSchema = { type: "object", properties: { due: { type: "string", format: "date", default: "2026-09-09" } } };
-    const p = sofortAbsenden(schema);
-    expect(Setting.__last?.components[0]?.getValue()).toBe("2026-09-09");
-    await expect(p).resolves.toEqual({ due: "2026-09-09" });
+    const f = formular(schema);
+    expect(eingabe(f.wurzel)?.getValue()).toBe("2026-09-09");
+    absenden(f);
+    await expect(f.fertig).resolves.toEqual({ due: "2026-09-09" });
   });
 
   it("belegt ein Mehrzeilenfeld vor", async () => {
     const schema: ObjectSchema = { type: "object", properties: { note: { type: "string", format: "multiline", default: "Erste Zeile" } } };
-    const p = sofortAbsenden(schema);
-    expect(Setting.__last?.components[0]?.getValue()).toBe("Erste Zeile");
-    await expect(p).resolves.toEqual({ note: "Erste Zeile" });
+    const f = formular(schema);
+    expect(eingabe(f.wurzel)?.getValue()).toBe("Erste Zeile");
+    absenden(f);
+    await expect(f.fertig).resolves.toEqual({ note: "Erste Zeile" });
   });
 
   it("laesst ein Datumsfeld OHNE default leer — die Vorbelegung ist nicht der Normalfall", async () => {
     const schema: ObjectSchema = { type: "object", properties: { due: { type: "string", format: "date" } } };
-    await expect(sofortAbsenden(schema)).resolves.toEqual({});
+    const f = formular(schema);
+    expect(eingabe(f.wurzel)?.getValue()).toBe("");
+    absenden(f);
+    await expect(f.fertig).resolves.toEqual({});
   });
 });
