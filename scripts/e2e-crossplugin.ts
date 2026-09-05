@@ -89,6 +89,22 @@ function settingControlAusdruck(feld: string): string {
             ?.querySelector(".setting-item-control")`;
 }
 
+/** Sichert den Vorzustand von `api.tasks.create` EINMAL, vor dem allerersten Zugriff dieses
+ *  Laufs — ein eigener Waechter statt eines Vergleichs gegen `undefined`/vorhandene Werte,
+ *  weil ein legitimer Vorzustand nicht von "noch nicht gesichert" unterscheidbar waere.
+ *
+ *  Fix-Runde 1 (Review): ohne diesen Waechter schreibt `spyInstallieren` unbedingt
+ *  `window.__e2eOriginalTasksCreate = api.tasks.create` — bricht ein Lauf ZWISCHEN dieser
+ *  Zeile und `spyEntfernen()` ab (CDP-Verbindungsabriss, Prozess-Kill, Schlafmodus), bleibt
+ *  die Methode im Renderer gewrappt, UND der naechste Lauf saehe den bereits gewrappten Stand
+ *  als "Original" — die Wiederherstellungs-Zusage waere dann dauerhaft falsch, nicht nur fuer
+ *  einen Lauf. Genau das Muster aus `TASKNOTES_SICHERN` in `scripts/gui-smoke.ts` (Zeile
+ *  911 ff.), eine Ebene tiefer (eine Methode statt eines Plugin-Slots). */
+const SPY_SICHERN = `if (!window.__e2eSpyCaptured) {
+     window.__e2eSpyCaptured = true;
+     window.__e2eOriginalTasksCreate = app.plugins.plugins[${JSON.stringify(TASKNOTES_ID)}]?.api?.tasks?.create;
+   }`;
+
 /** Installiert den Spy auf `api.tasks.create`: wrappt und reicht durch, sammelt jeden Aufruf
  *  in `window.__e2eSpyCalls`. Fuer `SYNTHETISCHER_FEHLER_TITEL` wirft er selbst, OHNE
  *  durchzureichen — die einzige geplante Abweichung von "wrap und reiche durch", s. (e). */
@@ -97,7 +113,7 @@ async function spyInstallieren(cdp: Cdp): Promise<void> {
     cdp,
     `const api = app.plugins.plugins[${JSON.stringify(TASKNOTES_ID)}]?.api;
      if (!api) throw new Error("TaskNotes-API nicht da — Voraussetzung fehlt");
-     window.__e2eOriginalTasksCreate = api.tasks.create;
+     ${SPY_SICHERN}
      window.__e2eSpyCalls = [];
      const original = window.__e2eOriginalTasksCreate.bind(api.tasks);
      api.tasks.create = async function (data, opts) {
@@ -111,18 +127,23 @@ async function spyInstallieren(cdp: Cdp): Promise<void> {
   );
 }
 
-/** Schreibt den Original-Wert zurueck und wirft bei Abweichung, statt still durchzulaufen —
- *  genau das Muster aus der Auflage: Identitaetsvergleich, kein Loeschen. */
+/**
+ * Schreibt den VORZUSTAND zurueck — Identitaetsvergleich (`===`), kein Struktur-/Feldvergleich
+ * (ein Wrapper kann strukturell wie das Original aussehen), und wirft bei Abweichung statt
+ * still durchzulaufen. Genau das Muster aus `taskNotesOriginalWiederherstellen()` in
+ * `scripts/gui-smoke.ts`.
+ */
 async function spyEntfernen(cdp: Cdp): Promise<{ beruehrt: boolean; wiederhergestellt: boolean }> {
   return evaluieren(
     cdp,
-    `const api = app.plugins.plugins[${JSON.stringify(TASKNOTES_ID)}]?.api;
+    `if (!window.__e2eSpyCaptured) return { beruehrt: false, wiederhergestellt: true };
+     const api = app.plugins.plugins[${JSON.stringify(TASKNOTES_ID)}]?.api;
      const original = window.__e2eOriginalTasksCreate;
-     if (!original) return { beruehrt: false, wiederhergestellt: true };
      if (api) api.tasks.create = original;
      const wiederhergestellt = api ? api.tasks.create === original : false;
      delete window.__e2eOriginalTasksCreate;
      delete window.__e2eSpyCalls;
+     delete window.__e2eSpyCaptured;
      return { beruehrt: true, wiederhergestellt };`,
   );
 }
@@ -307,11 +328,15 @@ async function pruefeE(cdp: Cdp): Promise<void> {
     `Notice-Text: ${JSON.stringify(meldung)}`,
   );
 
-  const keineDatei = await evaluieren<boolean>(
+  const dateiGefunden = await evaluieren<boolean>(
     cdp,
     `return app.vault.getFiles().some(f => f.path.includes(${JSON.stringify(SYNTHETISCHER_FEHLER_TITEL)}));`,
   );
-  pruefe("(e) keine Aufgaben-Datei für den fehlgeschlagenen Versuch angelegt", !keineDatei, `gefunden: ${String(keineDatei)}`);
+  pruefe(
+    "(e) keine Aufgaben-Datei für den fehlgeschlagenen Versuch angelegt",
+    !dateiGefunden,
+    `gefunden: ${String(dateiGefunden)}`,
+  );
 }
 
 // ── Lauf ────────────────────────────────────────────────────────────────────────────────
