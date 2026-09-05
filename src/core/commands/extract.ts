@@ -24,6 +24,15 @@ export function insertAttachmentLink(content: string, link: string): { ok: true;
   return { ok: true, content: `${content.slice(0, i)}${link}\n\n${content.slice(i)}` };
 }
 
+/** Byte-Gleichheit zweier Anlagen. Bewusst ein voller Vergleich statt einer Pruefsumme: die
+ *  Anlagen liegen ohnehin beide im Speicher, und ein Hash koennte hier nur zusaetzlich
+ *  irren. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 interface LabeledAttachment {
   meta: MailAttachmentMeta;
   /** Menschenlesbares Enum-/Anzeige-Label — der Dateiname, es sei denn zwei Anhaenge teilen
@@ -76,7 +85,7 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
   descriptionKey: "cmd.mail.extractAttachment.desc",
   schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
   schemaFor: extractSchema,
-  needs: { eml: true },
+  needs: { eml: true, attachments: true },
 
   /** Billige Vorpruefung ueber das Frontmatter-Feld: `appliesTo` laeuft bei JEDEM Oeffnen
    *  der Kommandopalette, und dafuer eine .eml zu parsen waere unverhaeltnismaessig. Die
@@ -106,7 +115,14 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
     const data = mail.attachmentData.get(meta.key);
     if (!data) return { ok: false, code: "attachment-missing" };
 
-    const path = ctx.attachmentPathFor(meta.name);
+    // Zweiter Aufruf auf denselben Anhang: liegt am unnummerierten Zielnamen schon eine
+    // BYTE-GLEICHE Datei, wird sie verlinkt statt eine Kopie geschrieben. Verglichen werden die
+    // Bytes und nicht der Name — ein Basename-Vergleich haette zwei gleichnamige, aber
+    // VERSCHIEDENE Anhaenge derselben Mail zusammengeworfen und den zweiten unerreichbar
+    // gemacht (genau der Fall aus Fund 1 der M3b-Nachlese). Entschieden am 2026-09-05.
+    const vorhanden = ctx.existingAttachment(meta.name);
+    const wieder = vorhanden && sameBytes(vorhanden.data, data) ? vorhanden : null;
+    const path = wieder ? wieder.path : ctx.attachmentPathFor(meta.name);
     const link = attachmentLink(path, meta.type);
     const ins = insertAttachmentLink(ctx.content, link);
     if (!ins.ok) return { ok: false, code: ins.code };
@@ -123,7 +139,8 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
         summaryArgs: [meta.name, path],
         diff: [{ field: "attachment", after: path }],
         notes: [{ kind: "update", path: ctx.target.path, content: ins.content, mailId: ctx.target.mailId, zoneHash: hash, expectedContent: ctx.content }],
-        attachment: { path, data },
+        // Kein Schreibvorgang, wenn die Datei schon da ist — nur der Link fehlte noch.
+        ...(wieder ? {} : { attachment: { path, data } }),
       },
     };
   },

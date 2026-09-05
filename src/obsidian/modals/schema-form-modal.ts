@@ -4,7 +4,12 @@ import { validateInput, type FieldSchema, type ObjectSchema } from "../../core/c
 import { trFieldDescription } from "../command-i18n";
 
 /** `String(unknown)` faellt bei Objekten auf "[object Object]" zurueck (eslint
- *  no-base-to-string) — hier reichen die drei Formular-Wertarten. */
+ *  no-base-to-string) — hier reichen die drei Formular-Wertarten.
+ *
+ *  Ueberlappt absichtlich mit der Skalar-Leiter von `show()` (`core/commands/diff.ts`): das
+ *  dort ist ANZEIGE (Vorschau-Text fuer den Menschen), das hier ist der Rundlauf eines
+ *  Formularwerts zurueck in die Schema-Typen. Verschiedene Vertraege, deshalb getrennt —
+ *  vom M3b-Abschluss-Review geprueft und so bestaetigt. */
 function scalarToString(v: unknown): string {
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);

@@ -21,7 +21,7 @@ function ctx(notes: MailNoteRef[]): CommandContext {
     now: NOW, profile,
     target: { mailId: "a@x", path: "Mail/2026/a@x.md", source: "acc/Vault", state: "live" },
     content: notes[0]?.content ?? "", frontmatter: notes[0]?.frontmatter ?? {}, zoneHash: "h",
-    linkFor, attachmentPathFor: (n) => `Anhaenge/${n}`, notes,
+    linkFor, attachmentPathFor: (n) => `Anhaenge/${n}`, existingAttachment: () => null, notes,
   };
 }
 
@@ -37,6 +37,10 @@ describe("relinkOne", () => {
   });
   it("laesst einen leeren Wert leer", () => {
     expect(relinkOne("", linkFor)).toBe("");
+  });
+  it("laesst die ID stehen, wenn der Zielpfad sich nicht als Wikilink schreiben laesst", () => {
+    // `#` beginnt in `[[…]]` eine Ueberschriftsreferenz — der Link zeigte auf etwas anderes.
+    expect(relinkOne("d@x", () => "Mail/2026/Notiz#2")).toBe("d@x");
   });
 });
 
@@ -103,5 +107,33 @@ describe("mail.relink", () => {
     expect(r.ok && r.plan.notes).toHaveLength(25);
     expect(r.ok && r.plan.diff).toHaveLength(20);
     expect(r.ok && r.plan.summaryArgs).toEqual([25]);
+  });
+});
+
+describe("mail.relink: uebersprungene Notizen werden gezaehlt statt verschluckt", () => {
+  /** Der Cache liest `in_reply_to` als Zeichenkette, im Rohtext liegt es aber als
+   *  Block-Skalar — genau die Form, an der `rewriteFm` mit `frontmatter-unparseable`
+   *  aussteigt (Merge-Regel 2). */
+  function notizMitBlockSkalar(): MailNoteRef {
+    return {
+      mailId: "z@x",
+      path: "Mail/2026/z@x.md",
+      frontmatter: { mail_id: "z@x", in_reply_to: "b@x" },
+      zoneHash: "h",
+      content: `---\nmail_id: z@x\nin_reply_to: |\n  b@x\n---\n\n${ZONE}`,
+    };
+  }
+
+  it("fuehrt sie als skip mit Grund im Plan, statt sie zu ueberspringen", () => {
+    const gut = note("y@x", { in_reply_to: "b@x" });
+    const r = RELINK_COMMAND.plan({}, ctx([gut, notizMitBlockSkalar()]));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.notes).toContainEqual({ kind: "skip", path: "Mail/2026/z@x.md", mailId: "z@x", reason: "frontmatter-unparseable" });
+    expect(r.plan.notes.filter((n) => n.kind === "update")).toHaveLength(1);
+  });
+
+  it("meldet nothing-to-do, wenn NUR uebersprungene Notizen zusammenkaemen", () => {
+    expect(RELINK_COMMAND.plan({}, ctx([notizMitBlockSkalar()]))).toEqual({ ok: false, code: "nothing-to-do" });
   });
 });

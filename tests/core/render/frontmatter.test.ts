@@ -35,3 +35,20 @@ describe("buildDerivedFrontmatter", () => {
     expect(fm["attachments"]).toEqual(["bericht.pdf (application/pdf, 5 B)", "notiz.txt (text/plain, 5 B)"]);
   });
 });
+
+describe("Wikilinks aus linkFor (M3b-Nachlese, geparkter Befund 1)", () => {
+  const p = defaultMailProfile();
+  const args = { source: "s", state: "live" as const, syncedAt: new Date(0) };
+
+  it("laesst die Message-ID stehen, wenn der Zielpfad ein wikilink-brechendes Zeichen traegt", async () => {
+    const m = await parseEml(loadFixture("thread-reply"));
+    const fm = buildDerivedFrontmatter(p, { ...args, mail: m, linkFor: () => "Mail/2026/Rechnung [final]" });
+    expect(fm["in_reply_to"]).toBe("alt-001@mail.example.org");
+  });
+
+  it("klammert einen unauffaelligen Pfad weiterhin", async () => {
+    const m = await parseEml(loadFixture("thread-reply"));
+    const fm = buildDerivedFrontmatter(p, { ...args, mail: m, linkFor: () => "Mail/2026/b" });
+    expect(fm["in_reply_to"]).toBe("[[Mail/2026/b]]");
+  });
+});

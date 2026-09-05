@@ -40,6 +40,11 @@ export const RERENDER_COMMAND: CommandDescriptor = {
       source: ctx.target.source,
       state: ctx.target.state === "detached" ? "detached" : "live",
       syncedAt: ctx.now,
+      // ⚠️ Gegenlaeufig zu `mail.relink`, und beides ist so gewollt: dieses Kommando LEITET
+      // `in_reply_to`/`references` aus der .eml NEU ab. Ist die Zielnotiz inzwischen geloescht,
+      // ersetzt es einen bestehenden Wikilink wieder durch die rohe Message-ID. `relinkOne`
+      // fasst umgekehrt einen bestehenden Wikilink NIE an — ihm fehlte dafuer die ID, sie
+      // steht dann nirgends mehr. Wer eines von beiden aendert, liest zuerst das andere.
       linkFor: (id) => ctx.linkFor(id),
     });
     const block = renderMessageBlock(mail);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateInput, type ObjectSchema } from "../../../src/core/commands/schema";
+import { validateInput, type ObjectSchema, emptyChoiceField } from "../../../src/core/commands/schema";
 
 const schema: ObjectSchema = {
   type: "object",
@@ -80,5 +80,23 @@ describe("format: date", () => {
 
   it("lehnt ein unmoegliches Datum ab", () => {
     expect(validateInput(schema, { due: "2026-02-31" }).ok).toBe(false);
+  });
+});
+
+describe("emptyChoiceField", () => {
+  it("nennt das Feld, dessen Auswahlliste leer ist", () => {
+    expect(emptyChoiceField({ type: "object", properties: { name: { type: "string", enum: [] } } })).toBe("name");
+  });
+
+  it("liefert null, wenn die Liste Optionen hat", () => {
+    expect(emptyChoiceField({ type: "object", properties: { name: { type: "string", enum: ["a"] } } })).toBeNull();
+  });
+
+  it("liefert null fuer ein Feld ganz ohne enum — ein freies Textfeld ist bedienbar", () => {
+    expect(emptyChoiceField({ type: "object", properties: { titel: { type: "string" } } })).toBeNull();
+  });
+
+  it("liefert null fuer ein Schema ohne Felder — dafuer oeffnet der Ablauf ohnehin kein Formular", () => {
+    expect(emptyChoiceField({ type: "object", properties: {} })).toBeNull();
   });
 });

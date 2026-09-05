@@ -2,6 +2,7 @@ import { TFile, normalizePath, type App } from "obsidian";
 import { parseEml } from "../core/mime/parse";
 import { emlPathFor, verifyEml } from "../core/commands/eml";
 import { executeCommandPlan, type CommandExecuteDeps, type CommandExecuteResult } from "../core/commands/execute";
+import { emptyChoiceField } from "../core/commands/schema";
 import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type MailNoteRef, type MailTarget } from "../core/commands/types";
 import type { MailProfile } from "../core/mirror/profile";
 import { SchemaFormModal } from "./modals/schema-form-modal";
@@ -57,6 +58,13 @@ async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore):
   return out;
 }
 
+/** Wer die Anhangzugriffe benutzt, ohne sie anzufordern, bekommt sie nicht als stillen
+ *  Fehlwert (falscher Pfad, "nichts vorhanden"), sondern als Ausnahme — der Aufrufer faengt
+ *  sie als `unexpected`. Ein Programmierfehler, kein Nutzerfehler. */
+function anhangzugriffErlaubt(descriptor: CommandDescriptor): void {
+  if (!descriptor.needs?.attachments) throw new Error(`${descriptor.id}: needs.attachments nicht deklariert`);
+}
+
 export async function buildContext(
   deps: CommandFlowDeps,
   descriptor: CommandDescriptor,
@@ -76,6 +84,7 @@ export async function buildContext(
   for (const [id, f] of findMailNotes(app, profile.idField)) index.set(id, f.path.replace(/\.md$/, ""));
 
   const attachmentPaths = new Map<string, string>();
+  const vorhandeneAnhaenge = new Map<string, { path: string; data: Uint8Array }>();
   let mail: Awaited<ReturnType<typeof parseEml>> | undefined;
   if (descriptor.needs?.eml) {
     const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
@@ -90,8 +99,20 @@ export async function buildContext(
     if (!check.ok) return { ok: false, code: check.code };
     mail = parsed;
     // getAvailablePathForAttachment ist async, `plan()` ist synchron — also hier aufloesen.
-    for (const a of parsed.attachments.filter((x) => !x.inline)) {
-      attachmentPaths.set(a.name, await app.fileManager.getAvailablePathForAttachment(a.name, file.path));
+    // Nur fuer Kommandos, die es DEKLARIEREN: `mail.rerender` ruft attachmentPathFor nie, zahlte
+    // die Vault-Zugriffe aber mit (M3b-Nachlese, geparkter Befund 5).
+    if (descriptor.needs.attachments) {
+      for (const a of parsed.attachments.filter((x) => !x.inline)) {
+        const frei = await app.fileManager.getAvailablePathForAttachment(a.name, file.path);
+        attachmentPaths.set(a.name, frei);
+        // Weicht Obsidian auf "<stamm> 1" aus, liegt am blanken Namen bereits eine Datei. Deren
+        // Bytes braucht `plan()`, um zu entscheiden, ob es DIESELBE Anlage ist (dann wird sie
+        // verlinkt) oder eine gleichnamige andere (dann entsteht die zweite Datei).
+        const blank = `${frei.slice(0, frei.lastIndexOf("/") + 1)}${a.name}`;
+        if (blank === frei) continue;
+        const da = app.vault.getAbstractFileByPath(normalizePath(blank));
+        if (da instanceof TFile) vorhandeneAnhaenge.set(a.name, { path: blank, data: new Uint8Array(await app.vault.readBinary(da)) });
+      }
     }
   }
 
@@ -107,7 +128,14 @@ export async function buildContext(
       content: await app.vault.read(file),
       zoneHash: deps.hashes.get(target.mailId),
       linkFor: (id) => index.get(id) ?? null,
-      attachmentPathFor: (name) => attachmentPaths.get(name) ?? `${name}`,
+      attachmentPathFor: (name) => {
+        anhangzugriffErlaubt(descriptor);
+        return attachmentPaths.get(name) ?? `${name}`;
+      },
+      existingAttachment: (name) => {
+        anhangzugriffErlaubt(descriptor);
+        return vorhandeneAnhaenge.get(name) ?? null;
+      },
       ...(mail ? { mail } : {}),
       ...(notes ? { notes } : {}),
     },
@@ -135,6 +163,12 @@ export async function runCommand(
   if (!descriptor.appliesTo(ctx)) return { kind: "error", code: "not-applicable" };
 
   const schema = schemaOf(descriptor, ctx);
+  // Ein Auswahlfeld ohne Option macht das Formular unbedienbar — kein Eintrag im Dropdown, und
+  // jeder Absendeversuch scheitert an `must be one of []`. Statt es zu zeigen und den Nutzer in
+  // eine Sackgasse laufen zu lassen, wird hier abgebrochen (M3b-Nachlese, geparkter Befund 2;
+  // entschieden am 2026-09-05).
+  if (emptyChoiceField(schema) !== null) return { kind: "error", code: "no-choices" };
+
   let input: Record<string, unknown> = {};
   if (Object.keys(schema.properties).length > 0) {
     const picked = await new SchemaFormModal(deps.app, trTitle(descriptor), schema).pick();
