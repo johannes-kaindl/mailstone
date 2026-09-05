@@ -8,7 +8,11 @@ import { validateInput } from "./schema";
 import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type PlanResult } from "./types";
 
 /** Ein Frontmatter-Wert, der schon ein Wikilink ist, bleibt einer — die Rueckrichtung
- *  braeuchte die Message-ID, und die steht dann nirgends mehr. */
+ *  braeuchte die Message-ID, und die steht dann nirgends mehr.
+ *
+ *  ⚠️ `mail.rerender` verhaelt sich hier GEGENLAEUFIG (und das ist gewollt): es leitet die
+ *  Felder aus der .eml neu ab und ersetzt einen Wikilink auf eine geloeschte Notiz wieder
+ *  durch die rohe ID. Wer eines von beiden aendert, liest zuerst das andere. */
 function isWikilink(v: string): boolean {
   return v.startsWith("[[") && v.endsWith("]]");
 }
