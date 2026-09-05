@@ -122,7 +122,10 @@ laufend", sondern **wer nach dem Aufruf die Wahrheit hält**: `calendar-notes` s
 fortlaufend und müsste mit `tasks.*` einen Bestand führen, dessen Wahrheit anderswo liegt — das
 ist Verwaltung und bleibt verboten. mailstone übergibt einmal und lässt los (kein Rückverweis,
 kein späterer Zugriff auf die angelegte Aufgabe) — das ist Delegation an die Quelle, und genau
-das verlangt die Dach-Regel. Details, inkl. der mit `calendar-notes` abgestimmten
+das verlangt die Dach-Regel. **Die Erlaubnis hängt an zwei Bedingungen, nicht an einer:** auch
+auf ausdrücklichen Nutzerbefehl. Ein Automatismus, der ohne Zutun des Nutzers anlegt, wäre auch
+dann Verwaltung, wenn er danach loslässt — deshalb legt der Sync **nie** eine Aufgabe an, nur
+das Kommando und der Knopf im Posteingang tun das. Details, inkl. der mit `calendar-notes` abgestimmten
 REGISTRY-Präzisierung: Spec `docs/superpowers/specs/2026-09-05-m5-tasknotes-design.md` § 7.
 
 **Zwei Vorab-Prüfungen der fremden API bleiben bewusst ungenutzt, beide durch einen echten

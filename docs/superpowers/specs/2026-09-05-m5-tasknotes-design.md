@@ -185,8 +185,17 @@ Die Achse „einmalig" wäre die schlechtere Formulierung, weil sie den nächste
 „ich rufe ja nur selten" als Freibrief zu lesen. Der Vorschlag kam von `calendar-notes` selbst
 (Abstimmung am 2026-09-05).
 
-**Ablageort:** Die Präzisierung geht in die REGISTRY-Zeile und als Eintrag nach
-`_docs/LESSONS.md`. Eine repo-lokale `AGENTS.md` reicht nicht — Nachbar-Sessions sehen nur die
+⚠️ **Beim Gegenlesen kam eine zweite Bedingung dazu, und sie schließt eine echte Lücke.** Die
+Achse prüft nur die *Nachher*-Beziehung und schweigt darüber, **wer den Aufruf auslöst**. Ein
+Plugin, das bei **jeder eingehenden Mail automatisch** eine Aufgabe anlegt und danach loslässt,
+ginge nach der reinen Wahrheits-Achse durch — und befüllt fortlaufend fremden Bestand, über den
+niemand entschieden hat. Erlaubt ist die Delegation deshalb nur **auf ausdrücklichen
+Nutzerbefehl**; beide Hälften sind nötig. mailstone erfüllt das (`mail.createTask` ist ein
+Kommando bzw. ein Knopf, nie ein Automatismus — der Sync legt **nie** eine Aufgabe an), aber die
+Regel trug es vorher nicht, und der nächste Leser hat nur die Regel.
+
+**Ablageort — erledigt am 2026-09-05:** REGISTRY-Zeile präzisiert (Dach `26004e4`), LESSONS-Eintrag
+geschrieben (`_docs` `603341f`). Eine repo-lokale `AGENTS.md` reicht nicht — Nachbar-Sessions sehen nur die
 workspace-weit injizierten Dateien (LESSON vom 2026-09-04, `koda-agent`). **Die Formulierung
 wird `calendar-notes` vor dem Commit gezeigt**, wie am 2026-09-05 zugesagt.
 
