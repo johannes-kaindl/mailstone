@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { syncFailureStatus, syncNotices, syncIdleStatus, createPersister, safeRunCommand, suppressDoneNotice, staleSkipCount } from "../../src/main";
+import { syncFailureStatus, syncNotices, syncIdleStatus, createPersister, safeRunCommand, suppressDoneNotice, staleSkipCount, taskCreatedNotice } from "../../src/main";
 import type { SyncRunResult } from "../../src/core/sync/service";
 import type { RunResult } from "../../src/obsidian/command-flow";
 import type { CommandExecuteResult } from "../../src/core/commands/execute";
@@ -62,6 +62,36 @@ describe("suppressDoneNotice", () => {
 
   it("unterdrueckt NICHT, wenn zusaetzlich zur Aufgabe Notizen geschrieben wurden", () => {
     expect(suppressDoneNotice(okResult({ taskPath: "TaskNotes/Tasks/x.md", updated: 1 }))).toBe(false);
+  });
+
+  // Fix-Runde 2, Important 1: ein leerer taskPath (Bruecke kennt keinen Pfad) muss genauso
+  // unterdruecken wie ein bekannter — sonst liefe die generische "Fertig: 0 Notizen..."-Notice
+  // neben (oder statt) einer eigenen Aufgaben-Notice.
+  it("unterdrueckt auch mit einem LEEREN taskPath — die Aufgabe wurde trotzdem angelegt", () => {
+    expect(suppressDoneNotice(okResult({ taskPath: "" }))).toBe(true);
+  });
+});
+
+// Fix-Runde 2, Important 1: `mail.createTask` kann still bleiben, wenn TaskNotes keinen Pfad
+// zurueckliefert (`if (r.taskPath)` allein verschluckt den leeren String). taskCreatedNotice()
+// ist die reine Entscheidung, welche Notice-Variante das behebt.
+describe("taskCreatedNotice", () => {
+  it("liefert null, wenn keine Aufgabe angelegt wurde", () => {
+    expect(taskCreatedNotice(okResult())).toBeNull();
+  });
+
+  it("liefert die Pfad-Notice mit dem Pfad als Argument", () => {
+    expect(taskCreatedNotice(okResult({ taskPath: "TaskNotes/Tasks/x.md" }))).toEqual({
+      key: "notice.command.taskCreated",
+      args: ["TaskNotes/Tasks/x.md"],
+    });
+  });
+
+  it("liefert die pfadlose Notice, wenn taskPath ein LEERER String ist", () => {
+    expect(taskCreatedNotice(okResult({ taskPath: "" }))).toEqual({
+      key: "notice.command.taskCreatedNoPath",
+      args: [],
+    });
   });
 });
 

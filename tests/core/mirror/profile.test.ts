@@ -28,4 +28,22 @@ describe("withTaskPreset", () => {
     const p = withTaskPreset(defaultMailProfile(), { type: "task" });
     expect(p.onCreate.type).toBe("mail");
   });
+
+  // Fix-Runde 2, Punkt 6: addTaskPresetEntry legt eine neue Zeile mit leerem WERT an
+  // (Platzhalter-Schluessel "field", Wert "") — ohne diesen Filter bekaeme jede neu angelegte
+  // Mail-Notiz ab dem Klick auf "Feld hinzufuegen" ein leeres Frontmatter-Feld.
+  it("ein Eintrag mit leerem Wert schlaegt NICHT ins Frontmatter durch", () => {
+    const p = withTaskPreset(defaultMailProfile(), { field: "" });
+    expect(p.onCreate).not.toHaveProperty("field");
+  });
+
+  it("ein leerer Wert lässt andere, konfigurierte Eintraege unberuehrt", () => {
+    const p = withTaskPreset(defaultMailProfile(), { field: "", status: "open" });
+    expect(p.onCreate).toEqual({ type: "mail", status: "open" });
+  });
+
+  it("nur leere Werte im Preset laesst das Profil unveraendert (identisches Objekt)", () => {
+    const p = defaultMailProfile();
+    expect(withTaskPreset(p, { field: "" })).toBe(p);
+  });
 });

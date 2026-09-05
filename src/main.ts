@@ -178,6 +178,23 @@ export function suppressDoneNotice(r: Extract<CommandExecuteResult, { ok: true }
   return wroteNothing && (r.openedUrl === true || r.taskPath !== undefined);
 }
 
+/** Notice fuer eine angelegte Aufgabe — oder `null`, wenn keine angelegt wurde. `taskPath`
+ *  ist bei einem erfolgreichen `mail.createTask` IMMER gesetzt (s. executeCommandPlan), kann
+ *  aber ein leerer String sein: die TaskNotes-Bruecke liefert "" statt eines Pfads, wenn die
+ *  fremde `tasks.create`-Antwort kein `path`-Feld traegt (Fix-Runde 2, Important 1 — die
+ *  Bruecke ist ausdruecklich gegen eine fremde API gebaut, deren Form sich aendern darf).
+ *  `if (r.taskPath)` allein wuerde diesen Fall verschlucken: die Aufgabe ist angelegt, aber
+ *  weder die "Fertig"-Notice (unterdrueckt, s.o.) noch die eigene Notice sagt das. Reine
+ *  Funktion, damit beide Zweige ohne Obsidian-App pruefbar sind. */
+export function taskCreatedNotice(
+  r: Extract<CommandExecuteResult, { ok: true }>,
+): { key: "notice.command.taskCreated"; args: [string] } | { key: "notice.command.taskCreatedNoPath"; args: [] } | null {
+  if (r.taskPath === undefined) return null;
+  return r.taskPath
+    ? { key: "notice.command.taskCreated", args: [r.taskPath] }
+    : { key: "notice.command.taskCreatedNoPath", args: [] };
+}
+
 /** Wie viele uebersprungene Plaene an einem zwischenzeitlichen Schreibvorgang scheiterten
  *  (Fund 2, M3b-Nachlese: der Lost-Update-Schutz in vaultPlanExecutor). Der reine Zaehler in
  *  "Done: … skipped" sagt nicht, WARUM — ohne diese Zahl waere das nur im Log nachvollziehbar. */
@@ -624,7 +641,8 @@ export default class MailstonePlugin extends Plugin {
     const staleSkips = staleSkipCount(r.skipped);
     if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
     if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
-    if (r.taskPath) notify.info("notice.command.taskCreated", r.taskPath);
+    const taskNotice = taskCreatedNotice(r);
+    if (taskNotice) notify.info(taskNotice.key, ...taskNotice.args);
   }
 
   /** Task 6, letzter Schritt der Posteingangs-Kette: die Notiz ist jetzt da — ab hier ist der
@@ -661,7 +679,8 @@ export default class MailstonePlugin extends Plugin {
     if (outcome.kind === "error") return { kind: "error", code: `error.command.${outcome.code}`, adopted: true };
     const r = outcome.result;
     if (!r.ok) return { kind: "error", code: `error.command.${r.code}`, adopted: true };
-    if (r.taskPath) notify.info("notice.command.taskCreated", r.taskPath);
+    const taskNotice = taskCreatedNotice(r);
+    if (taskNotice) notify.info(taskNotice.key, ...taskNotice.args);
     return { kind: "done" };
   }
 

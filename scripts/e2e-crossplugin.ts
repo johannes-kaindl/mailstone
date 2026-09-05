@@ -21,6 +21,12 @@
  * Stub in `scripts/gui-smoke.ts` (T-A) abgedeckt, wo das Deaktivieren den eigenen Stub trifft,
  * kein fremdes Plugin.
  *
+ * Machbar waere (f) auch hier — gegen ein ECHTES TaskNotes statt des Stubs —, aber nur ueber
+ * eine ZWEITINSTANZ von Obsidian (eigenes `--user-data-dir`, eigener Debug-Port; Rezept in der
+ * Dach-`AGENTS.md` unter "Staging-Vaults"): dort darf deaktiviert werden, ohne eine fremde
+ * Sitzung zu treffen. Nicht gebaut, weil dieser Lauf schon ohne Zweitinstanz auskommt — ein
+ * Zeiger fuer den naechsten, der die Luecke wirklich schliessen will.
+ *
  * Einzige Beruehrung von geteiltem Zustand: `api.tasks.create` wird gewrappt (nicht ersetzt),
  * der Original-Wert vorher gesichert und im `finally` per Identitaetsvergleich (`===`)
  * zurueckgeschrieben — bei Abweichung wirft der Lauf, statt still durchzulaufen (Vorlage:
@@ -155,7 +161,11 @@ async function notizAnlegenUndOeffnen(cdp: Cdp): Promise<void> {
      const bestehend = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE_PATH)});
      if (bestehend) await app.vault.delete(bestehend);
      const datei = await app.vault.create(${JSON.stringify(NOTE_PATH)}, inhalt);
-     const leaf = app.workspace.getLeaf(false);
+     // getLeaf(true): NEUES Leaf statt des aktiven — sonst ersetzt der Lauf den Inhalt eines
+     // fremden, schon offenen Leafs, ohne ihn hinterher wiederherzustellen (dieselbe Gattung
+     // wie der behobene Critical in gui-smoke.ts, eine Stufe kleiner). gui-smoke.ts nimmt an
+     // derselben Stelle bereits getLeaf(true) — hier nachgezogen (Fix-Runde 2, Punkt 7).
+     const leaf = app.workspace.getLeaf(true);
      await leaf.openFile(datei);
      return true;`,
   );
@@ -172,7 +182,8 @@ async function notizAufraeumen(cdp: Cdp): Promise<void> {
 }
 
 /** Loescht eine per Pfad bekannte, wirklich von TaskNotes angelegte Aufgaben-Notiz —
- *  Messrueckstand, kein Fixture (dieselbe Regel wie `scripts/probe-tasknotes-create.ts`). */
+ *  Messrueckstand, kein Fixture (Spec § 8.1: der Messbefund gegen TaskNotes 4.12.5, nicht ein
+ *  eigenes Skript — `scripts/probe-tasknotes-create.ts` existiert nicht mehr). */
 async function aufgabeLoeschen(cdp: Cdp, pfad: string): Promise<void> {
   if (!pfad) return;
   await evaluieren(
@@ -309,8 +320,8 @@ async function pruefeBCD(cdp: Cdp): Promise<string> {
 /** (e): ein Fehlschlag kommt als Wert zurück, nicht als Ausnahme. Der Spy löst dafür eine
  *  SYNTHETISCHE Störung aus (s. Kommentar am Modul-Kopf) — TaskNotes' echter Wurf bei leerem
  *  Titel ist über die UI nicht erreichbar, weil mailstones eigenes Schema (minLength: 1) das
- *  Formular vorher blockiert (Spec § 8.1 misst den echten Wurf bereits per
- *  `probe-tasknotes-create.ts`, Task 0 — hier zählt nur, dass mailstones Bruecke ihn NICHT
+ *  Formular vorher blockiert (Spec § 8.1 haelt den echten Wurf als Messbefund gegen
+ *  TaskNotes 4.12.5 fest, Task 0 — hier zählt nur, dass mailstones Bruecke ihn NICHT
  *  weiterreicht). */
 async function pruefeE(cdp: Cdp): Promise<void> {
   await clearNotices(cdp);

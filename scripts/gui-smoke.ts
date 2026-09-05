@@ -1,6 +1,8 @@
 /**
  * GUI-Smoke-Treiber — fährt die Verdrahtungs-Prüfpunkte aus `docs/SMOKE.md`
- * (§ „M5-Handprobe — Verdrahtung“) gegen ein **laufendes** Obsidian statt von Hand.
+ * (§ „Verdrahtungs-Handprobe (Bestand seit M4/M5: …)“ — NICHT die weiter unten stehenden
+ * „M5 Task 8“/„M5 Task 9“, das sind die TaskNotes-Abschnitte) gegen ein **laufendes**
+ * Obsidian statt von Hand.
  *
  * Warum getrackt (CORE-TEST-02 b): Am 2026-09-02 lief diese Runde schon einmal von Hand,
  * mit einem Treiber, der nur im Session-Scratchpad lag. Sie belegte zehn Punkte, die kein
@@ -901,6 +903,17 @@ async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
 // `model.config` per typeof — ein Objekt an genau dieser Stelle im Plugin-Register genuegt.
 // `app.plugins.plugins` ist ein PLAIN OBJECT (kein Klassensystem), ein Eintrag darin laesst
 // sich also ohne echtes Fremd-Plugin setzen und wieder entfernen.
+//
+// ⚠️ Ein Abbruch (Ctrl-C) INNERHALB dieses Abschnitts laesst den Slot mit dem STUB stehen,
+// statt die echte Registrierung wiederherzustellen — `taskNotesOriginalWiederherstellen()`
+// (unten) laeuft nur im `finally` von `main()`, das ein SIGINT nicht erreicht. Das heilt sich
+// von selbst (ein Plugin-Reload im Staging-Vault, oder der naechste Lauf: `TASKNOTES_SICHERN`
+// greift beim ersten Zugriff und die Einmal-Sicherung im Speicher ist ohnehin futsch —
+// `window.__smokeTaskNotesOriginal` lebt nur im Renderer-Prozess und ueberlebt einen Reload
+// nicht, das naechste Mal sichert also wieder das echte Original), kostet bis dahin aber eine
+// andere Session ihre TaskNotes-Registrierung. Einen SIGINT/SIGTERM-Handler bewusst NICHT hier
+// gebaut — dieselbe Luecke besteht in `scripts/e2e-crossplugin.ts` und gehoert in einen eigenen
+// Vorgang ueber beide Treiber, nicht in eine Ad-hoc-Reparatur an einem.
 
 const TASKNOTES_SLOT = JSON.stringify(TASKNOTES_PLUGIN_ID);
 
@@ -973,17 +986,6 @@ async function taskNotesOriginalWiederherstellen(cdp: Cdp): Promise<{ beruehrt: 
      delete window.__smokeTaskNotesCaptured;
      delete window.__smokeTaskNotesOriginal;
      return { beruehrt: true, wiederhergestellt };`,
-  );
-}
-
-/** Nur fuer Diagnose/Gegenprobe von aussen: der aktuelle Wert im Slot (Identitaet geht beim
- *  Rueckweg durch CDP verloren — taugt nur zum Feststellen von PRAESENZ/Manifest-Id, nicht
- *  zum Identitaetsvergleich, der bleibt `taskNotesOriginalWiederherstellen()` vorbehalten). */
-async function taskNotesSlotLesen(cdp: Cdp): Promise<{ da: boolean; manifestId: string | null }> {
-  return evaluieren<{ da: boolean; manifestId: string | null }>(
-    cdp,
-    `const p = app.plugins.plugins[${TASKNOTES_SLOT}];
-     return { da: !!p, manifestId: p && p.manifest ? p.manifest.id : null };`,
   );
 }
 

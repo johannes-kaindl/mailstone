@@ -171,7 +171,7 @@ export class InboxPanel {
     const uebernehmen = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.adopt") });
     const archivieren = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.archive") });
     const knoepfeAlle = [uebernehmen, archivieren];
-    // Dritte Aktion NUR wenn TaskNotes erreichbar ist — kein Ausgraben, sie fehlt sonst ganz
+    // Dritte Aktion NUR wenn TaskNotes erreichbar ist — kein Ausgrauen, sie fehlt sonst ganz
     // (Task 6, Spec § 4).
     if (this.host.canCreateTask()) {
       const aufgabe = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.createTask") });

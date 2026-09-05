@@ -120,6 +120,7 @@ export const en = {
   "notice.command.staleSkip": "{0} note(s) were skipped: they changed while the preview was open, so nothing was overwritten. Run the command again if you still want it applied.",
   "notice.command.attachment": "Attachment saved as {0}.",
   "notice.command.taskCreated": "Task created: {0}.",
+  "notice.command.taskCreatedNoPath": "Task created.",
 
   "error.command.busy": "A synchronisation or another command is running. Try again in a moment.",
   "error.command.invalid-input": "The values you entered are not valid.",
@@ -327,6 +328,7 @@ export const de: typeof en = {
   "notice.command.staleSkip": "{0} Notiz(en) wurden übersprungen: Sie haben sich geändert, während die Vorschau offen war, deshalb wurde nichts überschrieben. Bei Bedarf das Kommando erneut ausführen.",
   "notice.command.attachment": "Anhang gespeichert als {0}.",
   "notice.command.taskCreated": "Aufgabe angelegt: {0}.",
+  "notice.command.taskCreatedNoPath": "Aufgabe angelegt.",
 
   "error.command.busy": "Es läuft gerade eine Synchronisation oder ein anderes Kommando. Bitte gleich noch einmal versuchen.",
   "error.command.invalid-input": "Die eingegebenen Werte sind ungültig.",

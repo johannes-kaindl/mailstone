@@ -62,9 +62,17 @@ export function defaultMailProfile(): MailProfile {
  *     wuerde, waere das ein stiller Datenschaden an `mail_id` & Co. — bewacht von
  *     `tests/core/mirror/plan.test.ts` ("Preset gegen ein verwaltetes Feld: das verwaltete
  *     Feld gewinnt"). */
+/** Ein Eintrag mit leerem Wert ("") ist noch nicht konfiguriert — `addTaskPresetEntry`
+ *  (settings-tab.ts) legt eine neue Zeile genau so an (Platzhalter-Schluessel, leerer Wert),
+ *  und ohne diesen Filter bekaeme jede neu angelegte Mail-Notiz ab dem Klick auf "Feld
+ *  hinzufuegen" ein leeres Frontmatter-Feld, bevor der Nutzer ueberhaupt einen Wert eingegeben
+ *  hat (Fix-Runde 2, Punkt 6). Ein bewusst leerer String als WERT eines fertig benannten
+ *  Presets ist damit nicht darstellbar — das war vor dieser Zeile ohnehin schon der einzige
+ *  Weg, ein Preset "abzuschalten", ohne die Zeile zu loeschen. */
 export function withTaskPreset(profile: MailProfile, taskPreset: Record<string, FmVal>): MailProfile {
-  if (Object.keys(taskPreset).length === 0) return profile;
-  return { ...profile, onCreate: { ...taskPreset, ...profile.onCreate } };
+  const configured = Object.fromEntries(Object.entries(taskPreset).filter(([, v]) => v !== ""));
+  if (Object.keys(configured).length === 0) return profile;
+  return { ...profile, onCreate: { ...configured, ...profile.onCreate } };
 }
 
 export function identityKeys(p: MailProfile): string[] {

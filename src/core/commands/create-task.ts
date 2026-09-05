@@ -2,8 +2,11 @@ import { fmKeyFor } from "../mirror/profile";
 import { validateInput, type ObjectSchema } from "./schema";
 import type { CommandContext, CommandDescriptor, CommandProbe, PlanResult } from "./types";
 
-/** Betreff nur als Vorbelegung fuer das Formular (Beschreibungstext) — die tatsaechliche
- *  Titelwahl trifft immer der Nutzer, `plan()` uebernimmt niemals ungefragt den Betreff. */
+/** Betreff als Vorbelegung fuer das Titelfeld des Formulars — seit `default: subject` (unten)
+ *  ist er der tatsaechliche Startwert: wer das Feld unveraendert absendet, uebernimmt ihn.
+ *  `plan()` selbst uebernimmt den Betreff trotzdem nie ungefragt, wenn niemand das Formular
+ *  ausfuellt (Abbruch, Automatisierung ohne Formular) — die Vorbelegung ist eine Erleichterung
+ *  fuer den Nutzer, keine stille Zuweisung. */
 function subjectOf(probe: CommandProbe): string {
   const key = fmKeyFor(probe.profile, "subject");
   const raw = key ? probe.frontmatter[key] : undefined;
@@ -21,7 +24,12 @@ function createTaskSchema(ctx: CommandContext): ObjectSchema {
         // Betreff als Vorbelegung (Spec § 3: "Titel (aus dem Betreff vorbelegt)") — nur
         // gesetzt, wenn es einen gibt, sonst startet das Feld leer statt mit "".
         ...(subject !== "" ? { default: subject } : {}),
-        description: subject !== "" ? `Task title (default: ${subject}).` : "Task title.",
+        // `description` ist der reine i18n-Notfall: `trFieldDescription` (command-i18n.ts)
+        // bevorzugt `descriptionKey`, und der ist unten UND in strings.ts (en/de) gesetzt —
+        // dieser Text erreicht den Nutzer also nur, wenn der Key dort fehlt. Deshalb bewusst
+        // ohne den Betreff: eine Variable in einem Text, den niemand sieht, waere Ballast, der
+        // wie der eigentliche Erklaerweg aussieht.
+        description: "Task title.",
         descriptionKey: "cmd.mail.createTask.field.title",
       },
       due: {

@@ -100,12 +100,25 @@ export class SchemaFormModal extends Modal {
       return;
     }
     if (field.type === "array" || (field.type === "string" && field.format === "multiline")) {
-      setting.addTextArea((c) => c.onChange((v) => { this.values[key] = v; }));
+      setting.addTextArea((c) => {
+        // schema.ts erlaubt `default` auf dem GANZEN string-Zweig, nicht nur auf Klartext —
+        // ohne diese Zeile verwarf gerade dieser Zweig eine Vorbelegung stillschweigend
+        // (Fix-Runde 2, Punkt 5).
+        if (field.type === "string" && field.default !== undefined) {
+          this.values[key] = field.default;
+          c.setValue(field.default);
+        }
+        c.onChange((v) => { this.values[key] = v; });
+      });
       return;
     }
     if (field.type === "string" && field.format === "date") {
       setting.addText((c) => {
         c.inputEl.type = "date";
+        if (field.default !== undefined) {
+          this.values[key] = field.default;
+          c.setValue(field.default);
+        }
         c.onChange((v) => { this.values[key] = v; });
       });
       return;

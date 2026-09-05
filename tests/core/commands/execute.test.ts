@@ -111,6 +111,17 @@ describe("createTask im Plan", () => {
     expect(r).toMatchObject({ ok: true, taskPath: "TaskNotes/Tasks/x.md" });
   });
 
+  // Fix-Runde 2, Important 1: TaskNotes kann ohne `path`-Feld antworten (Bruecke liefert dann
+  // "" statt undefined) — der leere String muss trotzdem als taskPath durchgereicht werden,
+  // sonst kann main.ts nicht zwischen "keine Aufgabe angelegt" und "Aufgabe angelegt, aber
+  // ohne bekannten Pfad" unterscheiden.
+  it("reicht einen leeren Pfad als taskPath durch, wenn die Bruecke keinen Pfad kennt", async () => {
+    const createTask = vi.fn(async () => ({ ok: true as const, path: "" }));
+    const d = deps({ createTask, notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) } });
+    const r = await executeCommandPlan(plan({ notes: [], createTask: createTaskReq }), d);
+    expect(r).toMatchObject({ ok: true, taskPath: "" });
+  });
+
   it("meldet task-create-failed, wenn der Port ablehnt", async () => {
     const d = deps({
       createTask: vi.fn(async () => ({ ok: false as const, code: "task-create-failed" as const })),
