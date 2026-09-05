@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-05
+
 ### Neu
 - **Aufgabe aus einer Mail anlegen (M5).** Aus einer Mail-Notiz oder direkt aus dem Posteingang
   lässt sich jetzt eine Aufgabe im Nachbarplugin TaskNotes anlegen (`mail.createTask`), mit
