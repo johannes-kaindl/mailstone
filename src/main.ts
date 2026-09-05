@@ -1,4 +1,4 @@
-import { Notice, Plugin, SuggestModal, getLanguage, type App } from "obsidian";
+import { Notice, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
 import { loadSettings, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
 import { t } from "./vendor/code-kit/i18n";
@@ -14,6 +14,8 @@ import type { SecretStore } from "./core/send/secrets";
 import { imapConnect, imapConnectWritable } from "./core/imap/client";
 import { fetchInbox as fetchInboxCore } from "./core/inbox/fetch";
 import { adoptMessage, archiveMessage, type InboxActionCode } from "./core/inbox/actions";
+import { createTaskFromInbox } from "./core/inbox/create-task-flow";
+import { pollUntil } from "./obsidian/poll";
 import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge } from "./obsidian/calendar-notes-bridge";
 import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
 import { dueAccounts, TICK_MS } from "./core/sync/schedule";
@@ -21,16 +23,19 @@ import { createBusyGuard } from "./core/sync/busy";
 import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
-import { mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
+import { findNotePathForMailId, mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
+import { withTaskPreset } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
+import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
 import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/execute";
 import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
+import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-bridge";
 import { trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
 import type { CockpitHost } from "./obsidian/views/cockpit-panel";
-import { createInboxHost } from "./obsidian/views/inbox-host";
+import { createInboxHost, type CreateTaskOutcome } from "./obsidian/views/inbox-host";
 import type { InboxHost } from "./obsidian/views/inbox-panel";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "./obsidian/views/mailstone-view";
@@ -164,11 +169,30 @@ export async function safeRunCommand(run: () => Promise<RunResult>): Promise<Run
 /** Ob das Standard-Notice "Done: {0} note(s) written, {1} skipped." unterdrueckt wird.
  *  mail.replyExternal plant per Bauart keine Notizen — nur eine externe URL —, deshalb waere
  *  "Done: 0 note(s) written, 0 skipped." dort keine Information, sondern eine Verwirrung
- *  (M3b-Nachlese, Sammel-Review). Reine Funktion, damit die Bedingung ohne Obsidian-App
- *  pruefbar ist. */
+ *  (M3b-Nachlese, Sammel-Review). mail.createTask ist derselbe Fall mit einer TaskNotes-
+ *  Aufgabe statt einer URL (Fix-Runde 1, Task 5): ohne diese Erweiterung liefe die eigene
+ *  "Aufgabe angelegt: …"-Notice neben einem irrefuehrenden "nichts geschrieben". Reine
+ *  Funktion, damit die Bedingung ohne Obsidian-App pruefbar ist. */
 export function suppressDoneNotice(r: Extract<CommandExecuteResult, { ok: true }>): boolean {
   const wroteNothing = r.created + r.updated === 0 && r.skipped.length === 0 && !r.attachmentPath;
-  return wroteNothing && r.openedUrl === true;
+  return wroteNothing && (r.openedUrl === true || r.taskPath !== undefined);
+}
+
+/** Notice fuer eine angelegte Aufgabe — oder `null`, wenn keine angelegt wurde. `taskPath`
+ *  ist bei einem erfolgreichen `mail.createTask` IMMER gesetzt (s. executeCommandPlan), kann
+ *  aber ein leerer String sein: die TaskNotes-Bruecke liefert "" statt eines Pfads, wenn die
+ *  fremde `tasks.create`-Antwort kein `path`-Feld traegt (Fix-Runde 2, Important 1 — die
+ *  Bruecke ist ausdruecklich gegen eine fremde API gebaut, deren Form sich aendern darf).
+ *  `if (r.taskPath)` allein wuerde diesen Fall verschlucken: die Aufgabe ist angelegt, aber
+ *  weder die "Fertig"-Notice (unterdrueckt, s.o.) noch die eigene Notice sagt das. Reine
+ *  Funktion, damit beide Zweige ohne Obsidian-App pruefbar sind. */
+export function taskCreatedNotice(
+  r: Extract<CommandExecuteResult, { ok: true }>,
+): { key: "notice.command.taskCreated"; args: [string] } | { key: "notice.command.taskCreatedNoPath"; args: [] } | null {
+  if (r.taskPath === undefined) return null;
+  return r.taskPath
+    ? { key: "notice.command.taskCreated", args: [r.taskPath] }
+    : { key: "notice.command.taskCreatedNoPath", args: [] };
 }
 
 /** Wie viele uebersprungene Plaene an einem zwischenzeitlichen Schreibvorgang scheiterten
@@ -281,7 +305,9 @@ export default class MailstonePlugin extends Plugin {
     const hashes = { get: (k: string) => this.zoneHashes[k] ?? null, set: (k: string, v: string) => { this.zoneHashes[k] = v; } };
     this.syncService = createSyncService({
       accounts: () => this.settings.accounts,
-      profile: () => this.settings.profile,
+      // taskPreset (Settings) fliesst nur ueber onCreate ein — planMailNote wendet onCreate
+      // ausschliesslich im create-Zweig an (M5 § 5).
+      profile: () => withTaskPreset(this.settings.profile, this.settings.taskPreset),
       secret: (id) => secrets.get(id),
       transport: () => nodeSocketTransport(),
       index: () => mailIndex(this.app, this.settings.profile),
@@ -329,6 +355,11 @@ export default class MailstonePlugin extends Plugin {
         // steht gar nicht erst in der Palette — statt dort zu stehen und eine Fehlermeldung
         // zu zeigen.
         checkCallback: (checking: boolean): boolean => {
+          // Pruefstelle 1 (Spec § 3): mail.createTask nur anbieten, wenn TaskNotes da ist und
+          // seine Form stimmt — src/core/** darf die fremde API nicht kennen, appliesTo() weiss
+          // davon also nichts. Faellt die Pruefung durch, FEHLT das Kommando in der Palette,
+          // statt ausgegraut zu erscheinen.
+          if (descriptor.id === CREATE_TASK_COMMAND.id && readTaskNotesApi(this.app) === null) return false;
           const probe = probeFor(this.app, this.settings.profile);
           if (!probe || !descriptor.appliesTo(probe)) return false;
           if (!checking) void this.runMailCommand(descriptor, notify);
@@ -377,7 +408,7 @@ export default class MailstonePlugin extends Plugin {
           const r = await importEmlFolder(
             {
               app: this.app,
-              profile: this.settings.profile,
+              profile: withTaskPreset(this.settings.profile, this.settings.taskPreset),
               hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
               now: () => new Date(),
             },
@@ -510,12 +541,49 @@ export default class MailstonePlugin extends Plugin {
         if (!acc) return "";
         return kind === "adopt" ? acc.folders.allowlist : acc.folders.archive;
       },
+      // Pruefstelle 1 (Spec § 4, dieselbe Logik wie beim Kommando in checkCallback oben):
+      // die dritte Zeilen-Aktion fehlt ganz, statt ausgegraut dazustehen, wenn TaskNotes nicht
+      // erreichbar ist.
+      taskNotesAvailable: () => readTaskNotesApi(this.app) !== null,
+      createTask: async (accountId, uid, mailId) => {
+        const acc = konto(accountId);
+        if (!acc) return { kind: "error", code: "gone", adopted: false };
+        const pw = password(acc);
+        if (!pw.ok) return { kind: "error", code: pw.code, adopted: false };
+        const kette = await createTaskFromInbox(
+          {
+            // imapConnectWritable, nicht imapConnect: dieselbe Begruendung wie bei adopt oben —
+            // schreibfaehige Sitzungen entstehen NUR ueber diesen Weg.
+            connect: () => imapConnectWritable(nodeSocketTransport(), connectOpts(acc, pw.wert)),
+            busy: this.busy,
+            // Fix-Runde 1, Important 3: NICHT direkt `syncService.syncAccount` — nur `runSync`
+            // persistiert Zone-Hashes/UID-Cache im `finally` (main.ts runSync-Kommentar). Ohne
+            // diesen Weg blieben auf dem sync-timeout-Pfad geschriebene Notizen unpersistiert
+            // und gaelten beim naechsten Lauf als fremd editiert. Nebengewinn: das Cockpit
+            // zeigt die bis zu 30s laufende Kette als "laeuft" an (cockpitRuns).
+            syncAccount: (id) => this.runSync(notify, false, [id]),
+            // Fix-Runde 1, Minor 4+5: gezielte Suche mit Abbruch beim Treffer statt eines
+            // vollen Index-Aufbaus pro Poll-Tick, und auf beiden Seiten normalisiert — sonst
+            // triff eine von Hand mit spitzen Klammern geschriebene `mail_id` nie.
+            notePathFor: (id) => findNotePathForMailId(this.app, this.settings.profile, id),
+            pollUntil: pollUntil(window),
+          },
+          { uid, sourceFolder: acc.folders.inbox, targetFolder: acc.folders.allowlist, accountId, mailId },
+        );
+        if (!kette.ok) return { kind: "error", code: kette.code, adopted: kette.adopted };
+        // Ab hier ist die Notiz da — derselbe Kommando-Weg wie im Notiz-Fall (Formular +
+        // Vorschau), kein zweiter Formular- und Fehlerpfad (Task-Brief).
+        return this.runCreateTaskForNote(kette.notePath, notify);
+      },
       // Die Notiz entsteht im Sync, nicht in der Aktion (Spec § 4) — nach einem erfolgreichen
       // Uebernehmen also einen (nicht-stillen) Lauf fuer GENAU dieses Konto anstossen. Die
       // Zusage wird durchgereicht (nicht `void`): der Host wartet auf sie, bevor er selbst neu
       // laedt (I1) — `runSync` gibt sie ohnehin bereits zurueck.
       syncNow: (accountId) => this.runSync(notify, false, [accountId]).then(() => undefined),
-      notifyError: (code) => notify.error(`inbox.error.${code}`),
+      // Fix-Runde 1, Important 2: die dritte Zeilen-Aktion (Task 6) kann Codes aus dem
+      // Kommando-Weg durchreichen (`error.command.*`), nicht nur InboxActionCode-Werte
+      // (`inbox.error.*`) — ein Punkt im Code heisst "bereits vollstaendig qualifiziert".
+      notifyError: (code) => notify.error(code.includes(".") ? code : `inbox.error.${code}`),
       openSettings: () => {
         const setting = (this.app as unknown as {
           setting?: { open(): void; openTabById(id: string): void };
@@ -546,6 +614,7 @@ export default class MailstonePlugin extends Plugin {
       notes: vaultPlanExecutor(this.app, this.hashStore()),
       writeAttachment: writeAttachment(this.app),
       openExternal: (url: string) => { window.open(url); },
+      createTask: (req) => createTaskViaBridge(this.app, req),
     };
   }
 
@@ -572,6 +641,47 @@ export default class MailstonePlugin extends Plugin {
     const staleSkips = staleSkipCount(r.skipped);
     if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
     if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
+    const taskNotice = taskCreatedNotice(r);
+    if (taskNotice) notify.info(taskNotice.key, ...taskNotice.args);
+  }
+
+  /** Task 6, letzter Schritt der Posteingangs-Kette: die Notiz ist jetzt da — ab hier ist der
+   *  Weg identisch zum Notiz-Fall (`mail.createTask` aus der Befehlspalette), deshalb wird er
+   *  nicht zweimal gebaut.
+   *
+   *  Fix-Runde 1, Important 1: die Notiz wird NICHT mehr geoeffnet — der Nutzer hat "Aufgabe
+   *  erstellen" geklickt, nicht "Notiz oeffnen", und ein ungefragt umgeschalteter Hauptbereich
+   *  ist eine Nebenwirkung, die niemand bestellt hat. Statt dessen bekommt `runCommand()` die
+   *  Ziel-Notiz explizit als vierten Parameter: ohne den Parameter waere die aktive View beim
+   *  Klick die `MailstoneView` selbst (keine FileView), und `getActiveFile()` griffe auf
+   *  Obsidians "zuletzt aktive Datei"-Fallback zurueck — trifft der die falsche Notiz, entstuende
+   *  eine Aufgabe mit `noteLink` auf die falsche Mail, ohne Fehlermeldung (appliesTo() ist fuer
+   *  jede Mail-Notiz true). */
+  private async runCreateTaskForNote(notePath: string, notify: Notifier): Promise<CreateTaskOutcome> {
+    const file = this.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return { kind: "error", code: "error.command.not-applicable", adopted: true };
+    let outcome: RunResult;
+    try {
+      outcome = await safeRunCommand(() => runCommand(
+        { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
+        this.commandExecuteDeps(),
+        CREATE_TASK_COMMAND,
+        file,
+      ));
+    } finally {
+      await this.saveSettings();
+    }
+    if (outcome.kind === "cancelled") return { kind: "cancelled" };
+    // Fix-Runde 1, Important 2: diese Codes sind CommandErrorCode/CommandExecuteResult-Werte,
+    // keine InboxActionCode-Werte — `strings.ts` fuehrt sie unter `error.command.*`, nicht
+    // unter `inbox.error.*`. Der volle, bereits qualifizierte Schluessel geht durch bis zum
+    // Host, dessen `notifyError` einen Punkt im Code als "schon qualifiziert" erkennt.
+    if (outcome.kind === "error") return { kind: "error", code: `error.command.${outcome.code}`, adopted: true };
+    const r = outcome.result;
+    if (!r.ok) return { kind: "error", code: `error.command.${r.code}`, adopted: true };
+    const taskNotice = taskCreatedNotice(r);
+    if (taskNotice) notify.info(taskNotice.key, ...taskNotice.args);
+    return { kind: "done" };
   }
 
   /** Ein Takt des Weckers: nur die faelligen Konten, und die Faelligkeit wird bei jedem Schlag

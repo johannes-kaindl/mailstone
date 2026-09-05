@@ -5,7 +5,7 @@ function header(felder: string): Uint8Array {
   return new TextEncoder().encode(`${felder}\r\n\r\n`);
 }
 
-const zeile: InboxRow = { uid: 1, from: "A", subject: "S", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
+const zeile: InboxRow = { uid: 1, mailId: "a@example.invalid", from: "A", subject: "S", date: "2026-09-02T07:15:00.000Z", imVault: false, ungelesen: true };
 
 describe("toInboxRow", () => {
   it("dekodiert RFC-2047-Betreff und zerlegt den Absender", async () => {

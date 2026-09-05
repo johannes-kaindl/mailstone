@@ -21,10 +21,12 @@ the actual event/attendee model.
   the counters that are not zero, the error in plain words — and a button to synchronise now,
   for one account or all of them. The last run survives a restart.
 - **An inbox tab.** The last 100 messages from your inbox, with a tick for everything that is
-  already a note. Two actions per row: move it into the vault, or archive it — both server-side,
-  both after a confirmation.
+  already a note. Three actions per row: move it into the vault, archive it — both server-side,
+  both after a confirmation — or, once [TaskNotes](https://github.com/callumalpass/tasknotes) is
+  installed, create a task from it directly.
 - **Commands on a mail note** — re-render from the `.eml`, turn Message-IDs into wikilinks,
-  extract an attachment, reply in your external mail client. Each shows a preview before writing.
+  extract an attachment, reply in your external mail client, create a TaskNotes task from it.
+  Each shows a preview before writing.
 - **Sending.** SMTP through the same account, including iMIP calendar invitations on behalf of
   `calendar-notes`.
 
@@ -68,7 +70,10 @@ plugins. Updates then have to be repeated by hand.
 
 **From source** — `npm install && npm run build`, then copy the same three files into that
 folder. `npm run gate` runs the full check suite (lint, type checks, unit and integration tests,
-purity check, build).
+purity check, build). `npm run smoke:e2e` is a separate, maintainer-only check that drives a
+real, running Obsidian window with the [TaskNotes](https://github.com/callumalpass/tasknotes)
+plugin actually installed, to prove that a task created from a mail note really lands as a file
+in the vault — it is deliberately not part of `gate`, since it needs that second plugin present.
 
 ## Configuration
 

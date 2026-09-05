@@ -19,6 +19,7 @@ function fakeInboxHost(onChange?: InboxHost["onChange"], destroy?: InboxHost["de
     accounts: () => [], selectedAccountId: () => "", selectAccount: () => undefined,
     viewModel: () => ({ state: "leer", rows: [], fehlerCode: null, aktionenGrund: null }),
     refresh: () => undefined, ensureLoaded: () => undefined, adopt: () => undefined, archive: () => undefined,
+    canCreateTask: () => false, createTask: () => undefined,
     openSettings: () => undefined, onChange: onChange ?? (() => () => undefined),
     destroy: destroy ?? (() => undefined),
   };

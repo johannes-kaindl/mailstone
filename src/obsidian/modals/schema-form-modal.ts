@@ -48,7 +48,8 @@ export function parseFormValues(schema: ObjectSchema, raw: Record<string, unknow
 /**
  * Formular aus einem ObjectSchema. Ein `enum` wird zum Dropdown (so wird aus der
  * Anhangliste eine Auswahl), `format: "multiline"` und `type: "array"` werden zur TextArea,
- * alles andere ein Textfeld. Aufloesung ueber `pick()`: `null` bei Abbruch.
+ * `format: "date"` zu einem `input[type=date]` (Wert bleibt der ISO-String), alles andere
+ * ein Textfeld. Aufloesung ueber `pick()`: `null` bei Abbruch.
  */
 export class SchemaFormModal extends Modal {
   private readonly values: Record<string, unknown> = {};
@@ -99,10 +100,38 @@ export class SchemaFormModal extends Modal {
       return;
     }
     if (field.type === "array" || (field.type === "string" && field.format === "multiline")) {
-      setting.addTextArea((c) => c.onChange((v) => { this.values[key] = v; }));
+      setting.addTextArea((c) => {
+        // schema.ts erlaubt `default` auf dem GANZEN string-Zweig, nicht nur auf Klartext —
+        // ohne diese Zeile verwarf gerade dieser Zweig eine Vorbelegung stillschweigend
+        // (Fix-Runde 2, Punkt 5).
+        if (field.type === "string" && field.default !== undefined) {
+          this.values[key] = field.default;
+          c.setValue(field.default);
+        }
+        c.onChange((v) => { this.values[key] = v; });
+      });
       return;
     }
-    setting.addText((c) => c.onChange((v) => { this.values[key] = v; }));
+    if (field.type === "string" && field.format === "date") {
+      setting.addText((c) => {
+        c.inputEl.type = "date";
+        if (field.default !== undefined) {
+          this.values[key] = field.default;
+          c.setValue(field.default);
+        }
+        c.onChange((v) => { this.values[key] = v; });
+      });
+      return;
+    }
+    setting.addText((c) => {
+      // Analog zum enum-Zweig oben: `default` belegt values[key] UND die Komponente vor,
+      // statt eines zweiten Uebergabewegs am Modal-Konstruktor (M5, mail.createTask).
+      if (field.type === "string" && field.default !== undefined) {
+        this.values[key] = field.default;
+        c.setValue(field.default);
+      }
+      c.onChange((v) => { this.values[key] = v; });
+    });
   }
 
   private submit(): void {

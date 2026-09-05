@@ -16,6 +16,8 @@ export type CommandErrorCode =
   | "frontmatter-unparseable"  // verwalteter Key liegt als Block-Skalar vor (Merge-Regel 2)
   | "attachment-missing"       // gewaehlter Anhang liegt nicht in der .eml
   | "no-recipient"             // keine Absenderadresse zum Antworten
+  | "tasknotes-unavailable"    // TaskNotes fehlt oder die Formpruefung ist durchgefallen
+  | "task-create-failed"       // tasks.create hat abgelehnt oder geworfen
   | "nothing-to-do"            // Plan waere leer — nichts zu schreiben
   | "write-failed"             // Schreibvorgang gescheitert
   | "unexpected";              // runCommand() hat geworfen, BEVOR etwas geschrieben wurde (M3b-Nachlese, Fund 3)
@@ -86,6 +88,10 @@ export interface MailCommandPlan {
   attachment?: { path: string; data: Uint8Array };
   /** Extern zu oeffnende URL (mail.replyExternal). */
   openUrl?: string;
+  /** Absicht: eine TaskNotes-Aufgabe anlegen (mail.createTask). Analog zu `openUrl` — der
+   *  Kern formuliert nur, ausgefuehrt wird in der Obsidian-Schicht, weil src/core/** die
+   *  fremde API nicht anfassen darf. Feldnamen nach der Messung aus Task 0. */
+  createTask?: { title: string; due: string | null; noteLink: string };
 }
 
 export type PlanResult = { ok: true; plan: MailCommandPlan } | { ok: false; code: CommandErrorCode };

@@ -45,6 +45,36 @@ export function defaultMailProfile(): MailProfile {
   };
 }
 
+/** M5 Task 7: `taskPreset` (Settings, ausserhalb der MailProfile) fliesst additiv in
+ *  `onCreate` ein — dieselbe Zusage, die `onCreate` schon fuer sich traegt, gilt dann auch
+ *  fuer das Preset: `newNote()` (merge.ts) wendet `onCreate` NUR im create-Zweig an, nie beim
+ *  Merge einer bestehenden Notiz. Ein leeres Preset aendert nichts (identisches Objekt zurueck,
+ *  kein Allokations-Rauschen im haeufigen Fall).
+ *
+ *  Zwei verschiedene Kollisionen, zwei verschiedene Stellen:
+ *  1. Preset gegen `profile.onCreate` selbst (z. B. beide setzen `type`) — entscheidet DIESE
+ *     Funktion, `{...taskPreset, ...profile.onCreate}`: das Profil traegt strukturelle Marker,
+ *     das Preset ist Nutzer-Freitext, im Zweifel gewinnt die Struktur.
+ *  2. Preset gegen ein VERWALTETES Feld (`mail_id`, `subject`, … — `managedKeys()`) — das
+ *     entscheidet NICHT hier, sondern `newNote()`s `{...onCreate, ...derived}` (merge.ts):
+ *     `derived` gewinnt, das Preset-Feld wird an dieser Stelle still verworfen. Sicher (kein
+ *     verwaltetes Feld wird ueberschrieben), aber wenn diese Spread-Reihenfolge je gedreht
+ *     wuerde, waere das ein stiller Datenschaden an `mail_id` & Co. — bewacht von
+ *     `tests/core/mirror/plan.test.ts` ("Preset gegen ein verwaltetes Feld: das verwaltete
+ *     Feld gewinnt"). */
+/** Ein Eintrag mit leerem Wert ("") ist noch nicht konfiguriert — `addTaskPresetEntry`
+ *  (settings-tab.ts) legt eine neue Zeile genau so an (Platzhalter-Schluessel, leerer Wert),
+ *  und ohne diesen Filter bekaeme jede neu angelegte Mail-Notiz ab dem Klick auf "Feld
+ *  hinzufuegen" ein leeres Frontmatter-Feld, bevor der Nutzer ueberhaupt einen Wert eingegeben
+ *  hat (Fix-Runde 2, Punkt 6). Ein bewusst leerer String als WERT eines fertig benannten
+ *  Presets ist damit nicht darstellbar — das war vor dieser Zeile ohnehin schon der einzige
+ *  Weg, ein Preset "abzuschalten", ohne die Zeile zu loeschen. */
+export function withTaskPreset(profile: MailProfile, taskPreset: Record<string, FmVal>): MailProfile {
+  const configured = Object.fromEntries(Object.entries(taskPreset).filter(([, v]) => v !== ""));
+  if (Object.keys(configured).length === 0) return profile;
+  return { ...profile, onCreate: { ...configured, ...profile.onCreate } };
+}
+
 export function identityKeys(p: MailProfile): string[] {
   return [p.idField, p.sourceField, p.stateField, p.syncedField];
 }

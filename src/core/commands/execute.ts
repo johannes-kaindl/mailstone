@@ -10,10 +10,15 @@ export interface CommandExecuteDeps {
   notes: PlanExecutor;
   writeAttachment(path: string, data: Uint8Array): Promise<void>;
   openExternal(url: string): void;
+  /** Legt eine Aufgabe im Nachbarplugin an. Async, anders als openExternal: der Aufruf geht
+   *  ueber eine fremde API und kann fehlschlagen. `path` ist der vault-relative Pfad der
+   *  angelegten Aufgabennotiz (TaskNotes liefert kein `id`) — der brauchbare Teil fuer eine
+   *  Erfolgs-Notice. */
+  createTask(req: { title: string; due: string | null; noteLink: string }): Promise<{ ok: true; path: string } | { ok: false; code: CommandErrorCode }>;
 }
 
 export type CommandExecuteResult =
-  | { ok: true; created: number; updated: number; stateChanged: number; skipped: NotePlan[]; attachmentPath?: string; openedUrl?: boolean }
+  | { ok: true; created: number; updated: number; stateChanged: number; skipped: NotePlan[]; attachmentPath?: string; openedUrl?: boolean; taskPath?: string }
   | { ok: false; code: CommandErrorCode };
 
 /**
@@ -29,6 +34,12 @@ export async function executeCommandPlan(plan: MailCommandPlan, deps: CommandExe
     }
     const r = await deps.notes.execute(plan.notes);
     if (r.errors.length > 0) return { ok: false, code: "write-failed" };
+    let taskPath: string | undefined;
+    if (plan.createTask) {
+      const t = await deps.createTask(plan.createTask);
+      if (!t.ok) return { ok: false, code: t.code };
+      taskPath = t.path;
+    }
     if (plan.openUrl) deps.openExternal(plan.openUrl);
     return {
       ok: true,
@@ -38,6 +49,7 @@ export async function executeCommandPlan(plan: MailCommandPlan, deps: CommandExe
       skipped: r.skipped,
       ...(plan.attachment ? { attachmentPath: plan.attachment.path } : {}),
       ...(plan.openUrl ? { openedUrl: true } : {}),
+      ...(taskPath !== undefined ? { taskPath } : {}),
     };
   } catch {
     // Fehler sind Werte (Spec § 5): ein werfender Port wird zum Code, nicht zum Stacktrace.

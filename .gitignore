@@ -36,6 +36,7 @@ data.json
 .claude/
 .remember/
 .gui-smoke.mjs
+.e2e.mjs
 .shots.mjs
 
 # SDD-/Skill-Arbeitsverzeichnisse (git-ignoriert, Scratch)

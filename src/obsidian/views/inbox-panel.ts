@@ -18,6 +18,11 @@ export interface InboxHost {
   ensureLoaded(): void;
   adopt(uid: number): void;
   archive(uid: number): void;
+  /** Ob die dritte Aktion ("Aufgabe erstellen") angeboten wird — nur wenn TaskNotes erreichbar
+   *  ist. Kein Ausgrauen: fehlt sie, fehlt der Knopf (Spec § 4, dieselbe Pruefstelle-1-Logik
+   *  wie beim Kommando in main.ts). */
+  canCreateTask(): boolean;
+  createTask(uid: number): void;
   openSettings(): void;
   onChange(cb: () => void): Unsubscribe;
   /** Meldet den Host von seiner `synced`/`changed`-Registrierung ab (I2-Nachtrag): der Host
@@ -165,7 +170,15 @@ export class InboxPanel {
     const grund = aktionenGrund === null ? null : t(`inbox.actions.${aktionenGrund}`);
     const uebernehmen = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.adopt") });
     const archivieren = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.archive") });
-    for (const btn of [uebernehmen, archivieren]) {
+    const knoepfeAlle = [uebernehmen, archivieren];
+    // Dritte Aktion NUR wenn TaskNotes erreichbar ist — kein Ausgrauen, sie fehlt sonst ganz
+    // (Task 6, Spec § 4).
+    if (this.host.canCreateTask()) {
+      const aufgabe = knoepfe.createEl("button", { cls: "mailstone-inbox-action", text: t("inbox.createTask") });
+      aufgabe.addEventListener("click", () => this.host.createTask(row.uid));
+      knoepfeAlle.push(aufgabe);
+    }
+    for (const btn of knoepfeAlle) {
       btn.disabled = grund !== null;
       if (grund !== null) {
         btn.setAttribute("title", grund);

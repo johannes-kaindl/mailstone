@@ -45,9 +45,12 @@ typeof api.tasks?.create   === "function"
 typeof api.model?.config   === "function"
 ```
 
-`model.validateTask` wird **einzeln** geprüft, nicht im Vollständigkeits-Check: eine additive
-Erweiterung des Anbieters darf nicht zur Pflicht des Konsumenten werden (REGISTRY-Zusatz aus
-`epub-exporter`, 2026-08-30). Fehlt sie, wird ohne Vorvalidierung angelegt.
+`model.validateTask` wird **gar nicht geprüft und nicht in `TaskNotesApiSubset` aufgenommen**
+(Ruling Task 0, 2026-09-05, ersetzt eine ältere Fassung dieses Absatzes): gemessen erwartet es
+ein vollständiges `TaskInfo` und meldet für **jede** Erstellungs-Eingabe `missing_required` für
+`status`/`dateCreated`/`dateModified` — Felder, die `create()` selbst befüllt. Eingebaut hätte
+es jeden Erstellungsversuch mit „ungültig" scheitern lassen, bei völlig intakter API. Details:
+§ 8.1.
 
 Der **strikte** Vergleich gegen die eigene Konstante ist bewusst gewählt und hat einen Preis,
 der eingeplant gehört: bricht TaskNotes seinen Vertrag, verstummt mailstone, statt auf einer
@@ -84,20 +87,22 @@ Formprüfung (Prüfstelle 1).
 Alles Weitere überlässt mailstone TaskNotes' eigenen Defaults — was dort besser bedienbar ist
 als in einem Nachbau, und was jedes gespiegelte Feld als Bruchstelle gegen eine RC-API spart.
 
-**Ablauf:** Formprüfung (Prüfstelle 2) → `taskData` bauen → `validateTask(data)` falls vorhanden
-→ `tasks.create(data)` → Notice mit Ergebnis.
+**Ablauf:** Formprüfung (Prüfstelle 2) → `taskData` bauen → `tasks.create(data)` → Notice mit
+Ergebnis. Kein `validateTask`-Schritt mehr (Ruling Task 0, s. § 2.1/§ 8.1): ohne ihn gibt es
+keinen Ausgang, der eine eigene Vorab-Diagnose bräuchte — Eingabeprüfung macht mailstones
+eigenes Schema, ein Fehlschlag der fremden API kommt als `task-create-failed` zurück.
 
-⚠️ **Die Form von `taskData` ist ungemessen.** `tasks.create` hat arity 2 (`(taskData, opts)`),
-mehr steht nicht fest; plausibel nimmt es ein logisches Objekt und übersetzt selbst nach
-`frontmatterKey`. **Deshalb wird hier keine Feldübersetzung auf Vorrat gebaut.** `validateTask`
-ist der Wächter; ob eine Übersetzung über `catalog.fields()` nötig ist, beantwortet der
-Naht-Lauf (§ 6) — vorher ist jede Zeile davon möglicher toter Code. Der Hinweis kam von
-`calendar-notes`, das dieselbe Fläche für einen anderen Zweck bereits vermessen hat.
+Die Form von `taskData` ist gemessen (§ 8.1, Task 0): einziges Pflichtfeld `title`, Fälligkeit
+heißt `due` (nicht `dueDate`), unbekannte Felder werden ignoriert. Eine Feldübersetzung über
+`catalog.fields()` ist damit nicht nötig — mailstone reicht die drei bekannten Felder direkt
+durch.
 
-**Der Link auf die Mail-Notiz** gehört zur Aufgabe; wie er getragen wird (Feld oder Rumpf),
-entscheidet dieselbe Messung.
+**Der Link auf die Mail-Notiz** gehört zur Aufgabe und wird über `details` getragen (§ 8.1) —
+ein Wikilink im Freitext-Rumpf, kein eigenes Link-Feld.
 
-Neue Codes in `CommandErrorCode`: `tasknotes-unavailable`, `task-invalid`, `task-create-failed`.
+Neue Codes in `CommandErrorCode`: `tasknotes-unavailable`, `task-create-failed`. (`task-invalid`
+entfällt — ohne `validateTask` gibt es keinen Ausgang mehr, der ihn erzeugt; ein Code ohne
+Erzeuger ist toter Vertrag.)
 
 **mailstone schreibt keine Task-Datei selbst** und fasst die Aufgabe nach dem Anlegen nie wieder
 an. Kein Rückverweis von der Mail-Notiz auf die Aufgabe — das wäre ein zweiter Bestand mit
@@ -180,8 +185,17 @@ Die Achse „einmalig" wäre die schlechtere Formulierung, weil sie den nächste
 „ich rufe ja nur selten" als Freibrief zu lesen. Der Vorschlag kam von `calendar-notes` selbst
 (Abstimmung am 2026-09-05).
 
-**Ablageort:** Die Präzisierung geht in die REGISTRY-Zeile und als Eintrag nach
-`_docs/LESSONS.md`. Eine repo-lokale `AGENTS.md` reicht nicht — Nachbar-Sessions sehen nur die
+⚠️ **Beim Gegenlesen kam eine zweite Bedingung dazu, und sie schließt eine echte Lücke.** Die
+Achse prüft nur die *Nachher*-Beziehung und schweigt darüber, **wer den Aufruf auslöst**. Ein
+Plugin, das bei **jeder eingehenden Mail automatisch** eine Aufgabe anlegt und danach loslässt,
+ginge nach der reinen Wahrheits-Achse durch — und befüllt fortlaufend fremden Bestand, über den
+niemand entschieden hat. Erlaubt ist die Delegation deshalb nur **auf ausdrücklichen
+Nutzerbefehl**; beide Hälften sind nötig. mailstone erfüllt das (`mail.createTask` ist ein
+Kommando bzw. ein Knopf, nie ein Automatismus — der Sync legt **nie** eine Aufgabe an), aber die
+Regel trug es vorher nicht, und der nächste Leser hat nur die Regel.
+
+**Ablageort — erledigt am 2026-09-05:** REGISTRY-Zeile präzisiert (Dach `26004e4`), LESSONS-Eintrag
+geschrieben (`_docs` `603341f`). Eine repo-lokale `AGENTS.md` reicht nicht — Nachbar-Sessions sehen nur die
 workspace-weit injizierten Dateien (LESSON vom 2026-09-04, `koda-agent`). **Die Formulierung
 wird `calendar-notes` vor dem Commit gezeigt**, wie am 2026-09-05 zugesagt.
 
@@ -230,8 +244,77 @@ api.model.info()            { packageName: "@tasknotes/model",
 Ungeprüft: ob eine Spracheinstellung die deutsche Erkennung aktiviert. Der letzte Fall bliebe
 davon unberührt — das ist Zahlenerkennung, keine Sprachfrage.
 
-**Nicht gemessen und nur mit echtem Aufruf messbar:** was `tasks.create` zurückgibt, ob es wirft
-statt einen Wert zu liefern, und welche Form `taskData` verlangt. Das ist der Grund für § 9.
+### 8.1 `tasks.create` — gemessene Form (Task 0, echter Aufruf gegen den Staging-Vault)
+
+Gemessen per direktem Aufruf gegen TaskNotes 4.12.5 im Staging-Vault `mailstone` (sechs Aufrufe,
+danach wieder gelöscht — Messrückstand, kein Fixture; das dafür genutzte Einweg-Skript
+`scripts/probe-tasknotes-create.ts` ist planmäßig nicht Teil des Repos geblieben).
+
+**Akzeptierte Feldnamen:** `title` (einziges Pflichtfeld), `due` (String `YYYY-MM-DD`,
+akzeptiert und im Ergebnis unverändert übernommen), `details` (Freitext-String, unverändert
+übernommen — **das ist der Träger für den Notiz-Link**, s. u.). `dueDate` wird **nicht**
+erkannt: der Aufruf wirft nicht, das Feld erscheint aber nirgends im Ergebnis — es verschwindet
+kommentarlos. Fälligkeit heißt also `due`, nicht `dueDate`.
+
+**Unbekannte Felder** (`gibtsNicht: 1`) werden **stillschweigend ignoriert** — kein Fehler, keine
+Aufnahme ins Frontmatter, keine Auffälligkeit im Rückgabewert.
+
+**Rückgabewert von `tasks.create`:** ein `object` (kein Promise-Wrapper, kein Boolean) — das
+vollständige, von TaskNotes selbst befüllte Task-Objekt:
+
+```
+{ title, status: "open", priority: "normal", scheduled: "<heute>",
+  due?: "<falls gesetzt>", dateCreated, dateModified, tags: ["task"],
+  path: "TaskNotes/Tasks/<title>.md", archived: false, details: "<falls gesetzt>" }
+```
+
+Es gibt **kein eigenes `id`-Feld.** Die brauchbare Identität für einen Rückverweis ist
+`path` — der vault-relative Pfad zur angelegten Notiz. Ein Wikilink auf die Aufgabe baut sich
+daraus direkt (`path` ohne `.md`-Endung als Zielnotiz).
+
+**Nachtrag Naht-Lauf (Task 9, 2026-09-05):** `title` landet NICHT im Frontmatter der
+geschriebenen Notiz, nur im Dateinamen (`path`). Gemessener Inhalt einer Aufgaben-Notiz:
+
+```
+---
+status: open
+priority: normal
+due: 2026-11-01
+scheduled: 2026-09-05
+dateCreated: 2026-09-05T13:18:32.695+02:00
+dateModified: 2026-09-05T13:18:32.695+02:00
+tags:
+  - task
+---
+
+[[probe-notiz]]
+```
+
+Kein `title:`-Schlüssel — der Beleg für einen gesetzten Titel ist ausschließlich `path`, nicht
+der Notizinhalt. `due` und `details` erscheinen dagegen wie im Rückgabewert im Frontmatter
+bzw. Rumpf. Der Naht-Lauf (`scripts/e2e-crossplugin.ts`) prüft den Titel deshalb am Pfad.
+
+**Wurf- vs. Wert-Verhalten:** `tasks.create` liefert bei gültiger Eingabe immer einen Wert,
+wirft aber bei **leerem Titel** synchron: `Error: Failed to create task: Title is required`
+(Name `Error`, keine eigene Fehlerklasse). Die Brücke braucht also **beides** — try/catch für
+den Titel-Fall, keine zusätzliche Ergebnisprüfung für alles andere, weil ein erfolgreicher aber
+"leerer" Rückgabewert (`null`/`undefined`/`false`) nicht beobachtet wurde.
+
+**Notiz-Link:** kein eigenes Feld dafür — `details` ist der Trageplatz. Ein Wikilink hineingegeben
+(`details: "[[Mail/2026/probe]]"`) kommt unverändert im Rückgabewert und in der erzeugten Notiz
+an; TaskNotes rendert `details` als Aufgaben-Beschreibung/Notizkörper.
+
+**`model.validateTask` ist für Erstellung ungeeignet, nicht nur additiv:** gegen **jede** der
+sechs `taskData`-Formen — auch die, mit denen `create()` anstandslos eine Aufgabe anlegte —
+meldete `validateTask` dieselben drei `missing_required`-Fehler (`status`, `dateCreated`,
+`dateModified`). Es prüft offenbar die Form eines **vollständigen** `TaskInfo`-Datensatzes, nicht
+die eines Erstellungs-Auftrags — `create()` füllt diese drei Felder selbst mit sinnvollen
+Defaults, bevor `validateTask` sie je sähe. Für M5 folgt daraus: **`validateTask` vor einem
+`create()`-Aufruf ist nutzlos** (es würde jede gültige Eingabe als ungültig melden) und bleibt
+nur für den in § 2.1 vorgesehenen Formcheck relevant (Existenz der Funktion), nicht als
+Vorab-Validierung von Nutzereingaben. Einzige Ausnahme im leeren-Titel-Fall: dort meldet
+`validateTask` zusätzlich `title is required` — dieselbe Diagnose, die `create()` ohnehin per
+Wurf liefert.
 
 ---
 

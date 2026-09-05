@@ -60,3 +60,25 @@ describe("validateInput", () => {
     expect(validateInput(freitext, { note: "x" })).toEqual({ ok: true, value: { note: "x" } });
   });
 });
+
+describe("format: date", () => {
+  const schema = { type: "object" as const, properties: { due: { type: "string" as const, format: "date" as const } } };
+
+  it("akzeptiert ein ISO-Datum", () => {
+    expect(validateInput(schema, { due: "2026-12-24" }).ok).toBe(true);
+  });
+
+  it("akzeptiert den leeren String — Faelligkeit ist optional", () => {
+    expect(validateInput(schema, { due: "" }).ok).toBe(true);
+  });
+
+  it("lehnt ein Datum in falscher Form ab", () => {
+    const r = validateInput(schema, { due: "24.12.2026" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]).toContain("due");
+  });
+
+  it("lehnt ein unmoegliches Datum ab", () => {
+    expect(validateInput(schema, { due: "2026-02-31" }).ok).toBe(false);
+  });
+});

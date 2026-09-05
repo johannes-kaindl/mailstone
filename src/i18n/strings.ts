@@ -101,6 +101,10 @@ export const en = {
   "cmd.mail.extractAttachment.field.name": "Which attachment to copy into the vault.",
   "cmd.mail.replyExternal.title": "Reply to a mail in the external mail client",
   "cmd.mail.replyExternal.desc": "Opens your system mail client with recipient, subject and thread reference filled in. Mailstone does not send this reply itself.",
+  "cmd.mail.createTask.title": "Create a TaskNotes task",
+  "cmd.mail.createTask.desc": "Creates a TaskNotes task linked back to this mail note. Mailstone does not write the task itself.",
+  "cmd.mail.createTask.field.title": "Task title.",
+  "cmd.mail.createTask.field.due": "Optional due date (YYYY-MM-DD). Leave empty for no due date.",
 
   "plan.heading": "Review before writing",
   "plan.col.field": "Field", "plan.col.before": "Before", "plan.col.after": "After",
@@ -110,10 +114,13 @@ export const en = {
   "plan.mail.relink.summary": "{0} note(s) get new wikilinks in in_reply_to or references.",
   "plan.mail.extractAttachment.summary": "Copy {0} into the vault as {1} and link it from this note.",
   "plan.mail.replyExternal.summary": "Open your mail client with a reply to {0}.",
+  "plan.mail.createTask.summary": "Create a TaskNotes task: {0}",
 
   "notice.command.done": "Done: {0} note(s) written, {1} skipped.",
   "notice.command.staleSkip": "{0} note(s) were skipped: they changed while the preview was open, so nothing was overwritten. Run the command again if you still want it applied.",
   "notice.command.attachment": "Attachment saved as {0}.",
+  "notice.command.taskCreated": "Task created: {0}.",
+  "notice.command.taskCreatedNoPath": "Task created.",
 
   "error.command.busy": "A synchronisation or another command is running. Try again in a moment.",
   "error.command.invalid-input": "The values you entered are not valid.",
@@ -126,6 +133,8 @@ export const en = {
   "error.command.frontmatter-unparseable": "A front matter key managed by Mailstone is written as a multi-line block, which cannot be rewritten safely.",
   "error.command.attachment-missing": "That attachment is not in the .eml.",
   "error.command.no-recipient": "This note has no sender address to reply to.",
+  "error.command.tasknotes-unavailable": "TaskNotes is not available, or its API does not have the expected shape.",
+  "error.command.task-create-failed": "TaskNotes rejected or failed to create the task.",
   "error.command.nothing-to-do": "Nothing to change.",
   "error.command.write-failed": "Writing failed. Nothing or only part of it was saved — check the note.",
   "error.command.unexpected": "Something went wrong before anything was written. Nothing was changed.",
@@ -160,10 +169,12 @@ export const en = {
   "inbox.loading": "Loading messages…",
   "inbox.adopt": "Move to vault",
   "inbox.archive": "Archive",
+  "inbox.createTask": "Create task",
   "inbox.inVault": "Already in the vault",
   "inbox.account": "Account",
   "inbox.confirm.adopt": "Move this message to the folder “{0}” on the server?",
   "inbox.confirm.archive": "Move this message to the folder “{0}” on the server?",
+  "inbox.confirm.createTask": "Move this message to the folder “{0}” on the server and create a task from it? This cannot be undone on the server.",
   "inbox.error.unsupported": "This server cannot move messages safely (no MOVE support).",
   "inbox.error.gone": "That message is no longer there — synchronise and try again.",
   "inbox.error.busy": "Another operation is running.",
@@ -177,11 +188,25 @@ export const en = {
   "inbox.error.timeout": "The server did not answer in time.",
   "inbox.error.closed": "The server closed the connection.",
   "inbox.error.protocol": "The server answered in a way Mailstone did not understand.",
+  "inbox.error.sync-timeout": "The message was moved, but no note appeared within the time limit. Once the note exists, create the task from it directly.",
   "inbox.actions.unsupported": "This server cannot move messages safely (no MOVE support).",
   "inbox.actions.busy": "Another operation is running.",
 
   "settings.openViewOnStartup": "Open the panel at startup",
   "settings.openViewOnStartup.desc": "Off by default. The panel stays reachable via the ribbon icon and the command palette.",
+
+  // M5 § 5: taskPreset is not a task system — it is a set of extra frontmatter fields written
+  // once, when a mail note is first created, so the note fits whatever schema the vault already
+  // uses (e.g. for Obsidian Bases). Later syncs and updates never touch these fields again.
+  "settings.taskPreset": "Extra fields for new mail notes",
+  "settings.taskPreset.desc": "Written once into the frontmatter of a mail note when it is first created — for example status: open. Existing notes are never touched, and once the note exists, the fields are yours to edit or remove. Leave empty to add nothing.",
+  "settings.taskPreset.empty": "No extra fields.",
+  "settings.taskPreset.add": "Add field",
+  "settings.taskPreset.key.placeholder": "Field name (e.g. status)",
+  "settings.taskPreset.key.aria": "Field name",
+  "settings.taskPreset.value.placeholder": "Value (e.g. open)",
+  "settings.taskPreset.value.aria": "Field value",
+  "settings.taskPreset.key.duplicate": "A field named \"{0}\" already exists.",
 };
 export const de: typeof en = {
   "cmd.importEml.name": ".eml-Dateien aus einem Vault-Ordner importieren",
@@ -284,6 +309,10 @@ export const de: typeof en = {
   "cmd.mail.extractAttachment.field.name": "Welcher Anhang in den Vault kopiert werden soll.",
   "cmd.mail.replyExternal.title": "Auf eine Mail im externen Mailprogramm antworten",
   "cmd.mail.replyExternal.desc": "Öffnet dein Mailprogramm mit Empfänger, Betreff und Thread-Bezug. Mailstone verschickt diese Antwort nicht selbst.",
+  "cmd.mail.createTask.title": "TaskNotes-Aufgabe anlegen",
+  "cmd.mail.createTask.desc": "Legt eine TaskNotes-Aufgabe an, die auf diese Mail-Notiz zurückverlinkt. Mailstone schreibt die Aufgabe nicht selbst.",
+  "cmd.mail.createTask.field.title": "Titel der Aufgabe.",
+  "cmd.mail.createTask.field.due": "Fälligkeit optional (JJJJ-MM-TT). Leer lassen für keine Fälligkeit.",
 
   "plan.heading": "Vor dem Schreiben prüfen",
   "plan.col.field": "Feld", "plan.col.before": "Vorher", "plan.col.after": "Nachher",
@@ -293,10 +322,13 @@ export const de: typeof en = {
   "plan.mail.relink.summary": "{0} Notizen bekommen neue Wikilinks in in_reply_to oder references.",
   "plan.mail.extractAttachment.summary": "{0} als {1} in den Vault kopieren und in dieser Notiz verlinken.",
   "plan.mail.replyExternal.summary": "Mailprogramm mit einer Antwort an {0} öffnen.",
+  "plan.mail.createTask.summary": "TaskNotes-Aufgabe anlegen: {0}",
 
   "notice.command.done": "Fertig: {0} Notizen geschrieben, {1} übersprungen.",
   "notice.command.staleSkip": "{0} Notiz(en) wurden übersprungen: Sie haben sich geändert, während die Vorschau offen war, deshalb wurde nichts überschrieben. Bei Bedarf das Kommando erneut ausführen.",
   "notice.command.attachment": "Anhang gespeichert als {0}.",
+  "notice.command.taskCreated": "Aufgabe angelegt: {0}.",
+  "notice.command.taskCreatedNoPath": "Aufgabe angelegt.",
 
   "error.command.busy": "Es läuft gerade eine Synchronisation oder ein anderes Kommando. Bitte gleich noch einmal versuchen.",
   "error.command.invalid-input": "Die eingegebenen Werte sind ungültig.",
@@ -309,6 +341,8 @@ export const de: typeof en = {
   "error.command.frontmatter-unparseable": "Ein von Mailstone verwaltetes Frontmatter-Feld steht als mehrzeiliger Block, der sich nicht gefahrlos ersetzen lässt.",
   "error.command.attachment-missing": "Dieser Anhang steckt nicht in der .eml.",
   "error.command.no-recipient": "In dieser Notiz steht keine Absenderadresse, an die geantwortet werden könnte.",
+  "error.command.tasknotes-unavailable": "TaskNotes ist nicht verfügbar, oder seine API hat nicht die erwartete Form.",
+  "error.command.task-create-failed": "TaskNotes hat die Aufgabe abgelehnt oder das Anlegen ist gescheitert.",
   "error.command.nothing-to-do": "Es gibt nichts zu ändern.",
   "error.command.write-failed": "Das Schreiben ist fehlgeschlagen. Es wurde nichts oder nur ein Teil gespeichert — sieh in der Notiz nach.",
   "error.command.unexpected": "Es ist etwas schiefgelaufen, bevor irgendetwas geschrieben wurde. Es wurde nichts geändert.",
@@ -343,10 +377,12 @@ export const de: typeof en = {
   "inbox.loading": "Nachrichten werden geladen…",
   "inbox.adopt": "Ins Vault übernehmen",
   "inbox.archive": "Archivieren",
+  "inbox.createTask": "Aufgabe erstellen",
   "inbox.inVault": "Bereits im Vault",
   "inbox.account": "Konto",
   "inbox.confirm.adopt": "Diese Nachricht in den Ordner „{0}“ auf dem Server verschieben?",
   "inbox.confirm.archive": "Diese Nachricht in den Ordner „{0}“ auf dem Server verschieben?",
+  "inbox.confirm.createTask": "Diese Nachricht in den Ordner „{0}“ auf dem Server verschieben und daraus eine Aufgabe erstellen? Das Verschieben ist auf dem Server nicht rückgängig zu machen.",
   "inbox.error.unsupported": "Dieser Server kann Nachrichten nicht sicher verschieben (kein MOVE).",
   "inbox.error.gone": "Diese Nachricht ist nicht mehr da — synchronisieren und erneut versuchen.",
   "inbox.error.busy": "Ein anderer Vorgang läuft gerade.",
@@ -360,11 +396,22 @@ export const de: typeof en = {
   "inbox.error.timeout": "Der Server hat nicht rechtzeitig geantwortet.",
   "inbox.error.closed": "Der Server hat die Verbindung geschlossen.",
   "inbox.error.protocol": "Die Antwort des Servers war für Mailstone unverständlich.",
+  "inbox.error.sync-timeout": "Die Nachricht wurde verschoben, aber binnen der Frist ist keine Notiz erschienen. Sobald die Notiz da ist, die Aufgabe direkt aus ihr erstellen.",
   "inbox.actions.unsupported": "Dieser Server kann Nachrichten nicht sicher verschieben (kein MOVE).",
   "inbox.actions.busy": "Ein anderer Vorgang läuft gerade.",
 
   "settings.openViewOnStartup": "Beim Start öffnen",
   "settings.openViewOnStartup.desc": "Standardmäßig aus. Die Ansicht bleibt über das Ribbon-Symbol und die Befehlspalette erreichbar.",
+
+  "settings.taskPreset": "Zusatzfelder für neue Mail-Notizen",
+  "settings.taskPreset.desc": "Wird beim ERSTEN Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben — zum Beispiel status: open. Bestehende Notizen werden dadurch nie verändert, und sobald die Notiz existiert, gehören die Felder dir: bearbeiten oder entfernen wie jedes andere Frontmatter-Feld. Leer lassen, um nichts hinzuzufügen.",
+  "settings.taskPreset.empty": "Keine Zusatzfelder.",
+  "settings.taskPreset.add": "Feld hinzufügen",
+  "settings.taskPreset.key.placeholder": "Feldname (z. B. status)",
+  "settings.taskPreset.key.aria": "Feldname",
+  "settings.taskPreset.value.placeholder": "Wert (z. B. open)",
+  "settings.taskPreset.value.aria": "Feldwert",
+  "settings.taskPreset.key.duplicate": "Ein Feld namens \"{0}\" gibt es schon.",
 };
 
 export function initI18n(raw: string): void { defineStrings({ en, de }); setLang(pickLang(raw)); }

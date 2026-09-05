@@ -5,6 +5,13 @@ import type { InboxActionResult } from "../../core/inbox/actions";
 import type { InboxFetchResult } from "../../core/inbox/fetch";
 import type { InboxHost } from "./inbox-panel";
 
+/** Ausgang der dritten Zeilen-Aktion (Task 6: Posteingangs-Weg zu einer Aufgabe). `adopted`
+ *  fehlt bei `cancelled`/`done` bewusst nicht als eigenes Feld — beide heissen "die Uebernahme
+ *  ist passiert" (bei `cancelled` hat der Nutzer nur die anschliessende Aufgabe abgebrochen).
+ *  Nur `error` kann VOR der Uebernahme scheitern (busy, kein Geheimnis, kein Zielordner) und
+ *  traegt deshalb, ob die Mail den Posteingang trotzdem schon verlassen hat. */
+export type CreateTaskOutcome = { kind: "done" } | { kind: "cancelled" } | { kind: "error"; code: string; adopted: boolean };
+
 export interface InboxHostDeps {
   accounts: () => readonly Account[];
   isBusy: () => boolean;
@@ -12,8 +19,15 @@ export interface InboxHostDeps {
   adopt: (accountId: string, uid: number) => Promise<InboxActionResult>;
   archive: (accountId: string, uid: number) => Promise<InboxActionResult>;
   /** Bestaetigung vor einem Server-Verschieben — am Server nicht rueckgaengig zu machen. */
-  confirmMove: (kind: "adopt" | "archive", zielordner: string) => Promise<boolean>;
+  confirmMove: (kind: "adopt" | "archive" | "createTask", zielordner: string) => Promise<boolean>;
   targetFolder: (accountId: string, kind: "adopt" | "archive") => string;
+  /** Ob die dritte Aktion ("Aufgabe erstellen") ueberhaupt angeboten wird — Pruefstelle-1-Logik
+   *  wie beim Kommando (`readTaskNotesApi(app) !== null`), aus der Obsidian-Schicht gereicht:
+   *  `src/core/**` darf die fremde API nicht kennen. */
+  taskNotesAvailable: () => boolean;
+  /** Fuehrt die volle Kette: uebernehmen -> gezielt synchronisieren -> auf die Notiz warten ->
+   *  denselben Kommando-Weg wie im Notiz-Fall (Formular + Vorschau) auf ihr ausfuehren. */
+  createTask: (accountId: string, uid: number, mailId: string) => Promise<CreateTaskOutcome>;
   /** Nach erfolgreichem Uebernehmen: die Notiz entsteht im Sync, nicht in der Aktion. Die
    *  Zusage ist absichtlich Teil des Vertrags (I1): sie loest sich erst, wenn `runSync` seinen
    *  eigenen Busy-Guard wieder freigegeben hat — der Host wartet genau darauf, bevor er selbst
@@ -102,6 +116,30 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
     void laden();
   }
 
+  /** Task 6: die dritte Zeilen-Aktion. `deps.createTask` erledigt die ganze Kette (uebernehmen,
+   *  gezielt synchronisieren, auf die Notiz warten, den bestehenden Kommando-Weg auf ihr
+   *  ausfuehren) — dieser Host entscheidet nur ueber Bestaetigung, Fehlermeldung und Neuladen. */
+  async function erstelleAufgabe(uid: number): Promise<void> {
+    const zeile = rows.find((r) => r.uid === uid);
+    if (!zeile) return;
+    const ziel = deps.targetFolder(kontoId, "adopt");
+    if (ziel.length === 0) {
+      deps.notifyError("no-target-folder");
+      return;
+    }
+    if (!(await deps.confirmMove("createTask", ziel))) return;
+    const r = await deps.createTask(kontoId, uid, zeile.mailId);
+    if (r.kind === "error") {
+      deps.notifyError(r.code);
+      // Ein Fehler VOR der Uebernahme (busy, kein Geheimnis, ...) hat die Liste nicht
+      // veraendert — nur bei `adopted: true` hat die Mail den Posteingang bereits verlassen.
+      if (r.adopted) void laden();
+      return;
+    }
+    // "done" und "cancelled" heissen beide: die Uebernahme ist passiert, die Mail ist weg.
+    void laden();
+  }
+
   // I2 (Teil B): ein Sync macht die Liste veraltet — neu LADEN statt nur neu zu zeichnen, sonst
   // aktualisiert sich weder die Zeilenmenge noch der "liegt im Vault"-Badge (Spec § 8). `laden()`
   // haelt bei `busy` selbst den vorherigen Zustand (I1), ein Zusammenstoss mit einem parallel
@@ -131,6 +169,8 @@ export function createInboxHost(deps: InboxHostDeps): InboxHost {
     },
     adopt: (uid) => { void verschieben("adopt", uid); },
     archive: (uid) => { void verschieben("archive", uid); },
+    canCreateTask: () => deps.taskNotesAvailable(),
+    createTask: (uid) => { void erstelleAufgabe(uid); },
     openSettings: () => deps.openSettings(),
     onChange: (cb) => {
       horcher.add(cb);

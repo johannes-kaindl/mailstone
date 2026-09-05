@@ -4,6 +4,7 @@ import type { PlanExecutionResult, PlanExecutor, ZoneHashStore } from "../core/m
 import type { MailIndex } from "../core/mirror/apply";
 import type { MailProfile } from "../core/mirror/profile";
 import { setFrontmatterField } from "../core/merge/merge";
+import { normalizeMessageId } from "../core/mime/headers";
 
 export type { PlanExecutionResult, PlanExecutor, ZoneHashStore };
 
@@ -137,4 +138,22 @@ export function mailIndex(app: App, profile: MailProfile): MailIndex {
     out.set(id, { path: f.path, state: typeof state === "string" ? state : null, source: typeof source === "string" ? source : null });
   }
   return out;
+}
+
+/** Gezielte Suche fuer EINE Message-ID, mit Abbruch beim Treffer — anders als `mailIndex()`
+ *  baut sie keinen vollstaendigen Index auf. Gedacht fuer Aufrufer wie das Polling in
+ *  `create-task-flow.ts` (Task 6), das in kurzem Takt wiederholt nach genau einer ID sucht;
+ *  ein voller `mailIndex()`-Aufbau pro Tick waere bei 1s-Takt und 30s-Frist bis zu 31 volle
+ *  Vault-Scans auf dem UI-Thread (dasselbe Muster wie `fetch.ts:50`, dort schon einmal
+ *  behoben). Normalisiert BEIDE Seiten (Fix-Runde 1, Minor 5): eine von Hand mit spitzen
+ *  Klammern geschriebene `mail_id` im Frontmatter traf sonst nie, obwohl `imVault` im
+ *  Posteingang (das denselben Weg ueber `normalizeKnownIds` geht) sie als vorhanden zeigt. */
+export function findNotePathForMailId(app: App, profile: MailProfile, mailId: string): string | null {
+  const gesucht = normalizeMessageId(mailId) ?? mailId;
+  for (const f of app.vault.getMarkdownFiles()) {
+    const id: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.[profile.idField];
+    if (typeof id !== "string" || !id) continue;
+    if ((normalizeMessageId(id) ?? id) === gesucht) return f.path;
+  }
+  return null;
 }

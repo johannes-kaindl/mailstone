@@ -74,3 +74,59 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
     expect(toggle?.name).toBe("Debug-Protokoll");
   });
 });
+
+// M5 Task 7: die Settings-UI fuer taskPreset — nur die Struktur der Definitionen, wie oben
+// (kein DOM-Rendering im Mock, s. Kommentar an newTab()).
+describe("MailstoneSettingTab — taskPreset", () => {
+  function presetList(tab: MailstoneSettingTab) {
+    const defs = tab.getSettingDefinitions() as { type?: string; items?: unknown[] }[];
+    const list = defs.find((d) => d.type === "list" && !("heading" in d && (d as { heading?: string }).heading === "Konten"));
+    // Es gibt zwei Listen (Konten, taskPreset) — die zweite ist ohne Heading (s. Kommentar im
+    // Tab: die Erklaerung steht als eigene Info-Zeile davor).
+    const lists = defs.filter((d): d is { type: string; items: unknown[] } => d.type === "list");
+    expect(lists.length).toBe(2);
+    const preset = lists.find((d) => !("heading" in d));
+    expect(preset).toBeDefined();
+    return preset as { items: { name: string }[] };
+  }
+
+  it("ist leer, wenn taskPreset leer ist", () => {
+    const tab = newTab();
+    expect(presetList(tab).items).toEqual([]);
+  });
+
+  it("zeigt einen bestehenden Preset-Eintrag als Zeile", () => {
+    const tab = newTab();
+    tab["host"].settings.taskPreset = { status: "open" };
+    expect(presetList(tab).items.map((i) => i.name)).toEqual(["status"]);
+  });
+
+  it("addItem haengt einen neuen, kollisionsfreien Schluessel an", async () => {
+    const tab = newTab();
+    tab["host"].settings.taskPreset = { field: "x" };
+    // Der Obsidian-Mock kennt kein PluginSettingTab.update() (echtes Obsidian ruft es fuer
+    // einen Re-Render) — hier reicht ein No-op, da nur die Settings-Mutation geprueft wird.
+    (tab as unknown as { update: () => void }).update = () => {};
+    const defs = tab.getSettingDefinitions() as { type?: string; heading?: string; addItem?: { action: (el: HTMLElement) => void } }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem && d.heading === undefined)!;
+    list.addItem!.action({} as HTMLElement);
+    await Promise.resolve();
+    expect(tab["host"].settings.taskPreset).toEqual({ field: "x", "field-2": "" });
+  });
+
+  // Fix-Runde 1, Important 2: eine Umbenennung auf einen bestehenden Schluessel darf den
+  // Zielwert nicht mehr still per Object.fromEntries verschlucken.
+  it("rename auf einen bestehenden Schluessel wird abgelehnt, kein Wert geht verloren", async () => {
+    const tab = newTab();
+    tab["host"].settings.taskPreset = { status: "open", prio: "high" };
+    (tab as unknown as { update: () => void }).update = () => {};
+    // Notice.instances ist eine reine Test-Instrumentierung des Mocks (tests/vendor/kit/
+    // obsidian-mock.ts) und existiert in den echten Obsidian-Typings nicht — deshalb ueber
+    // einen strukturellen Cast statt eines Imports der Mock-Klasse angesprochen.
+    const NoticeSpy = (await import("obsidian")).Notice as unknown as { instances: unknown[] };
+    NoticeSpy.instances.length = 0;
+    await (tab as unknown as { renameTaskPresetKey: (i: number, k: string) => Promise<void> }).renameTaskPresetKey(0, "prio");
+    expect(tab["host"].settings.taskPreset).toEqual({ status: "open", prio: "high" });
+    expect(NoticeSpy.instances.length).toBe(1);
+  });
+});

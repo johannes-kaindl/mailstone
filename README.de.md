@@ -23,11 +23,13 @@ Termin-/Teilnehmer-Modell gehört.
   nächste fällig ist, die Zähler, die nicht null sind, der Fehler in Klartext — und ein Knopf zum
   sofortigen Synchronisieren, für ein Konto oder alle. Der letzte Lauf überlebt einen Neustart.
 - **Ein Posteingangs-Tab.** Die letzten 100 Nachrichten aus deinem Posteingang, mit einem Häkchen
-  für alles, was schon als Notiz vorliegt. Zwei Aktionen je Zeile: ins Vault übernehmen oder
-  archivieren — beides serverseitig, beides erst nach einer Rückfrage.
+  für alles, was schon als Notiz vorliegt. Drei Aktionen je Zeile: ins Vault übernehmen oder
+  archivieren — beides serverseitig, beides erst nach einer Rückfrage — oder, sobald
+  [TaskNotes](https://github.com/callumalpass/tasknotes) installiert ist, direkt eine Aufgabe
+  daraus anlegen.
 - **Kommandos auf einer Mail-Notiz** — neu rendern aus der `.eml`, Message-IDs in Wikilinks
-  verwandeln, einen Anhang extrahieren, im externen Mailprogramm antworten. Jedes zeigt eine
-  Vorschau, bevor es schreibt.
+  verwandeln, einen Anhang extrahieren, im externen Mailprogramm antworten, eine TaskNotes-
+  Aufgabe daraus anlegen. Jedes zeigt eine Vorschau, bevor es schreibt.
 - **Versand.** SMTP über dasselbe Konto, einschließlich iMIP-Kalendereinladungen im Auftrag von
   `calendar-notes`.
 
@@ -73,7 +75,11 @@ Community-Plugins aktivieren. Aktualisieren muss man dann jedes Mal von Hand.
 
 **Aus dem Quelltext** — `npm install && npm run build`, dann dieselben drei Dateien in denselben
 Ordner kopieren. `npm run gate` fährt die vollständige Prüfkette (Lint, Typprüfungen, Unit- und
-Integrationstests, Reinheitsprüfung, Build).
+Integrationstests, Reinheitsprüfung, Build). `npm run smoke:e2e` ist eine separate, nur für den
+Maintainer gedachte Prüfung: sie fährt ein echtes, laufendes Obsidian-Fenster mit tatsächlich
+installiertem [TaskNotes](https://github.com/callumalpass/tasknotes), um zu belegen, dass eine
+aus einer Mail-Notiz angelegte Aufgabe wirklich als Datei im Vault landet — bewusst nicht Teil
+von `gate`, weil sie dieses zweite Plugin voraussetzt.
 
 ## Konfiguration
 
@@ -105,7 +111,8 @@ Notiz mit der ursprünglichen `.eml` daneben.
 der folgende Sync schreibt die Notiz.
 
 **Auf einer Mail-Notiz** bietet die Kommandopalette *neu rendern*, *Threads verlinken*, *Anhang
-extrahieren* und *extern antworten*. Jedes zeigt vor dem Schreiben, was es ändern würde.
+extrahieren*, *extern antworten* und — sobald TaskNotes installiert ist — *Aufgabe anlegen*.
+Jedes zeigt vor dem Schreiben, was es ändern würde.
 
 **Lesen markiert nie etwas als gelesen.** Auflisten, Vorschau und Sync nutzen durchweg `EXAMINE`
 und `BODY.PEEK`; ein Verschieben nimmt die Flags der Nachricht mit. Wenn ein anderes Werkzeug in
