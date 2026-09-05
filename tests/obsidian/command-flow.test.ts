@@ -17,6 +17,7 @@ vi.mock("../../src/obsidian/modals/plan-preview-modal", () => ({
   },
 }));
 import { makeApp } from "../helpers/memory-vault";
+import { loadFixture } from "../helpers/fixtures";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import { RERENDER_COMMAND } from "../../src/core/commands/rerender";
 import { RELINK_COMMAND } from "../../src/core/commands/relink";
@@ -195,5 +196,24 @@ describe("runCommand: bei genau einer Option gibt es nichts zu fragen", () => {
     expect(formularGeoeffnet).not.toHaveBeenCalled();
     expect(vorschauGeoeffnet).toHaveBeenCalledTimes(1);
     expect(r).toEqual({ kind: "cancelled" }); // die Vorschau-Attrappe lehnt ab
+  });
+
+  it("oeffnet es weiterhin, sobald es etwas zu waehlen gibt — zwei Anhaenge", async () => {
+    // Der Waechter gegen die Ueberdehnung: die Bedingung fuer das Formular ist jetzt
+    // `predeterminedInput`, nicht mehr „hat ueberhaupt Felder". Ohne diesen Punkt bliebe
+    // unbelegt, dass der NORMALFALL noch fragt.
+    formularGeoeffnet.mockClear();
+    vorschauGeoeffnet.mockClear();
+    // Echtes Multipart-Fixture statt zweier aneinandergehaengter Koepfe — die ergaeben kein
+    // multipart/mixed, und der Parser saehe nur EINEN Anhang. Genau daran ist der erste Entwurf
+    // dieses Pruefpunkts gescheitert: er war rot, und schuld war die Fixtur, nicht der Code.
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", `---\nmail_id: mixed-001@mail.example.org\nmail_source: acc/Vault\nmail_state: live\nattachments:\n  - "bericht.pdf (application/pdf, 5 B)"\n  - "notiz.txt (text/plain, 5 B)"\n---\n## Notizen\n\n${ZONE}`);
+    await app.vault.createBinary("Mail/2026/_eml/x.eml", loadFixture("multipart-mixed-attachments").buffer as ArrayBuffer);
+
+    const r = await runCommand(deps(app), {} as never, EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(formularGeoeffnet).toHaveBeenCalledTimes(1);
+    expect(vorschauGeoeffnet).not.toHaveBeenCalled(); // die Formular-Attrappe bricht ab
+    expect(r).toEqual({ kind: "cancelled" });
   });
 });
