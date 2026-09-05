@@ -506,3 +506,77 @@ zurückgebaut (`git diff --stat` leer bestätigt) und neu deployt, bevor die nä
 Nach jedem Rückbau lief der volle Satz wieder auf 20/20, zuletzt bestätigt im Abschlusslauf
 dieser Runde. Damit hängt jeder der fünf neuen Punkte an genau der Zusage, die er im Namen
 trägt — keiner bewacht nur zufällig durch einen Nachbarpunkt mit.
+
+## M5 Task 8, Fix-Runde 1 — Critical: der Treiber zerstörte ein echtes TaskNotes (2026-09-05)
+
+**Review-Befund:** `taskNotesStubSetzen` setzte bzw. löschte `app.plugins.plugins.tasknotes`
+unbedingt, ohne den Vorzustand zu sichern. Harmlos, solange dort nur der eigene Stub lag —
+sobald ein **echtes** TaskNotes im selben Staging-Vault installiert ist (Task 9), reißt jeder
+`npm run smoke:gui`-Lauf dessen Live-Registrierung heraus und lässt sie zerstört zurück, bis
+Obsidian das Nachbarplugin neu lädt. Der eigene Lauf bleibt dabei grün — der Schaden entsteht
+außerhalb der eigenen Messung.
+
+**Zweiter Anlauf, nicht nur Kosmetik:** Der erste Reparaturversuch sicherte den Vorzustand
+korrekt (`window.__smokeTaskNotesCaptured`/`__smokeTaskNotesOriginal`), behandelte
+`taskNotesStubSetzen(cdp, false)` aber als „auf den Vorzustand zurücksetzen" statt als „für
+diese Messung leeren". Zwischen dem ersten und zweiten Anlauf wurde **echtes TaskNotes 4.x im
+Staging-Vault `mailstone` installiert und aktiviert** (Voraussetzung für Task 9, offenbar schon
+hergestellt) — und genau das deckte den Fehler auf: T-A rief `taskNotesStubSetzen(cdp, false)`
+für „ohne TaskNotes", „zurücksetzen" schrieb das echte, bereits vorhandene Plugin unverändert
+zurück (es stand ja schon da), `checkCallback(true)` sah folgerichtig weiter TaskNotes, und
+T-A wurde rot — nicht weil der Prüfling kaputt war, sondern weil der Treiber „ohne TaskNotes"
+nicht mehr herstellen konnte. T-E fiel aus demselben Grund (3 statt 2 Knöpfe im
+„ohne"-Durchgang). Erster Lauf nach der ersten Reparatur: **18/20** (T-A, T-E rot).
+
+**Korrekte Trennung:** `taskNotesStubSetzen(cdp, an)` macht den Slot für die Dauer einer
+Messung leer (`an: false`) bzw. installiert den Stub (`an: true`) — unabhängig vom
+Vorzustand. Der Vorzustand kommt erst **einmal, am Ende des ganzen Abschnitts**, über die neue
+Funktion `taskNotesOriginalWiederherstellen()` zurück (aufgerufen aus dem `finally` um den
+TaskNotes-Block in `main()`, nie zwischen zwei Prüfpunkten). Nach der Korrektur: **20/20**,
+mit echtem TaskNotes im Vault.
+
+**Identitätsvergleich statt Strukturvergleich, wie im Review verlangt:**
+`taskNotesOriginalWiederherstellen()` vergleicht `app.plugins.plugins.tasknotes === original`
+(dieselbe Referenz aus dem einmaligen Sicherungs-Zugriff) — nicht anhand einer Eigenschaft des
+Stubs, der Reihenfolge oder „gerade eben gesetzt". Ein Stub sieht strukturell wie das Original
+aus (`apiVersion`/`tasks.create`/`model.config`), ein Feldvergleich hätte den eigentlichen Fehler
+also nicht zuverlässig fangen können. Ein fehlgeschlagener Restore wirft jetzt einen Fehler
+(`main()`s `finally`), statt stillschweigend durchzurutschen.
+
+### Gegenprobe zur Kern-Zusage: „Slot nach einem vollständigen Lauf = Slot davor"
+
+- **Mit vorhandenem Fremdobjekt (live, das echte TaskNotes im Vault `mailstone`):** vollständiger
+  `npm run smoke:gui`-Lauf nach der Korrektur — **20/20 grün**, kein Wurf aus
+  `taskNotesOriginalWiederherstellen()` (der bei einem Fehlschlag geworfen hätte). Danach
+  separat per CDP geprüft: `app.plugins.plugins.tasknotes` weiterhin vorhanden, `enabledPlugins`
+  führt `"tasknotes"`, `api.apiVersion === 1` und `typeof api.tasks.create === "function"` —
+  das echte Plugin ist nach dem Lauf unverändert funktionsfähig.
+  (Ein *externer* Vorher/Nachher-Identitätsvergleich über den ganzen Lauf hinweg ist für
+  TaskNotes nicht sinnvoll: `v1`/`v5b`/`v7` lösen einen echten `app:reload` aus, der ALLE
+  Community-Plugins — auch TaskNotes — neu instanziiert; ein Referenzwechsel dabei ist
+  erwartetes Verhalten des Reloads, kein Befund. Die Identitäts-Zusicherung gilt deshalb für den
+  reload-freien TaskNotes-Abschnitt selbst, s. o., und ist dort im Treiber selbst verankert
+  (Wurf bei Fehlschlag), nicht nur einmalig von außen gemessen.)
+- **Ohne vorhandenes Fremdobjekt:** ein Test hierfür hätte erfordert, das jetzt echte,
+  gemeinsam genutzte TaskNotes im Staging-Vault testweise zu deaktivieren — das wurde bewusst
+  **nicht** gemacht (von der Auto-Mode-Klassifizierung als riskiver Eingriff in eine geteilte
+  Ressource abgelehnt, zu Recht: andere Sessions bauen inzwischen möglicherweise auf dieser
+  Installation für Task 9 auf). Stattdessen isoliert per Node geprüft, ohne Obsidian: der exakte
+  Restore-Algorithmus aus `taskNotesOriginalWiederherstellen()` nachgebaut und zweimal
+  durchgespielt — einmal mit `original === undefined` (Slot bleibt nach dem Restore korrekt
+  `undefined`, `wiederhergestellt === true`), einmal mit einer echten Objekt-Referenz
+  (`jetzt === original`, `wiederhergestellt === true`). Beide Fälle bestehen strukturell.
+
+### `requireEigenerBuild` eingezogen (Important)
+
+Der Zwischenlauf gegen den vor der Korrektur noch nicht deployten Stand hätte durch einen
+Build-Herkunfts-Check vermieden werden können: `requireEigenerBuild()`
+(`tools/obsidian-cdp/vault.ts`) sitzt jetzt vor jeder Messung in `main()` und bricht mit einer
+klaren Meldung ab, statt Prüfpunkte rot zu färben, wenn der deployte `main.js` nicht der
+Repo-Stand ist (per sha1 gegen `main.js` im Repo-Root verglichen).
+
+### `details` in T-D ergänzt (Minor)
+
+`treffer.details === "[[<Notiz-ohne-.md>]]"` ist jetzt Teil der T-D-Zusicherung — vorher wurde
+nur `title`/`due` geprüft, der Wikilink-Rückverweis auf die Mail-Notiz (der eigentliche Träger
+der Verbindung Aufgabe↔Mail) blieb unverifiziert.
