@@ -1,3 +1,4 @@
+import { CREATE_TASK_COMMAND } from "./create-task";
 import { EXTRACT_ATTACHMENT_COMMAND } from "./extract";
 import { RELINK_COMMAND } from "./relink";
 import { REPLY_EXTERNAL_COMMAND } from "./reply";
@@ -10,4 +11,5 @@ export const MAIL_COMMANDS: CommandDescriptor[] = [
   RELINK_COMMAND,
   EXTRACT_ATTACHMENT_COMMAND,
   REPLY_EXTERNAL_COMMAND,
+  CREATE_TASK_COMMAND,
 ];
