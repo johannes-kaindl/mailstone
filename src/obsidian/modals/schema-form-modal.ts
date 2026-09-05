@@ -48,7 +48,8 @@ export function parseFormValues(schema: ObjectSchema, raw: Record<string, unknow
 /**
  * Formular aus einem ObjectSchema. Ein `enum` wird zum Dropdown (so wird aus der
  * Anhangliste eine Auswahl), `format: "multiline"` und `type: "array"` werden zur TextArea,
- * alles andere ein Textfeld. Aufloesung ueber `pick()`: `null` bei Abbruch.
+ * `format: "date"` zu einem `input[type=date]` (Wert bleibt der ISO-String), alles andere
+ * ein Textfeld. Aufloesung ueber `pick()`: `null` bei Abbruch.
  */
 export class SchemaFormModal extends Modal {
   private readonly values: Record<string, unknown> = {};
@@ -100,6 +101,13 @@ export class SchemaFormModal extends Modal {
     }
     if (field.type === "array" || (field.type === "string" && field.format === "multiline")) {
       setting.addTextArea((c) => c.onChange((v) => { this.values[key] = v; }));
+      return;
+    }
+    if (field.type === "string" && field.format === "date") {
+      setting.addText((c) => {
+        c.inputEl.type = "date";
+        c.onChange((v) => { this.values[key] = v; });
+      });
       return;
     }
     setting.addText((c) => c.onChange((v) => { this.values[key] = v; }));

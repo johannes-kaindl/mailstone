@@ -1,9 +1,10 @@
 // uebernommen aus calendar-notes/src/core/commands/schema.ts, 2026-08-30
 // Mini-JSON-Schema: flache Untermenge fuer Kommando-Eingaben. Zwei Abweichungen von der
 // Vorlage: (a) Fehlertexte englisch, weil mailstones core durchgehend sprachfrei ist;
-// (b) kein Format "date-time" — kein mailstone-Kommando nimmt ein Datum entgegen.
+// (b) `format: date` statt `date-time` — `mail.createTask` nimmt eine Faelligkeit als
+// reines Datum entgegen (M5, 2026-09-05).
 export type FieldSchema =
-  | { type: "string"; format?: "email" | "uri" | "multiline"; enum?: string[]; minLength?: number; description?: string; descriptionKey?: string }
+  | { type: "string"; format?: "email" | "uri" | "multiline" | "date"; enum?: string[]; minLength?: number; description?: string; descriptionKey?: string }
   | { type: "number"; minimum?: number; maximum?: number; description?: string; descriptionKey?: string }
   | { type: "boolean"; description?: string; descriptionKey?: string }
   | { type: "array"; items: { type: "string"; format?: "email" }; description?: string; descriptionKey?: string };
@@ -16,8 +17,17 @@ export interface ObjectSchema {
 
 export type ValidationResult = { ok: true; value: Record<string, unknown> } | { ok: false; errors: string[] };
 
-function checkFormat(field: string, format: "email" | "uri" | "multiline", value: string, errors: string[]): void {
+function checkFormat(field: string, format: "email" | "uri" | "multiline" | "date", value: string, errors: string[]): void {
   if (format === "email" && !value.includes("@")) errors.push(`${field}: not a valid e-mail address`);
+  // Leer = nicht gesetzt; ein optionales Datum darf leer bleiben.
+  if (format === "date" && value !== "" && !isIsoDate(value)) errors.push(`${field}: must be a date (YYYY-MM-DD)`);
+}
+
+/** YYYY-MM-DD und ein Datum, das es wirklich gibt — `2026-02-31` faellt durch. */
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
 function checkField(field: string, schema: FieldSchema, value: unknown, errors: string[]): void {
