@@ -49,9 +49,19 @@ export function defaultMailProfile(): MailProfile {
  *  `onCreate` ein — dieselbe Zusage, die `onCreate` schon fuer sich traegt, gilt dann auch
  *  fuer das Preset: `newNote()` (merge.ts) wendet `onCreate` NUR im create-Zweig an, nie beim
  *  Merge einer bestehenden Notiz. Ein leeres Preset aendert nichts (identisches Objekt zurueck,
- *  kein Allokations-Rauschen im haeufigen Fall). Kollisionen entscheidet `onCreate`: das
- *  Profil traegt strukturelle Marker (z. B. `type: "mail"`), das Preset ist Nutzer-Freitext —
- *  im Zweifel gewinnt die Struktur. */
+ *  kein Allokations-Rauschen im haeufigen Fall).
+ *
+ *  Zwei verschiedene Kollisionen, zwei verschiedene Stellen:
+ *  1. Preset gegen `profile.onCreate` selbst (z. B. beide setzen `type`) — entscheidet DIESE
+ *     Funktion, `{...taskPreset, ...profile.onCreate}`: das Profil traegt strukturelle Marker,
+ *     das Preset ist Nutzer-Freitext, im Zweifel gewinnt die Struktur.
+ *  2. Preset gegen ein VERWALTETES Feld (`mail_id`, `subject`, … — `managedKeys()`) — das
+ *     entscheidet NICHT hier, sondern `newNote()`s `{...onCreate, ...derived}` (merge.ts):
+ *     `derived` gewinnt, das Preset-Feld wird an dieser Stelle still verworfen. Sicher (kein
+ *     verwaltetes Feld wird ueberschrieben), aber wenn diese Spread-Reihenfolge je gedreht
+ *     wuerde, waere das ein stiller Datenschaden an `mail_id` & Co. — bewacht von
+ *     `tests/core/mirror/plan.test.ts` ("Preset gegen ein verwaltetes Feld: das verwaltete
+ *     Feld gewinnt"). */
 export function withTaskPreset(profile: MailProfile, taskPreset: Record<string, FmVal>): MailProfile {
   if (Object.keys(taskPreset).length === 0) return profile;
   return { ...profile, onCreate: { ...taskPreset, ...profile.onCreate } };

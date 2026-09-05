@@ -14,7 +14,14 @@ export interface Account {
   // Kopie ab — das ist die Opt-out-Form, absichtlich statt Opt-in (Spec § 3.3, praezisiert 2026-08-30).
   folders: { inbox: string; allowlist: string; archive: string; sent?: string }; sync: { enabled: boolean; intervalMin: number };
 }
-export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number | boolean>; debugLog: boolean; openViewOnStartup: boolean }
+// taskPreset traegt bewusst kein `boolean` (Fix-Runde 1, Task 7): toFm() (merge.ts) macht aus
+// JEDEM JS-Boolean per String(v) einen String, und needsQuoting() (vendor/kit/frontmatter.ts)
+// quotet jeden String, der wie "true"/"false" aussieht, ausdruecklich — das Ergebnis ist immer
+// die Zeichenkette "false", nie ein echtes YAML-Bool, auf jedem Weg (Settings-UI wie
+// Hand-Edit in data.json). Das zu reparieren waere ein Eingriff in toFm/needsQuoting, der ALLE
+// Frontmatter-Felder betraefe — kein M5-Vorgang. Ein `number` ist davon nicht betroffen: er
+// laeuft an toFm vorbei und wird unquoted ausgegeben.
+export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; debugLog: boolean; openViewOnStartup: boolean }
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -98,9 +105,24 @@ function repairAccount(raw: unknown): Account {
 // n=2 in vim-dojo und kuro-gamification).
 export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, debugLog: false, openViewOnStartup: false };
 
+/** Wirft nie: ein alteres `data.json` (oder ein Hand-Edit) kann `taskPreset`-Werte tragen, die
+ *  der aktuelle Typ nicht mehr kennt — ein `boolean` (Fix-Runde 1, s. Kommentar an
+ *  `MailstoneSettings`) oder Fremdes (Array, Objekt, `null`). Ein solcher Eintrag wird beim
+ *  Laden stillschweigend fallengelassen statt den Ladevorgang zu brechen: er war ohnehin nie
+ *  funktional (der Boolean-Fall) bzw. nie gueltig. */
+function repairTaskPreset(raw: unknown): Record<string, string | number> {
+  if (!isObj(raw)) return {};
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "string" || typeof v === "number") out[k] = v;
+  }
+  return out;
+}
+
 export function loadSettings(raw: unknown): MailstoneSettings {
   const s = mergeSettings(DEFAULT_SETTINGS, raw && typeof raw === "object" ? raw : {});
   s.accounts = (Array.isArray(s.accounts) ? s.accounts : []).map((a) => repairAccount(a));
+  s.taskPreset = repairTaskPreset(isObj(raw) ? raw.taskPreset : undefined);
   const rawProfile = isObj(raw) && isObj(raw.profile) ? raw.profile : {};
   s.profile = {
     ...defaultMailProfile(),

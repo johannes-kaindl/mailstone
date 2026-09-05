@@ -113,4 +113,20 @@ describe("MailstoneSettingTab — taskPreset", () => {
     await Promise.resolve();
     expect(tab["host"].settings.taskPreset).toEqual({ field: "x", "field-2": "" });
   });
+
+  // Fix-Runde 1, Important 2: eine Umbenennung auf einen bestehenden Schluessel darf den
+  // Zielwert nicht mehr still per Object.fromEntries verschlucken.
+  it("rename auf einen bestehenden Schluessel wird abgelehnt, kein Wert geht verloren", async () => {
+    const tab = newTab();
+    tab["host"].settings.taskPreset = { status: "open", prio: "high" };
+    (tab as unknown as { update: () => void }).update = () => {};
+    // Notice.instances ist eine reine Test-Instrumentierung des Mocks (tests/vendor/kit/
+    // obsidian-mock.ts) und existiert in den echten Obsidian-Typings nicht — deshalb ueber
+    // einen strukturellen Cast statt eines Imports der Mock-Klasse angesprochen.
+    const NoticeSpy = (await import("obsidian")).Notice as unknown as { instances: unknown[] };
+    NoticeSpy.instances.length = 0;
+    await (tab as unknown as { renameTaskPresetKey: (i: number, k: string) => Promise<void> }).renameTaskPresetKey(0, "prio");
+    expect(tab["host"].settings.taskPreset).toEqual({ status: "open", prio: "high" });
+    expect(NoticeSpy.instances.length).toBe(1);
+  });
 });

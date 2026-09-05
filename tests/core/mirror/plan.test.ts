@@ -105,8 +105,24 @@ describe("taskPreset", () => {
     expect(p.kind === "skip" && p.reason).toBe("unchanged");
   });
   it("tut bei leerem Preset gar nichts", async () => {
-    const c = await common(); // Default: taskPreset = {}
+    const base = await common();
+    // Fix-Runde 1, Minor 3: vorher lief dieser Test ohne withTaskPreset ueberhaupt zu rufen
+    // (blieb also gruen, selbst wenn withTaskPreset({}) kaputt gewesen waere) — jetzt echt
+    // durch die Funktion gefuehrt, wie die drei Tests darueber.
+    const c = { ...base, profile: withTaskPreset(base.profile, {}) };
     const p = planMailNote({ ...c, existing: null });
     expect(p.kind === "create" && p.content).not.toContain("status:");
+  });
+  // Fix-Runde 1, Minor 4: die zweite Kollision aus dem Kommentar an withTaskPreset() — ein
+  // Preset-Schluessel, der einen VERWALTETEN key trifft (hier "mail_id"), darf diesen nicht
+  // ueberschreiben. Das entscheidet newNote()s {...onCreate, ...derived} (merge.ts), nicht
+  // withTaskPreset() selbst — ungetestet waere eine gedrehte Spread-Reihenfolge dort ein
+  // stiller Datenschaden an genau diesem Feld, ohne dass irgendein Test rot wuerde.
+  it("Preset gegen ein verwaltetes Feld: das verwaltete Feld gewinnt", async () => {
+    const base = await common();
+    const c = { ...base, profile: withTaskPreset(base.profile, { mail_id: "evil-override" }) };
+    const p = planMailNote({ ...c, existing: null });
+    expect(p.kind === "create" && p.content).toContain("mail_id: utf8-plain-001@mail.example.org");
+    expect(p.kind === "create" && p.content).not.toContain("evil-override");
   });
 });

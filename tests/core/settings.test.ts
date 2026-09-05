@@ -14,6 +14,23 @@ describe("settings", () => {
     expect(s.profile.folder).toBe("Post");
     expect(s.profile.fields.from).toBe("from");
   });
+  // Fix-Runde 1, Task 7: taskPreset kennt keinen boolean mehr (toFm/needsQuoting machen daraus
+  // immer die Zeichenkette "false", nie ein echtes YAML-Bool — s. Kommentar an
+  // MailstoneSettings). loadSettings darf an einem aelteren data.json mit einem solchen Wert
+  // trotzdem nicht hart brechen.
+  it("loadSettings behaelt gueltige taskPreset-Werte (string/number)", () => {
+    const s = loadSettings({ taskPreset: { status: "open", prio: 1 } });
+    expect(s.taskPreset).toEqual({ status: "open", prio: 1 });
+  });
+  it("loadSettings wirft einen booleschen taskPreset-Wert aus einem aelteren data.json still weg", () => {
+    const s = loadSettings({ taskPreset: { status: "open", archived: true } });
+    expect(s.taskPreset).toEqual({ status: "open" });
+  });
+  it("loadSettings faellt bei fremdem taskPreset (Array/Objekt/null) auf {} zurueck, ohne zu werfen", () => {
+    expect(() => loadSettings({ taskPreset: ["junk"] })).not.toThrow();
+    expect(loadSettings({ taskPreset: ["junk"] }).taskPreset).toEqual({});
+    expect(loadSettings({ taskPreset: null }).taskPreset).toEqual({});
+  });
   it("newAccount + secretIdFor", () => {
     const a = newAccount("privat");
     expect(a.secretId).toBe(secretIdFor("privat"));

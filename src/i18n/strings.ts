@@ -205,6 +205,7 @@ export const en = {
   "settings.taskPreset.key.aria": "Field name",
   "settings.taskPreset.value.placeholder": "Value (e.g. open)",
   "settings.taskPreset.value.aria": "Field value",
+  "settings.taskPreset.key.duplicate": "A field named \"{0}\" already exists.",
 };
 export const de: typeof en = {
   "cmd.importEml.name": ".eml-Dateien aus einem Vault-Ordner importieren",
@@ -408,6 +409,7 @@ export const de: typeof en = {
   "settings.taskPreset.key.aria": "Feldname",
   "settings.taskPreset.value.placeholder": "Wert (z. B. open)",
   "settings.taskPreset.value.aria": "Feldwert",
+  "settings.taskPreset.key.duplicate": "Ein Feld namens \"{0}\" gibt es schon.",
 };
 
 export function initI18n(raw: string): void { defineStrings({ en, de }); setLang(pickLang(raw)); }

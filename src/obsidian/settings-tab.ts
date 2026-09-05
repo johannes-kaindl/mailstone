@@ -1,4 +1,5 @@
 import {
+  Notice,
   PluginSettingTab,
   getLanguage,
   type App,
@@ -224,10 +225,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
   }
 
   /** Ersetzt den ganzen Record aus der Zeilen-Liste — leere Schluessel fallen dabei weg (eine
-   *  Zeile mit leerem Namen darf kein Frontmatter-Feld "" erzeugen). Bei einer Umbenennung auf
-   *  einen bereits vorhandenen Schluessel gewinnt der letzte Eintrag (Object.fromEntries) — die
-   *  doppelte Zeile verschwindet beim naechsten Render; das ist ein bewusst einfacher Ausgang
-   *  fuer einen erwartbar seltenen Fall, keine stille Datenkorruption. */
+   *  Zeile mit leerem Namen darf kein Frontmatter-Feld "" erzeugen). Kollisionen zwischen zwei
+   *  Zeilen sind an dieser Stelle NICHT mehr moeglich: `addTaskPresetEntry` vergibt einen
+   *  kollisionsfreien Schluessel, `renameTaskPresetKey` lehnt eine Umbenennung auf einen
+   *  bestehenden Schluessel explizit ab (Fix-Runde 1, Important 2 — vorher gewann hier still
+   *  der letzte Eintrag per Object.fromEntries, ohne Notice, mit Datenverlust). */
   private applyTaskPreset(entries: readonly [string, string][]): void {
     this.host.settings.taskPreset = Object.fromEntries(entries.filter(([k]) => k.trim().length > 0));
   }
@@ -239,6 +241,16 @@ export class MailstoneSettingTab extends PluginSettingTab {
     const newKey = newKeyRaw.trim();
     if (newKey === current[0]) return;
     if (!newKey) { await this.removeTaskPresetEntry(index); return; }
+    // Dieselbe Kollisionsvermeidung wie beim Hinzufuegen (addTaskPresetEntry): eine Umbenennung
+    // auf einen bereits vorhandenen Schluessel wird abgelehnt, statt den Zielwert per
+    // Object.fromEntries still zu ueberschreiben oder die Umbenennung spurlos verschwinden zu
+    // lassen. this.update() rendert die Zeile mit dem alten Schluessel neu — sonst zeigte das
+    // Eingabefeld weiter den abgelehnten (nicht uebernommenen) Wert.
+    if (entries.some((e, i) => i !== index && e[0] === newKey)) {
+      new Notice(t("settings.taskPreset.key.duplicate", newKey));
+      this.update();
+      return;
+    }
     this.applyTaskPreset(entries.map((e, i) => (i === index ? [newKey, e[1]] : e)));
     await this.host.saveSettings();
     this.update(); // Zeilen-Beschriftung (name = key) muss den neuen Namen zeigen
