@@ -1,5 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { mailTargetFor, buildContext } from "../../src/obsidian/command-flow";
+import { mailTargetFor, buildContext, runCommand } from "../../src/obsidian/command-flow";
+
+// Die Modale sind in dieser Datei nur daran interessant, OB sie aufgehen — der Fall unten ist
+// gerade der, in dem keines aufgehen darf.
+const { formularGeoeffnet } = vi.hoisted(() => ({ formularGeoeffnet: vi.fn() }));
+vi.mock("../../src/obsidian/modals/schema-form-modal", () => ({
+  SchemaFormModal: class {
+    constructor() { formularGeoeffnet(); }
+    async pick(): Promise<null> { return null; }
+  },
+}));
 import { makeApp } from "../helpers/memory-vault";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import { RERENDER_COMMAND } from "../../src/core/commands/rerender";
@@ -123,5 +133,25 @@ describe("buildContext", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.ctx.existingAttachment("a.txt")).toBeNull();
+  });
+});
+
+describe("runCommand: ein Formular ohne waehlbare Option geht gar nicht erst auf", () => {
+  // Der Frontmatter fuehrt einen Anhang, die .eml enthaelt keinen (hand-editierte Notiz,
+  // ersetzte .eml). `appliesTo` sagt deshalb ja, das Enum ist aber leer — frueher erschien ein
+  // Dropdown ohne Option, und jeder Absendeversuch scheiterte an `must be one of []`.
+  async function vaultMitLuecke() {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\nmail_source: acc/Vault\nmail_state: live\nattachments:\n  - "weg.pdf (application/pdf, 1 KB)"\n---\n## Notizen\n\n${ZONE}`);
+    await app.vault.createBinary("Mail/2026/_eml/x.eml", new TextEncoder().encode(EML).buffer);
+    return app;
+  }
+
+  it("meldet no-choices, statt ein unbedienbares Formular zu zeigen", async () => {
+    formularGeoeffnet.mockClear();
+    const app = await vaultMitLuecke();
+    const r = await runCommand(deps(app), {} as never, EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r).toEqual({ kind: "error", code: "no-choices" });
+    expect(formularGeoeffnet).not.toHaveBeenCalled();
   });
 });

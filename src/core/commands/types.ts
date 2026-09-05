@@ -18,6 +18,7 @@ export type CommandErrorCode =
   | "no-recipient"             // keine Absenderadresse zum Antworten
   | "tasknotes-unavailable"    // TaskNotes fehlt oder die Formpruefung ist durchgefallen
   | "task-create-failed"       // tasks.create hat abgelehnt oder geworfen
+  | "no-choices"               // ein Auswahlfeld hat KEINE Option — das Formular waere unbedienbar
   | "nothing-to-do"            // Plan waere leer — nichts zu schreiben
   | "write-failed"             // Schreibvorgang gescheitert
   | "unexpected";              // runCommand() hat geworfen, BEVOR etwas geschrieben wurde (M3b-Nachlese, Fund 3)

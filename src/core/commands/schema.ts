@@ -84,4 +84,19 @@ export function validateInput(schema: ObjectSchema, input: unknown): ValidationR
   return { ok: true, value: o };
 }
 
+/**
+ * Der Name des ersten Feldes, dessen Auswahlliste LEER ist — sonst null.
+ *
+ * Ein solches Feld macht das Formular unbedienbar: das Dropdown zeigt keine Option, und jeder
+ * Absendeversuch scheitert an `must be one of []`, Abbrechen ist der einzige Ausgang. Der
+ * Ablauf fragt deshalb VOR dem Oeffnen (s. runCommand) und meldet stattdessen `no-choices`.
+ * Ein Feld ganz OHNE `enum` ist frei bedienbar und faellt nicht darunter.
+ */
+export function emptyChoiceField(schema: ObjectSchema): string | null {
+  for (const [name, field] of Object.entries(schema.properties)) {
+    if (field.type === "string" && field.enum && field.enum.length === 0) return name;
+  }
+  return null;
+}
+
 export const EMPTY_SCHEMA: ObjectSchema = { type: "object", properties: {} };

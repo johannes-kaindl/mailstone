@@ -2,6 +2,7 @@ import { TFile, normalizePath, type App } from "obsidian";
 import { parseEml } from "../core/mime/parse";
 import { emlPathFor, verifyEml } from "../core/commands/eml";
 import { executeCommandPlan, type CommandExecuteDeps, type CommandExecuteResult } from "../core/commands/execute";
+import { emptyChoiceField } from "../core/commands/schema";
 import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type MailNoteRef, type MailTarget } from "../core/commands/types";
 import type { MailProfile } from "../core/mirror/profile";
 import { SchemaFormModal } from "./modals/schema-form-modal";
@@ -162,6 +163,12 @@ export async function runCommand(
   if (!descriptor.appliesTo(ctx)) return { kind: "error", code: "not-applicable" };
 
   const schema = schemaOf(descriptor, ctx);
+  // Ein Auswahlfeld ohne Option macht das Formular unbedienbar — kein Eintrag im Dropdown, und
+  // jeder Absendeversuch scheitert an `must be one of []`. Statt es zu zeigen und den Nutzer in
+  // eine Sackgasse laufen zu lassen, wird hier abgebrochen (M3b-Nachlese, geparkter Befund 2;
+  // entschieden am 2026-09-05).
+  if (emptyChoiceField(schema) !== null) return { kind: "error", code: "no-choices" };
+
   let input: Record<string, unknown> = {};
   if (Object.keys(schema.properties).length > 0) {
     const picked = await new SchemaFormModal(deps.app, trTitle(descriptor), schema).pick();
