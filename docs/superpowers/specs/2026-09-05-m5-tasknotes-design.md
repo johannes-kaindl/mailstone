@@ -45,9 +45,12 @@ typeof api.tasks?.create   === "function"
 typeof api.model?.config   === "function"
 ```
 
-`model.validateTask` wird **einzeln** geprüft, nicht im Vollständigkeits-Check: eine additive
-Erweiterung des Anbieters darf nicht zur Pflicht des Konsumenten werden (REGISTRY-Zusatz aus
-`epub-exporter`, 2026-08-30). Fehlt sie, wird ohne Vorvalidierung angelegt.
+`model.validateTask` wird **gar nicht geprüft und nicht in `TaskNotesApiSubset` aufgenommen**
+(Ruling Task 0, 2026-09-05, ersetzt eine ältere Fassung dieses Absatzes): gemessen erwartet es
+ein vollständiges `TaskInfo` und meldet für **jede** Erstellungs-Eingabe `missing_required` für
+`status`/`dateCreated`/`dateModified` — Felder, die `create()` selbst befüllt. Eingebaut hätte
+es jeden Erstellungsversuch mit „ungültig" scheitern lassen, bei völlig intakter API. Details:
+§ 8.1.
 
 Der **strikte** Vergleich gegen die eigene Konstante ist bewusst gewählt und hat einen Preis,
 der eingeplant gehört: bricht TaskNotes seinen Vertrag, verstummt mailstone, statt auf einer
@@ -84,20 +87,22 @@ Formprüfung (Prüfstelle 1).
 Alles Weitere überlässt mailstone TaskNotes' eigenen Defaults — was dort besser bedienbar ist
 als in einem Nachbau, und was jedes gespiegelte Feld als Bruchstelle gegen eine RC-API spart.
 
-**Ablauf:** Formprüfung (Prüfstelle 2) → `taskData` bauen → `validateTask(data)` falls vorhanden
-→ `tasks.create(data)` → Notice mit Ergebnis.
+**Ablauf:** Formprüfung (Prüfstelle 2) → `taskData` bauen → `tasks.create(data)` → Notice mit
+Ergebnis. Kein `validateTask`-Schritt mehr (Ruling Task 0, s. § 2.1/§ 8.1): ohne ihn gibt es
+keinen Ausgang, der eine eigene Vorab-Diagnose bräuchte — Eingabeprüfung macht mailstones
+eigenes Schema, ein Fehlschlag der fremden API kommt als `task-create-failed` zurück.
 
-⚠️ **Die Form von `taskData` ist ungemessen.** `tasks.create` hat arity 2 (`(taskData, opts)`),
-mehr steht nicht fest; plausibel nimmt es ein logisches Objekt und übersetzt selbst nach
-`frontmatterKey`. **Deshalb wird hier keine Feldübersetzung auf Vorrat gebaut.** `validateTask`
-ist der Wächter; ob eine Übersetzung über `catalog.fields()` nötig ist, beantwortet der
-Naht-Lauf (§ 6) — vorher ist jede Zeile davon möglicher toter Code. Der Hinweis kam von
-`calendar-notes`, das dieselbe Fläche für einen anderen Zweck bereits vermessen hat.
+Die Form von `taskData` ist gemessen (§ 8.1, Task 0): einziges Pflichtfeld `title`, Fälligkeit
+heißt `due` (nicht `dueDate`), unbekannte Felder werden ignoriert. Eine Feldübersetzung über
+`catalog.fields()` ist damit nicht nötig — mailstone reicht die drei bekannten Felder direkt
+durch.
 
-**Der Link auf die Mail-Notiz** gehört zur Aufgabe; wie er getragen wird (Feld oder Rumpf),
-entscheidet dieselbe Messung.
+**Der Link auf die Mail-Notiz** gehört zur Aufgabe und wird über `details` getragen (§ 8.1) —
+ein Wikilink im Freitext-Rumpf, kein eigenes Link-Feld.
 
-Neue Codes in `CommandErrorCode`: `tasknotes-unavailable`, `task-invalid`, `task-create-failed`.
+Neue Codes in `CommandErrorCode`: `tasknotes-unavailable`, `task-create-failed`. (`task-invalid`
+entfällt — ohne `validateTask` gibt es keinen Ausgang mehr, der ihn erzeugt; ein Code ohne
+Erzeuger ist toter Vertrag.)
 
 **mailstone schreibt keine Task-Datei selbst** und fasst die Aufgabe nach dem Anlegen nie wieder
 an. Kein Rückverweis von der Mail-Notiz auf die Aufgabe — das wäre ein zweiter Bestand mit
