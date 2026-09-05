@@ -1202,8 +1202,22 @@ async function te_postfachKnopfNurMitTaskNotes(cdp: Cdp): Promise<void> {
 
 // ── Lauf ────────────────────────────────────────────────────────────────────────────────
 
+/** Die offene CDP-Verbindung, damit der Abbruchpfad sie schliessen kann.
+ *
+ *  Gemessen 2026-09-05: nach einem Abbruch NACH `attachTo` (hier: `requireEigenerBuild`
+ *  wirft, weil im Vault ein anderer Build liegt) druckte der Treiber seine Meldung und lief
+ *  DANACH ACHT MINUTEN weiter — 0 % CPU, wartend. Der offene Socket haelt Nodes Event-Loop am
+ *  Leben; `process.exitCode` beendet nichts, es setzt nur den Code fuer ein Ende, das nie
+ *  kommt. Sichtbar wird das erst, wenn jemand die Ausgabe pipet (dann steht sie bis zum Ende
+ *  im Puffer und der Lauf sieht aus wie haengend) — im Terminal liest man die Meldung und
+ *  haelt den Prozess fuer fertig, waehrend er den Debug-Port belegt.
+ *
+ *  Der Erfolgspfad schliesst im `finally` weiter unten; das hier deckt die Abbrueche davor. */
+let offeneVerbindung: Cdp | null = null;
+
 async function main(): Promise<void> {
   const cdp = await attachTo("workspace", PORT, VAULT);
+  offeneVerbindung = cdp;
   if (!cdp) {
     throw new Error(
       `Kein Obsidian-Fenster für Vault „${VAULT}“ auf Port ${String(PORT)}. ` +
@@ -1383,4 +1397,6 @@ async function deployteVersion(cdp: Cdp, _vaultPfad: string, konfigVerzeichnis: 
 main().catch((error: unknown) => {
   console.error(`\nAbbruch: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
+  // Ohne das haengt der Prozess am offenen Socket, statt sich zu beenden (s. offeneVerbindung).
+  offeneVerbindung?.close();
 });
