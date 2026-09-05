@@ -77,17 +77,28 @@ describe("createTaskViaBridge", () => {
   });
 
   it("meldet tasknotes-unavailable, wenn die API zwischen Anbieten und Aufruf verschwindet — die zweite Formpruefung greift", async () => {
-    // Zuerst als vorhanden gelesen (Pruefstelle 1 haette das Kommando angeboten) —
-    // beim eigentlichen Aufruf ist das Plugin bereits deaktiviert.
-    const appDamals = appMit(gueltig);
-    expect(readTaskNotesApi(appDamals)).not.toBeNull();
-    const appJetzt = { plugins: { plugins: {} } } as unknown as App;
-    const r = await createTaskViaBridge(appJetzt, req);
+    // EIN App-Objekt, dazwischen wird das Nachbarplugin deaktiviert — nicht zwei
+    // verschiedene App-Objekte (Fix-Runde 1, Task 5: der Test soll das reale Szenario
+    // "dieselbe App erneut lesen, nachdem TaskNotes verschwand" belegen).
+    const plugins: Record<string, unknown> = { tasknotes: { api: gueltig } };
+    const app = { plugins: { plugins } } as unknown as App;
+    expect(readTaskNotesApi(app)).not.toBeNull();
+    delete plugins["tasknotes"];
+    const r = await createTaskViaBridge(app, req);
     expect(r).toEqual({ ok: false, code: "tasknotes-unavailable" });
   });
 
-  it("meldet task-create-failed, wenn tasks.create wirft", async () => {
-    const app = appMit({ ...gueltig, tasks: { create: vi.fn(async () => { throw new Error("Title is required"); }) } });
+  it("meldet task-create-failed, wenn tasks.create als Promise ablehnt", async () => {
+    const app = appMit({ ...gueltig, tasks: { create: vi.fn(async () => { throw new Error("kaputt"); }) } });
+    const r = await createTaskViaBridge(app, req);
+    expect(r).toEqual({ ok: false, code: "task-create-failed" });
+  });
+
+  // Spec § 8.1, gemessener Wurf-Modus: tasks.create wirft bei leerem Titel SYNCHRON
+  // ("Error: Failed to create task: Title is required"), keine Rejection. Der Code faengt
+  // beides ab, aber nur der synchrone Fall ist der real gemessene (Fix-Runde 1, Task 5).
+  it("meldet task-create-failed, wenn tasks.create synchron wirft (der real gemessene Fall)", async () => {
+    const app = appMit({ ...gueltig, tasks: { create: () => { throw new Error("Failed to create task: Title is required"); } } });
     const r = await createTaskViaBridge(app, req);
     expect(r).toEqual({ ok: false, code: "task-create-failed" });
   });

@@ -23,6 +23,7 @@ import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sy
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
 import { mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
+import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
 import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/execute";
 import type { NotePlan } from "./core/mirror/plan";
@@ -165,11 +166,13 @@ export async function safeRunCommand(run: () => Promise<RunResult>): Promise<Run
 /** Ob das Standard-Notice "Done: {0} note(s) written, {1} skipped." unterdrueckt wird.
  *  mail.replyExternal plant per Bauart keine Notizen — nur eine externe URL —, deshalb waere
  *  "Done: 0 note(s) written, 0 skipped." dort keine Information, sondern eine Verwirrung
- *  (M3b-Nachlese, Sammel-Review). Reine Funktion, damit die Bedingung ohne Obsidian-App
- *  pruefbar ist. */
+ *  (M3b-Nachlese, Sammel-Review). mail.createTask ist derselbe Fall mit einer TaskNotes-
+ *  Aufgabe statt einer URL (Fix-Runde 1, Task 5): ohne diese Erweiterung liefe die eigene
+ *  "Aufgabe angelegt: …"-Notice neben einem irrefuehrenden "nichts geschrieben". Reine
+ *  Funktion, damit die Bedingung ohne Obsidian-App pruefbar ist. */
 export function suppressDoneNotice(r: Extract<CommandExecuteResult, { ok: true }>): boolean {
   const wroteNothing = r.created + r.updated === 0 && r.skipped.length === 0 && !r.attachmentPath;
-  return wroteNothing && r.openedUrl === true;
+  return wroteNothing && (r.openedUrl === true || r.taskPath !== undefined);
 }
 
 /** Wie viele uebersprungene Plaene an einem zwischenzeitlichen Schreibvorgang scheiterten
@@ -334,7 +337,7 @@ export default class MailstonePlugin extends Plugin {
           // seine Form stimmt — src/core/** darf die fremde API nicht kennen, appliesTo() weiss
           // davon also nichts. Faellt die Pruefung durch, FEHLT das Kommando in der Palette,
           // statt ausgegraut zu erscheinen.
-          if (descriptor.id === "mail.createTask" && readTaskNotesApi(this.app) === null) return false;
+          if (descriptor.id === CREATE_TASK_COMMAND.id && readTaskNotesApi(this.app) === null) return false;
           const probe = probeFor(this.app, this.settings.profile);
           if (!probe || !descriptor.appliesTo(probe)) return false;
           if (!checking) void this.runMailCommand(descriptor, notify);

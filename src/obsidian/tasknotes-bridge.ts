@@ -67,7 +67,15 @@ export async function createTaskViaBridge(
   app: App,
   req: { title: string; due: string | null; noteLink: string },
 ): Promise<{ ok: true; path: string } | { ok: false; code: "tasknotes-unavailable" | "task-create-failed" }> {
-  const api = readTaskNotesApi(app);
+  // readTaskNotesApi tastet Eigenschaften eines FREMDEN Objekts ab (app.plugins.plugins.
+  // tasknotes.api) — ein werfender Getter oder Proxy dort wuerde die "wirft NIE"-Zusage
+  // brechen, waere also im try/catch, nicht davor (Fix-Runde 1, Task 5).
+  let api: ReturnType<typeof readTaskNotesApi>;
+  try {
+    api = readTaskNotesApi(app);
+  } catch {
+    return { ok: false, code: "tasknotes-unavailable" };
+  }
   if (!api) return { ok: false, code: "tasknotes-unavailable" };
   try {
     const result = await api.tasks.create(buildTaskInput(req));

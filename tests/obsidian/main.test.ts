@@ -52,6 +52,17 @@ describe("suppressDoneNotice", () => {
   it("unterdrueckt NICHT ohne geoeffnete URL, auch wenn nichts geschrieben wurde", () => {
     expect(suppressDoneNotice(okResult())).toBe(false);
   });
+
+  // Fix-Runde 1, Task 5: mail.createTask plant wie mail.replyExternal keine Notizen — ohne
+  // diesen Fall zeigte runMailCommand "Fertig: 0 Notizen geschrieben, 0 uebersprungen." NEBEN
+  // der eigenen "Aufgabe angelegt: …"-Notice.
+  it("unterdrueckt, wenn NUR eine Aufgabe angelegt wurde und sonst nichts geschrieben ist", () => {
+    expect(suppressDoneNotice(okResult({ taskPath: "TaskNotes/Tasks/x.md" }))).toBe(true);
+  });
+
+  it("unterdrueckt NICHT, wenn zusaetzlich zur Aufgabe Notizen geschrieben wurden", () => {
+    expect(suppressDoneNotice(okResult({ taskPath: "TaskNotes/Tasks/x.md", updated: 1 }))).toBe(false);
+  });
 });
 
 // Fund 2, M3b-Nachlese: der Lost-Update-Schutz in vaultPlanExecutor erzeugt einen neuen

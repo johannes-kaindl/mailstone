@@ -120,7 +120,7 @@ describe("createTask im Plan", () => {
     expect(r).toEqual({ ok: false, code: "task-create-failed" });
   });
 
-  it("meldet task-create-failed, wenn der Port wirft — Fehler sind Werte, nicht Ausnahmen", async () => {
+  it("meldet write-failed, wenn der Port wirft — Fehler sind Werte, nicht Ausnahmen", async () => {
     const d = deps({
       createTask: vi.fn(async () => { throw new Error("kaputt"); }),
       notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) },
@@ -138,5 +138,28 @@ describe("createTask im Plan", () => {
     });
     await executeCommandPlan(plan({ notes: [], createTask: createTaskReq }), d);
     expect(busy.isBusy()).toBe(false);
+  });
+
+  it("oeffnet KEINE URL mehr, wenn createTask ablehnt", async () => {
+    const openExternal = vi.fn();
+    const d = deps({
+      openExternal,
+      createTask: vi.fn(async () => ({ ok: false as const, code: "task-create-failed" as const })),
+      notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) },
+    });
+    const r = await executeCommandPlan(plan({ notes: [], createTask: createTaskReq, openUrl: "mailto:a@example.net" }), d);
+    expect(r).toEqual({ ok: false, code: "task-create-failed" });
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("ruft createTask GAR NICHT auf, wenn die Notizen schon mit einem Fehler scheitern", async () => {
+    const createTask = vi.fn(async () => ({ ok: true as const, path: "TaskNotes/Tasks/x.md" }));
+    const d = deps({
+      createTask,
+      notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [{ plan: update, message: "kaputt" }] })) },
+    });
+    const r = await executeCommandPlan(plan({ createTask: createTaskReq }), d);
+    expect(r).toEqual({ ok: false, code: "write-failed" });
+    expect(createTask).not.toHaveBeenCalled();
   });
 });
