@@ -580,3 +580,91 @@ Repo-Stand ist (per sha1 gegen `main.js` im Repo-Root verglichen).
 `treffer.details === "[[<Notiz-ohne-.md>]]"` ist jetzt Teil der T-D-Zusicherung — vorher wurde
 nur `title`/`due` geprüft, der Wikilink-Rückverweis auf die Mail-Notiz (der eigentliche Träger
 der Verbindung Aufgabe↔Mail) blieb unverifiziert.
+
+## M5 Task 9 — Naht-Lauf gegen echtes TaskNotes (2026-09-05)
+
+`npm run smoke:gui` prüft die TaskNotes-Kopplung nur mit einem Stub auf
+`app.plugins.plugins.tasknotes`, TaskNotes kennt mailstone gar nicht — wo zwei Repos je ihre
+Hälfte prüfen, prüft niemand die Naht. `scripts/e2e-crossplugin.ts` (`npm run smoke:e2e`) ist
+die einzige Stelle, die belegt, dass eine über die Befehlspalette angelegte Aufgabe wirklich
+als Datei im Vault ankommt. Bewusst **nicht** Teil von `gate` oder `smoke:gui`: der Lauf setzt
+ein zweites, echt installiertes Plugin im Staging-Vault voraus (Task 0) und gehört deshalb
+nicht in die Pflichtstrecke.
+
+**Fremden Zustand nicht beschädigt:** TaskNotes selbst wird nicht deaktiviert oder ersetzt —
+Prüfpunkt (f) „ohne TaskNotes fehlt das Kommando" entfällt hier deshalb bewusst (er ist mit
+einem Stub bereits in T-A/`smoke:gui` abgedeckt, wo das De-/Aktivieren den eigenen Stub trifft,
+kein fremdes Plugin). Einzige Berührung von geteiltem Zustand: `api.tasks.create` wird
+gewrappt, nicht ersetzt — Original gesichert, im `finally` per Identitätsvergleich (`===`)
+zurückgeschrieben, bei Abweichung ein Wurf statt eines stillen Durchlaufs (Vorlage:
+`TASKNOTES_SICHERN`/`taskNotesOriginalWiederherstellen`, s. o.).
+
+### Ergebnis: 7/7 grün
+
+| Punkt | Aussage | Ergebnis |
+|---|---|---|
+| (a) | `mail.createTask` erscheint mit echtem TaskNotes (`checkCallback(true)`) | grün |
+| (b) | `tasks.create` bekommt `title`/`due`/`details` — **nicht** `dueDate` | grün |
+| (c) | Notice nennt einen Pfad, die Aufgabe liegt als Datei im Vault, mit Fälligkeit | grün |
+| (d) | der Notiz-Link (`[[<Mail-Notiz>]]`) ist im Aufgaben-Rumpf auffindbar | grün |
+| (e) | ein Fehlschlag kommt als Wert (Fehler-Notice) zurück, nicht als unbehandelte Ausnahme | grün |
+
+Punkt (f) bewusst ausgelassen (s. o.).
+
+### Abweichung von Spec § 8.1, hier zum ersten Mal gemessen
+
+**`title` landet NICHT im Frontmatter der geschriebenen Aufgaben-Notiz — nur im Dateinamen.**
+Gemessener Inhalt:
+
+```
+---
+status: open
+priority: normal
+due: 2026-11-01
+scheduled: 2026-09-05
+dateCreated: 2026-09-05T13:18:32.695+02:00
+dateModified: 2026-09-05T13:18:32.695+02:00
+tags:
+  - task
+---
+
+[[probe-notiz]]
+```
+
+Kein `title:`-Schlüssel. `due` und `details` erscheinen dagegen wie im Rückgabewert im
+Frontmatter bzw. Rumpf. Der Naht-Lauf prüft den Titel deshalb am zurückgegebenen `path`
+(`TaskNotes/Tasks/<title>.md`), nicht am Dateiinhalt — Spec § 8.1 ist entsprechend nachgezogen.
+
+### Der Spy wrappt und reicht durch — mit einer dokumentierten Ausnahme
+
+`api.tasks.create` wird gewrappt, jeder Aufruf landet in `window.__e2eSpyCalls`, und der
+Originalaufruf bekommt die Daten unverändert durchgereicht — außer für einen einzigen,
+absichtlich erkennbaren Titel (`__E2E_SYNTHETISCHE_ANBIETER_STOERUNG__`), an dem der Spy selbst
+wirft, statt durchzureichen. Grund: TaskNotes' echter Wurf bei leerem Titel (Spec § 8.1, Task 0)
+ist über mailstones eigene UI gar nicht erreichbar — `createTaskSchema` verlangt `minLength: 1`,
+und `SchemaFormModal.submit()` blockt eine leere Eingabe schon vor dem Absenden. Punkt (e) prüft
+deshalb, ob mailstones **eigene** Bridge (`createTaskViaBridge`) einen Wurf des Anbieters in
+einen Wert übersetzt — nicht, ob TaskNotes selbst wirft (das ist bereits gemessen).
+
+### Gegenprobe (CORE-TEST-02)
+
+Zwei unabhängige, gezielte Rückbauten in `tasknotes-bridge.ts`, je einzeln eingebaut,
+`npm run deploy` + `npm run smoke:e2e`, danach zurückgesetzt (`git diff` leer):
+
+| Rückbau | Ergebnis | Danach |
+|---|---|---|
+| `buildTaskInput()`: `due` → `dueDate` (die historische M5-Falle) | **(b) und (c) rot** — Spy sieht `dueDate` statt `due`, die Fälligkeit fehlt im Frontmatter | bestätigt, `git diff` leer |
+| `createTaskViaBridge()`: `try`/`catch` um `api.tasks.create` entfernt | **(e) rot** — die Notice zeigt den generischen `error.command.write-failed`-Text (äußerer Catch in `execute.ts`) statt der spezifischen `task-create-failed`-Meldung | bestätigt, `git diff` leer |
+
+Nach beiden Rückbauten lief der volle Satz wieder auf 7/7. Beide Gegenproben zeigen dieselbe
+Eigenschaft: eine Regression an genau der Stelle, die ein Punkt bewacht, färbt genau diesen
+Punkt rot — keiner ist zufällig grün.
+
+### Zwei Läufe, ein Fund am Treiber selbst
+
+Der erste vollständige Lauf hing minutenlang nach dem letzten Prüfpunkt, obwohl alle sieben
+grün waren: `main()` hatte kein `cdp.close()` — die offene WebSocket-Verbindung hielt den
+Node-Prozess am Leben, bis irgendeine Seite sie von sich aus schloss. Nach dem Fix (Verbindung
+im `finally` schließen) läuft der Lauf in rund 30–40 Sekunden durch. Derselbe Fehler wäre in
+einem Treiber, der `process.exit()` am Ende erzwingt, unsichtbar geblieben — hier zeigte er
+sich nur, weil `smoke:e2e` bewusst ohne einen solchen Zwangsausgang endet.

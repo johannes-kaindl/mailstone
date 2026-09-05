@@ -271,6 +271,28 @@ Es gibt **kein eigenes `id`-Feld.** Die brauchbare Identität für einen Rückve
 `path` — der vault-relative Pfad zur angelegten Notiz. Ein Wikilink auf die Aufgabe baut sich
 daraus direkt (`path` ohne `.md`-Endung als Zielnotiz).
 
+**Nachtrag Naht-Lauf (Task 9, 2026-09-05):** `title` landet NICHT im Frontmatter der
+geschriebenen Notiz, nur im Dateinamen (`path`). Gemessener Inhalt einer Aufgaben-Notiz:
+
+```
+---
+status: open
+priority: normal
+due: 2026-11-01
+scheduled: 2026-09-05
+dateCreated: 2026-09-05T13:18:32.695+02:00
+dateModified: 2026-09-05T13:18:32.695+02:00
+tags:
+  - task
+---
+
+[[probe-notiz]]
+```
+
+Kein `title:`-Schlüssel — der Beleg für einen gesetzten Titel ist ausschließlich `path`, nicht
+der Notizinhalt. `due` und `details` erscheinen dagegen wie im Rückgabewert im Frontmatter
+bzw. Rumpf. Der Naht-Lauf (`scripts/e2e-crossplugin.ts`) prüft den Titel deshalb am Pfad.
+
 **Wurf- vs. Wert-Verhalten:** `tasks.create` liefert bei gültiger Eingabe immer einen Wert,
 wirft aber bei **leerem Titel** synchron: `Error: Failed to create task: Title is required`
 (Name `Error`, keine eigene Fehlerklasse). Die Brücke braucht also **beides** — try/catch für

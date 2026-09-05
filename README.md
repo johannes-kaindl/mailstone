@@ -68,7 +68,10 @@ plugins. Updates then have to be repeated by hand.
 
 **From source** — `npm install && npm run build`, then copy the same three files into that
 folder. `npm run gate` runs the full check suite (lint, type checks, unit and integration tests,
-purity check, build).
+purity check, build). `npm run smoke:e2e` is a separate, maintainer-only check that drives a
+real, running Obsidian window with the [TaskNotes](https://github.com/callumalpass/tasknotes)
+plugin actually installed, to prove that a task created from a mail note really lands as a file
+in the vault — it is deliberately not part of `gate`, since it needs that second plugin present.
 
 ## Configuration
 
