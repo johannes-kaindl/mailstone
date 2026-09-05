@@ -230,8 +230,54 @@ api.model.info()            { packageName: "@tasknotes/model",
 Ungeprüft: ob eine Spracheinstellung die deutsche Erkennung aktiviert. Der letzte Fall bliebe
 davon unberührt — das ist Zahlenerkennung, keine Sprachfrage.
 
-**Nicht gemessen und nur mit echtem Aufruf messbar:** was `tasks.create` zurückgibt, ob es wirft
-statt einen Wert zu liefern, und welche Form `taskData` verlangt. Das ist der Grund für § 9.
+### 8.1 `tasks.create` — gemessene Form (Task 0, echter Aufruf gegen den Staging-Vault)
+
+Gemessen mit `scripts/probe-tasknotes-create.ts` gegen TaskNotes 4.12.5 im Staging-Vault
+`mailstone` (sechs Aufrufe, danach wieder gelöscht — Messrückstand, kein Fixture).
+
+**Akzeptierte Feldnamen:** `title` (einziges Pflichtfeld), `due` (String `YYYY-MM-DD`,
+akzeptiert und im Ergebnis unverändert übernommen), `details` (Freitext-String, unverändert
+übernommen — **das ist der Träger für den Notiz-Link**, s. u.). `dueDate` wird **nicht**
+erkannt: der Aufruf wirft nicht, das Feld erscheint aber nirgends im Ergebnis — es verschwindet
+kommentarlos. Fälligkeit heißt also `due`, nicht `dueDate`.
+
+**Unbekannte Felder** (`gibtsNicht: 1`) werden **stillschweigend ignoriert** — kein Fehler, keine
+Aufnahme ins Frontmatter, keine Auffälligkeit im Rückgabewert.
+
+**Rückgabewert von `tasks.create`:** ein `object` (kein Promise-Wrapper, kein Boolean) — das
+vollständige, von TaskNotes selbst befüllte Task-Objekt:
+
+```
+{ title, status: "open", priority: "normal", scheduled: "<heute>",
+  due?: "<falls gesetzt>", dateCreated, dateModified, tags: ["task"],
+  path: "TaskNotes/Tasks/<title>.md", archived: false, details: "<falls gesetzt>" }
+```
+
+Es gibt **kein eigenes `id`-Feld.** Die brauchbare Identität für einen Rückverweis ist
+`path` — der vault-relative Pfad zur angelegten Notiz. Ein Wikilink auf die Aufgabe baut sich
+daraus direkt (`path` ohne `.md`-Endung als Zielnotiz).
+
+**Wurf- vs. Wert-Verhalten:** `tasks.create` liefert bei gültiger Eingabe immer einen Wert,
+wirft aber bei **leerem Titel** synchron: `Error: Failed to create task: Title is required`
+(Name `Error`, keine eigene Fehlerklasse). Die Brücke braucht also **beides** — try/catch für
+den Titel-Fall, keine zusätzliche Ergebnisprüfung für alles andere, weil ein erfolgreicher aber
+"leerer" Rückgabewert (`null`/`undefined`/`false`) nicht beobachtet wurde.
+
+**Notiz-Link:** kein eigenes Feld dafür — `details` ist der Trageplatz. Ein Wikilink hineingegeben
+(`details: "[[Mail/2026/probe]]"`) kommt unverändert im Rückgabewert und in der erzeugten Notiz
+an; TaskNotes rendert `details` als Aufgaben-Beschreibung/Notizkörper.
+
+**`model.validateTask` ist für Erstellung ungeeignet, nicht nur additiv:** gegen **jede** der
+sechs `taskData`-Formen — auch die, mit denen `create()` anstandslos eine Aufgabe anlegte —
+meldete `validateTask` dieselben drei `missing_required`-Fehler (`status`, `dateCreated`,
+`dateModified`). Es prüft offenbar die Form eines **vollständigen** `TaskInfo`-Datensatzes, nicht
+die eines Erstellungs-Auftrags — `create()` füllt diese drei Felder selbst mit sinnvollen
+Defaults, bevor `validateTask` sie je sähe. Für M5 folgt daraus: **`validateTask` vor einem
+`create()`-Aufruf ist nutzlos** (es würde jede gültige Eingabe als ungültig melden) und bleibt
+nur für den in § 2.1 vorgesehenen Formcheck relevant (Existenz der Funktion), nicht als
+Vorab-Validierung von Nutzereingaben. Einzige Ausnahme im leeren-Titel-Fall: dort meldet
+`validateTask` zusätzlich `title is required` — dieselbe Diagnose, die `create()` ohnehin per
+Wurf liefert.
 
 ---
 
