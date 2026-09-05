@@ -1,4 +1,5 @@
 import { mergeFrontmatterOnly } from "../merge/merge";
+import { wikilink } from "../render/wikilink";
 import { fmKeyFor, type FmVal } from "../mirror/profile";
 import { show } from "./diff";
 import { keepZoneHash } from "./zone";
@@ -15,7 +16,9 @@ function isWikilink(v: string): boolean {
 export function relinkOne(value: string, linkFor: (id: string) => string | null): string {
   if (value === "" || isWikilink(value)) return value;
   const target = linkFor(value);
-  return target ? `[[${target}]]` : value;
+  // Kein Ziel ODER ein Pfad, der sich nicht klammern laesst: die ID bleibt stehen. Ein Link auf
+  // die falsche Notiz waere schlimmer als eine sichtbare ID (M3b-Nachlese, geparkter Befund 1).
+  return (target === null ? null : wikilink(target)) ?? value;
 }
 
 /** Die geaenderten Keys — oder null, wenn dieser Aufruf nichts zu tun hat. */
@@ -62,29 +65,44 @@ export const RELINK_COMMAND: CommandDescriptor = {
     const linkFor = (id: string): string | null => ctx.linkFor(id);
     const notes: NotePlan[] = [];
     const diff: { field: string; before?: string; after?: string }[] = [];
+    // Uebersprungen wird als `skip` MIT GRUND in den Plan gelegt, nicht per `continue`
+    // verschluckt (M3b-Nachlese, geparkter Befund 4). `mail.relink` wirkt vault-weit, und eine
+    // Notiz, die es stillschweigend auslaesst, sieht fuer den Nutzer aus wie eine, die nichts
+    // zu tun hatte. Der Executor zaehlt die Eintraege und die Meldung nennt sie.
     for (const ref of ctx.notes ?? []) {
       const values = relinkValues(ref.frontmatter, keys, linkFor);
-      if (!values) continue;
+      if (!values) continue; // wirklich nichts zu tun — kein Uebergehen, deshalb auch kein skip
       const hash = keepZoneHash(ref.content, ref.zoneHash);
-      if (hash === null) continue; // Notiz ohne Zone: Merge-Regel 3, nicht halb anfassen
+      if (hash === null) {
+        // Notiz ohne Zone: Merge-Regel 3, nicht halb anfassen.
+        notes.push({ kind: "skip", path: ref.path, mailId: ref.mailId, reason: "fences-missing" });
+        continue;
+      }
       const merged = mergeFrontmatterOnly({ existing: ref.content, values });
-      if (!merged.ok || !merged.changed) continue;
+      if (!merged.ok) {
+        notes.push({ kind: "skip", path: ref.path, mailId: ref.mailId, reason: merged.code });
+        continue;
+      }
+      if (!merged.changed) continue;
       notes.push({ kind: "update", path: ref.path, content: merged.content, mailId: ref.mailId, zoneHash: hash, expectedContent: ref.content });
       if (diff.length < MAX_DIFF_ROWS) {
         const k = Object.keys(values)[0] as string;
         diff.push({ field: ref.path, before: show(ref.frontmatter[k]), after: show(values[k]) });
       }
     }
-    if (notes.length === 0) return { ok: false, code: "nothing-to-do" };
+    // Gezaehlt wird, was WIRKLICH geschrieben wird — ein Lauf, der nur Uebersprungene
+    // zusammentraegt, hat nichts zu tun und darf keine Vorschau oeffnen.
+    const zuSchreiben = notes.filter((n) => n.kind === "update").length;
+    if (zuSchreiben === 0) return { ok: false, code: "nothing-to-do" };
 
     return {
       ok: true,
       plan: {
         commandId: "mail.relink",
         mailId: ctx.target.mailId,
-        summary: `Relink threads: ${notes.length} note(s) get new wikilinks`,
+        summary: `Relink threads: ${zuSchreiben} note(s) get new wikilinks`,
         summaryKey: "plan.mail.relink.summary",
-        summaryArgs: [notes.length],
+        summaryArgs: [zuSchreiben],
         diff,
         notes,
       },
