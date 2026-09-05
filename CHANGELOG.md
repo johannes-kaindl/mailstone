@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Neu
+- **`taskPreset` belebt — der Weg ohne TaskNotes (M5 § 5).** In den Settings lassen sich
+  jetzt Zusatzfelder eintragen (z. B. `status: open`), die beim ERSTEN Anlegen einer
+  Mail-Notiz einmalig ins Frontmatter geschrieben werden — auswertbar in Obsidian Bases.
+  Bestehende Notizen bleiben unberührt, ein einmal vom Nutzer geänderter Wert wird nie
+  wieder überschrieben. Kein Aufgaben-System, keine Logik darauf
+
 ### Dokumentation
 - **Deutsche README** (`README.de.md`), Badge-Zeile in beiden Fassungen
 - **Der Installationsweg zeigte ins Leere.** Er nannte den Community-Store, aus dem dieses Plugin

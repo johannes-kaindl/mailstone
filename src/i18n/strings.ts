@@ -193,6 +193,18 @@ export const en = {
 
   "settings.openViewOnStartup": "Open the panel at startup",
   "settings.openViewOnStartup.desc": "Off by default. The panel stays reachable via the ribbon icon and the command palette.",
+
+  // M5 § 5: taskPreset is not a task system — it is a set of extra frontmatter fields written
+  // once, when a mail note is first created, so the note fits whatever schema the vault already
+  // uses (e.g. for Obsidian Bases). Later syncs and updates never touch these fields again.
+  "settings.taskPreset": "Extra fields for new mail notes",
+  "settings.taskPreset.desc": "Written once into the frontmatter of a mail note when it is first created — for example status: open. Existing notes are never touched, and once the note exists, the fields are yours to edit or remove. Leave empty to add nothing.",
+  "settings.taskPreset.empty": "No extra fields.",
+  "settings.taskPreset.add": "Add field",
+  "settings.taskPreset.key.placeholder": "Field name (e.g. status)",
+  "settings.taskPreset.key.aria": "Field name",
+  "settings.taskPreset.value.placeholder": "Value (e.g. open)",
+  "settings.taskPreset.value.aria": "Field value",
 };
 export const de: typeof en = {
   "cmd.importEml.name": ".eml-Dateien aus einem Vault-Ordner importieren",
@@ -387,6 +399,15 @@ export const de: typeof en = {
 
   "settings.openViewOnStartup": "Beim Start öffnen",
   "settings.openViewOnStartup.desc": "Standardmäßig aus. Die Ansicht bleibt über das Ribbon-Symbol und die Befehlspalette erreichbar.",
+
+  "settings.taskPreset": "Zusatzfelder für neue Mail-Notizen",
+  "settings.taskPreset.desc": "Wird beim ERSTEN Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben — zum Beispiel status: open. Bestehende Notizen werden dadurch nie verändert, und sobald die Notiz existiert, gehören die Felder dir: bearbeiten oder entfernen wie jedes andere Frontmatter-Feld. Leer lassen, um nichts hinzuzufügen.",
+  "settings.taskPreset.empty": "Keine Zusatzfelder.",
+  "settings.taskPreset.add": "Feld hinzufügen",
+  "settings.taskPreset.key.placeholder": "Feldname (z. B. status)",
+  "settings.taskPreset.key.aria": "Feldname",
+  "settings.taskPreset.value.placeholder": "Wert (z. B. open)",
+  "settings.taskPreset.value.aria": "Feldwert",
 };
 
 export function initI18n(raw: string): void { defineStrings({ en, de }); setLang(pickLang(raw)); }

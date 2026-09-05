@@ -73,6 +73,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         control: { type: "text", key: "profile.filename" },
       },
       this.accountsGroup(),
+      // SettingDefinitionList kennt keinen eigenen `desc` (nur `heading`) — die Erklaerung
+      // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
+      { name: t("settings.taskPreset"), desc: t("settings.taskPreset.desc") },
+      this.taskPresetGroup(),
       {
         name: t("settings.openViewOnStartup"),
         desc: t("settings.openViewOnStartup.desc"),
@@ -169,6 +173,99 @@ export class MailstoneSettingTab extends PluginSettingTab {
       await this.host.saveSettings();
       this.update();
     })();
+  }
+
+  // ── taskPreset (M5 § 5, "der Weg ohne TaskNotes") ───────────────────────
+  // Schlichter Schluessel/Wert-Editor statt eines Kit-Bausteins: der einzige verbindliche
+  // Katalog-Eintrag dafuer (`buildEndpointList`, UI-STANDARD § 8) ist auf Provider-Endpunkte
+  // zugeschnitten (URL + Schluessel + Modell-Dropdown + Probe + Presets) und in mailstone nicht
+  // einmal vendort — ihn fuer zwei Textfelder zu importieren waere semantisch falsch (kein
+  // Endpunkt) und zoege unbenutzten Ballast (Modell-Cache, Erreichbarkeitsprobe) mit. Die
+  // Konten-Liste (`accountsGroup`) daneben ist naeher an der Form, delegiert Detailfelder aber
+  // an ein `Modal` — hier reicht die Zeile selbst, ein Modal waere fuer zwei Textfelder
+  // Overhead. Struktur ist trotzdem dieselbe native `SettingDefinitionList` (Add/Delete,
+  // `emptyState`) wie bei den Konten, nicht neu erfunden.
+  //
+  // taskPreset bleibt selbst ein `Record<string, string | number | boolean>` (Interface fuer
+  // Task 6/Bridge unveraendert) — die UI verwaltet nur Zeichenketten. Bool/Zahl-Werte sind
+  // weiterhin gueltig (z. B. per Hand in data.json gesetzt) und werden beim Rendern als Text
+  // angezeigt/ueberschrieben; das deckt den Anwendungsfall aus der Spec (`{status: "open"}`)
+  // vollstaendig ab, ohne einen Typ-Umschalter pro Zeile zu brauchen.
+  private taskPresetEntries(): [string, string][] {
+    return Object.entries(this.host.settings.taskPreset).map(([k, v]) => [k, String(v)]);
+  }
+
+  private taskPresetGroup(): SettingDefinitionList {
+    const items: SettingGroupItem[] = this.taskPresetEntries().map(([key], index) => ({
+      name: key,
+      render: (setting: Setting) => this.renderTaskPresetRow(setting, index),
+    }));
+    return {
+      type: "list",
+      items,
+      emptyState: t("settings.taskPreset.empty"),
+      onDelete: (index) => { void this.removeTaskPresetEntry(index); },
+      addItem: { name: t("settings.taskPreset.add"), action: () => { void this.addTaskPresetEntry(); } },
+    };
+  }
+
+  private renderTaskPresetRow(setting: Setting, index: number): void {
+    const [key, value] = this.taskPresetEntries()[index] ?? ["", ""];
+    setting.addText((tx) => {
+      tx.setPlaceholder(t("settings.taskPreset.key.placeholder")).setValue(key);
+      tx.inputEl.setAttribute("aria-label", t("settings.taskPreset.key.aria"));
+      tx.inputEl.addEventListener("blur", () => { void this.renameTaskPresetKey(index, tx.getValue()); });
+    });
+    setting.addText((tx) => {
+      tx.setPlaceholder(t("settings.taskPreset.value.placeholder")).setValue(value);
+      tx.inputEl.setAttribute("aria-label", t("settings.taskPreset.value.aria"));
+      tx.inputEl.addEventListener("blur", () => { void this.setTaskPresetValue(index, tx.getValue()); });
+    });
+  }
+
+  /** Ersetzt den ganzen Record aus der Zeilen-Liste — leere Schluessel fallen dabei weg (eine
+   *  Zeile mit leerem Namen darf kein Frontmatter-Feld "" erzeugen). Bei einer Umbenennung auf
+   *  einen bereits vorhandenen Schluessel gewinnt der letzte Eintrag (Object.fromEntries) — die
+   *  doppelte Zeile verschwindet beim naechsten Render; das ist ein bewusst einfacher Ausgang
+   *  fuer einen erwartbar seltenen Fall, keine stille Datenkorruption. */
+  private applyTaskPreset(entries: readonly [string, string][]): void {
+    this.host.settings.taskPreset = Object.fromEntries(entries.filter(([k]) => k.trim().length > 0));
+  }
+
+  private async renameTaskPresetKey(index: number, newKeyRaw: string): Promise<void> {
+    const entries = this.taskPresetEntries();
+    const current = entries[index];
+    if (!current) return;
+    const newKey = newKeyRaw.trim();
+    if (newKey === current[0]) return;
+    if (!newKey) { await this.removeTaskPresetEntry(index); return; }
+    this.applyTaskPreset(entries.map((e, i) => (i === index ? [newKey, e[1]] : e)));
+    await this.host.saveSettings();
+    this.update(); // Zeilen-Beschriftung (name = key) muss den neuen Namen zeigen
+  }
+
+  private async setTaskPresetValue(index: number, value: string): Promise<void> {
+    const entries = this.taskPresetEntries();
+    const current = entries[index];
+    if (!current || current[1] === value) return;
+    this.applyTaskPreset(entries.map((e, i) => (i === index ? [e[0], value] : e)));
+    await this.host.saveSettings();
+    // Kein update() noetig: der Wert traegt keine Zeilen-Beschriftung.
+  }
+
+  private async removeTaskPresetEntry(index: number): Promise<void> {
+    this.applyTaskPreset(this.taskPresetEntries().filter((_, i) => i !== index));
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  private async addTaskPresetEntry(): Promise<void> {
+    const existing = this.taskPresetEntries().map(([k]) => k);
+    let key = "field";
+    for (let n = 2; existing.includes(key); n += 1) key = `field-${n}`;
+    this.applyTaskPreset([...this.taskPresetEntries(), [key, ""]]);
+    await this.host.saveSettings();
+    this.update();
   }
 
   // ── Kontroll-Werte für den nativen 1.13-Renderer ────────────────────────

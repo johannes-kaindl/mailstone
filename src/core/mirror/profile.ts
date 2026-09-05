@@ -45,6 +45,18 @@ export function defaultMailProfile(): MailProfile {
   };
 }
 
+/** M5 Task 7: `taskPreset` (Settings, ausserhalb der MailProfile) fliesst additiv in
+ *  `onCreate` ein — dieselbe Zusage, die `onCreate` schon fuer sich traegt, gilt dann auch
+ *  fuer das Preset: `newNote()` (merge.ts) wendet `onCreate` NUR im create-Zweig an, nie beim
+ *  Merge einer bestehenden Notiz. Ein leeres Preset aendert nichts (identisches Objekt zurueck,
+ *  kein Allokations-Rauschen im haeufigen Fall). Kollisionen entscheidet `onCreate`: das
+ *  Profil traegt strukturelle Marker (z. B. `type: "mail"`), das Preset ist Nutzer-Freitext —
+ *  im Zweifel gewinnt die Struktur. */
+export function withTaskPreset(profile: MailProfile, taskPreset: Record<string, FmVal>): MailProfile {
+  if (Object.keys(taskPreset).length === 0) return profile;
+  return { ...profile, onCreate: { ...taskPreset, ...profile.onCreate } };
+}
+
 export function identityKeys(p: MailProfile): string[] {
   return [p.idField, p.sourceField, p.stateField, p.syncedField];
 }
