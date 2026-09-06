@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_SETTINGS, loadSettings, newAccount, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
+import type { TrustedSender } from "../../src/core/api/types";
 
 describe("settings", () => {
   it("Defaults", () => {
@@ -93,5 +94,48 @@ describe("Sent-Ordner", () => {
   it("ein leerer sent-Ordner ueberlebt die Reparatur — sonst liesse sich die Kopie nicht abschalten", () => {
     const s = loadSettings({ accounts: [{ id: "aus", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "" } }] });
     expect(s.accounts[0]?.folders.sent).toBe("");
+  });
+});
+
+describe("trustedSenders", () => {
+  it("ist per Default leer", () => {
+    expect(loadSettings({}).trustedSenders).toEqual([]);
+  });
+
+  it("uebernimmt gueltige Eintraege", () => {
+    const raw = { trustedSenders: [{ pluginId: "calendar-notes", transportId: "privat/mail" }] };
+    expect(loadSettings(raw).trustedSenders).toEqual([{ pluginId: "calendar-notes", transportId: "privat/mail" }]);
+  });
+
+  // Wie repairTaskPreset: ein Hand-Edit darf den Ladevorgang nicht brechen. Ein unbrauchbarer
+  // Eintrag faellt weg — er war nie funktional.
+  it("wirft unbrauchbare Eintraege weg statt zu brechen", () => {
+    const raw = {
+      trustedSenders: [
+        { pluginId: "gut", transportId: "a/b" },
+        { pluginId: "", transportId: "a/b" },        // leere Id
+        { pluginId: "ohne-transport" },               // Feld fehlt
+        { pluginId: 42, transportId: "a/b" },         // falscher Typ
+        "kein objekt",
+        null,
+      ],
+    };
+    expect(loadSettings(raw).trustedSenders).toEqual([{ pluginId: "gut", transportId: "a/b" }]);
+  });
+
+  it("faellt bei einem Nicht-Array auf leer zurueck", () => {
+    expect(loadSettings({ trustedSenders: { pluginId: "x" } }).trustedSenders).toEqual([]);
+  });
+
+  // Genau ein Eintrag je Plugin — decideTrust (Task 1) verlaesst sich nicht darauf, aber die
+  // Settings-Schicht stellt es her, damit ein Widerruf in der UI wirklich alles entfernt.
+  it("behaelt bei doppelter pluginId nur den ersten", () => {
+    const raw = {
+      trustedSenders: [
+        { pluginId: "a", transportId: "erste/id" },
+        { pluginId: "a", transportId: "zweite/id" },
+      ],
+    };
+    expect(loadSettings(raw).trustedSenders).toEqual([{ pluginId: "a", transportId: "erste/id" }]);
   });
 });
