@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Geändert
+- **GitHub ist aufgegeben — verteilt wird über Forgejo und den Plugin-Katalog.** Das
+  `github`-Remote ist entfernt und `npm run release` fährt fest mit `--no-github`. Für Nutzer
+  ändert sich nichts: der empfohlene Weg (AnySource Sideloader mit dem abonnierten Katalog) und
+  der Download von `git.jkaindl.de` waren schon vorher die einzigen, die trugen. Der
+  GitHub-Spiegel antwortete anonym mit 404 und wurde ohnehin nicht mehr beliefert
+- **Der Herkunftslink auf `obsidian-kit` in `THIRD-PARTY.md` zeigte ins Leere** (auf ein
+  GitHub-Profil, das mit 404 antwortet, und dort ohnehin auf das Profil statt auf das Repo). Er
+  zeigt jetzt auf `git.jkaindl.de/jkaindl/obsidian-kit`
+
 ## [0.4.1] — 2026-09-05
 
 ### Behoben

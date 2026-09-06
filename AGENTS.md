@@ -24,9 +24,18 @@ Handproben-Protokoll `docs/SMOKE.md`.
   sieht die Integrationstests nicht — durch genau diese Lücke lag ein Bruch tagelang auf `main`.
 - Desktop-only (`node:tls`/`node:net` via dynamischem Import in `src/obsidian/tls-transport.ts`,
   `isDesktopOnly: true`). `src/obsidian/node-sockets.d.ts` ist bewusst kein Modul.
-- **Der GitHub-Mirror trägt für dieses Repo nicht** (gemessen 2026-09-01: 42 min nach dem Push
-  stand GitHub unverändert). Nach jedem Push auf `origin` gehört `git push github main` dazu —
-  der Store liest GitHub-Releases.
+- **GitHub ist aufgegeben (2026-09-06), `origin` auf Forgejo ist die einzige Quelle.** Das
+  `github`-Remote ist entfernt und `npm run release` fährt fest mit `--no-github`; verteilt wird
+  über den Forgejo-Release und den Katalog, den `anysource-sideloader` abonniert (mailstone ist
+  dort gelistet). **Die Reihenfolge ist nicht beliebig:** ohne das Flag ist ein fehlendes
+  `github`-Remote ein harter Abbruch von `release.mjs` (`preflight.mjs`: „Remote 'github' fehlt")
+  — wer nur das Remote löscht, zerstört die Releases. Der Vorzustand war ein Mirror, der
+  ohnehin nicht trug (gemessen 2026-09-01: 42 min nach dem Push stand GitHub unverändert), also
+  ein Weg, der Handarbeit kostete und niemanden erreichte. Nebeneffekt, der eine Fußangel
+  strukturell schließt: der Schlusstext „jetzt Rescan anstoßen" war für dieses Repo immer falsch
+  (kein Store-Release, ein Scan gälte als durchgefallen) — unter `--no-github` gibt ihn das
+  Skript gar nicht mehr aus. `.github/workflows/release.yml` bleibt als byte-identische
+  Template-Kopie liegen (`tools/template_drift_check.py` bewacht sie); sie läuft nur nirgends.
 - Dach-Regeln gelten: `../AGENTS.md` (Kit-first, Release über `../tools/release/`, Store-Flow,
   CDP-Lock vor jedem Zugriff auf ein laufendes Obsidian).
 
