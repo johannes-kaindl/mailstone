@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createMailstoneApi, type MailstoneApiDeps } from "../../src/obsidian/plugin-api";
+import { createMailstoneApi, pluginName, type MailstoneApiDeps } from "../../src/obsidian/plugin-api";
 import type { ConsentOutcome } from "../../src/obsidian/send-consent-modal";
 import type { TrustedSender } from "../../src/core/api/types";
 
@@ -123,5 +123,50 @@ describe("createMailstoneApi", () => {
       send: async () => ({ ok: false, code: "auth-failed" as never }),
     }));
     await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "send-failed" });
+  });
+
+  // Fix-Runde 1, Finding 2: "Fehler sind Werte, nie Ausnahmen" — ein werfendes consent oder
+  // send darf send() nicht als Exception verlassen. Beide Tests pruefen ausdruecklich
+  // .resolves, nicht .rejects: eine Regression, die den try/catch entfernt, faellt hier auf,
+  // weil api.send(req) sonst mit dem geworfenen Fehler REJECTED statt aufzuloesen.
+  it("meldet ein werfendes consent als not-confirmed statt zu werfen", async () => {
+    const api = createMailstoneApi(deps({
+      consent: async () => { throw new Error("Modal kaputt"); },
+    }));
+    await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "not-confirmed" });
+  });
+
+  it("meldet ein werfendes send als send-failed statt zu werfen", async () => {
+    const trusted: TrustedSender[] = [{ pluginId: "calendar-notes", transportId: "privat/mail" }];
+    const api = createMailstoneApi(deps({
+      trusted: () => trusted,
+      send: async () => { throw new Error("SMTP-Absturz"); },
+    }));
+    await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "send-failed" });
+  });
+});
+
+describe("pluginName", () => {
+  it("liefert den Anzeigenamen, wenn das Manifest einen traegt", () => {
+    const app = { plugins: { manifests: { "calendar-notes": { name: "Calendar Notes" } } } };
+    expect(pluginName(app, "calendar-notes")).toBe("Calendar Notes");
+  });
+
+  it("faellt bei leerem name-String auf die Id zurueck", () => {
+    const app = { plugins: { manifests: { "calendar-notes": { name: "" } } } };
+    expect(pluginName(app, "calendar-notes")).toBe("calendar-notes");
+  });
+
+  it("faellt zurueck, wenn zur Id kein Manifest existiert", () => {
+    const app = { plugins: { manifests: {} } };
+    expect(pluginName(app, "unbekannt-plugin")).toBe("unbekannt-plugin");
+  });
+
+  it("faellt zurueck und wirft nicht, wenn app.plugins ganz fehlt", () => {
+    // app.plugins ist nicht Teil der offiziellen Obsidian-Typen — genau deshalb existiert
+    // die lokale Typnachbildung AppWithManifests. Ein `{}` ohne `plugins` ist der Fall, den
+    // sie abfangen muss.
+    expect(pluginName({}, "calendar-notes")).toBe("calendar-notes");
+    expect(pluginName(undefined, "calendar-notes")).toBe("calendar-notes");
   });
 });

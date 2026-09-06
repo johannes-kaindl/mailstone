@@ -164,6 +164,13 @@ describe("calendar-notes-bridge importiert plugin-api nicht", () => {
   // Zustimmungs-/Vertrauens-Logik lebt. Ein Import von dort waere der strukturelle Beleg,
   // dass der iMIP-Pfad ploetzlich an dieser Logik haengt — auch ohne dass ein einzelner Test
   // das Verhalten schon sichtbar bricht.
+  //
+  // ⚠️ Bekannte Grenze (Review Fix-Runde 1, Finding "minor", bewusst nicht behoben): dieser
+  // Waechter liest den STATISCHEN Quelltext auf `^import `-Zeilen. Ein dynamischer Import
+  // (`await import("./plugin-api")`) traegt keine solche Zeile und wuerde durchrutschen. Das
+  // ist eine bekannte Notloesung, keine Luecke, die hier noch geschlossen werden soll — ein
+  // echter Laufzeit-Beweis haette einen Angriffspunkt gebraucht, den CalendarNotesBridge
+  // laut Ruling P8 nicht bietet (kein `transport`-Zugriff nach aussen).
   it("die Importzeilen von calendar-notes-bridge.ts nennen nur die vier bekannten Module", () => {
     const quelle = readFileSync(
       resolve(__dirname, "../../src/obsidian/calendar-notes-bridge.ts"),

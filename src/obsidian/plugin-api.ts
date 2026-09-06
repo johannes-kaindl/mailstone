@@ -80,6 +80,12 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
             preselectId: vorbelegt.id,
             req,
           });
+        } catch {
+          // "Fehler sind Werte, nie Ausnahmen" (Anbieter-Muster, s. tasknotes-bridge.ts).
+          // Ein werfendes consent ist inhaltlich KEIN "declined" — der Nutzer hat nichts
+          // abgelehnt, das Modal ist kaputtgegangen. "not-confirmed" bildet das ehrlich ab:
+          // es gab keine erfolgreiche Bestaetigung, exakt dieselbe Lage wie beim Timeout.
+          return { ok: false, reason: "not-confirmed" };
         } finally {
           modalOffen = false;
         }
@@ -102,7 +108,14 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
         ...(req.inReplyTo ? { inReplyTo: req.inReplyTo } : {}),
       };
 
-      const ergebnis = await deps.send(geteilt.accountId, msg);
+      let ergebnis: Awaited<ReturnType<MailstoneApiDeps["send"]>>;
+      try {
+        ergebnis = await deps.send(geteilt.accountId, msg);
+      } catch {
+        // Wie oben: "Fehler sind Werte, nie Ausnahmen". Ein werfendes deps.send heisst,
+        // der Versand kam nicht zustande — derselbe Ausgang wie ein regulaeres { ok: false }.
+        return { ok: false, reason: "send-failed" };
+      }
       if (!ergebnis.ok) return { ok: false, reason: "send-failed" };
       return { ok: true, messageId: ergebnis.messageId, sentCopy: ergebnis.sentCopy };
     },
