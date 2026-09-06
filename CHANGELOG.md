@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Andere Plugins können Mail über mailstone verschicken.** Beim ersten Mal fragt ein Dialog
+  mit Absender, Empfänger, Betreff und dem vollständigen Text; wer *Senden und immer erlauben*
+  wählt, wird für dieses Plugin nicht wieder gefragt. Die Erlaubnisse stehen in den
+  Einstellungen und lassen sich einzeln widerrufen. Ohne Antwort schließt der Dialog nach einer
+  Minute, **ohne** zu senden
+- **Der Absender wird bei der Freigabe festgelegt, nicht vom aufrufenden Plugin.** Ein Plugin
+  kann eine Adresse vorschlagen; entschieden wird sie im Dialog, und ab dann gilt die gemerkte —
+  ein späterer Vorschlag ändert daran nichts
+- **Der bisherige Weg bleibt unverändert:** Termineinladungen aus `calendar-notes` laufen weiter
+  wie bisher und lösen keinen Dialog aus
+
 ### Geändert
 - **GitHub ist aufgegeben — verteilt wird über Forgejo und den Plugin-Katalog.** Das
   `github`-Remote ist entfernt und `npm run release` fährt fest mit `--no-github`. Für Nutzer
