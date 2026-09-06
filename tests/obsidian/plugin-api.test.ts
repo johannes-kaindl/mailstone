@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createMailstoneApi, pluginName, type MailstoneApiDeps } from "../../src/obsidian/plugin-api";
+import { CONSENT_TIMEOUT_MS, createMailstoneApi, pluginName, type MailstoneApiDeps } from "../../src/obsidian/plugin-api";
 import type { ConsentOutcome } from "../../src/obsidian/send-consent-modal";
 import type { TrustedSender } from "../../src/core/api/types";
 
@@ -143,6 +143,141 @@ describe("createMailstoneApi", () => {
       send: async () => { throw new Error("SMTP-Absturz"); },
     }));
     await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "send-failed" });
+  });
+
+  // ── Fix-Runde 2 (Abschluss-Review) ──────────────────────────────────────────────────────
+  // Alle vier Important-Funde lagen an Task-Grenzen: das Zeitfenster des offenen Modals, die
+  // Lebensdauer des Aufrufer-Objekts, die Lebensdauer einer Identitaet, die Zustaendigkeit
+  // fuer die Adressgrammatik. Keine Einzelpruefung eines Tasks konnte sie sehen.
+
+  // Important 1: `status()` wurde nur beim EINTRITT geprueft. Danach standen bis zu 60 s
+  // Modal-Zeit, in denen der Nutzer mailstone deaktivieren kann.
+  it("sendet und merkt nichts, wenn mailstone waehrend des offenen Modals entladen wird", async () => {
+    let entladen = false;
+    const send = vi.fn(async () => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
+    const remember = vi.fn();
+    const api = createMailstoneApi(deps({
+      unloaded: () => entladen,
+      send,
+      remember,
+      // Der Nutzer deaktiviert das Plugin, waehrend der Dialog offen steht, und klickt danach
+      // „Senden und immer erlauben".
+      consent: async () => {
+        entladen = true;
+        return { kind: "send", transportId: "privat/mail", remember: true };
+      },
+    }));
+    await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "unloaded" });
+    // Spec § 4: „ein deaktiviertes mailstone darf keine Mail verschicken."
+    expect(send).not.toHaveBeenCalled();
+    // Die schwerere Haelfte: `remember` ruft saveSettings() auf der TOTEN Instanz und
+    // ueberschreibt data.json mit deren Snapshot — settings, zoneHashes, uidCache UND
+    // runState. Datenverlust an Zustand, der mit dieser API nichts zu tun hat.
+    expect(remember).not.toHaveBeenCalled();
+  });
+
+  it("bricht ab, wenn das letzte Konto waehrend des offenen Modals verschwindet", async () => {
+    let konten = deps().accounts();
+    const send = vi.fn(async () => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
+    const api = createMailstoneApi(deps({
+      accounts: () => konten,
+      send,
+      consent: async () => { konten = []; return { kind: "send", transportId: "privat/mail", remember: false }; },
+    }));
+    await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "not-configured" });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  // Important 2: das Request-Objekt des Aufrufers wurde live benutzt — Modal und Versand
+  // lasen dieselbe Referenz, mit einem `await` dazwischen.
+  it("friert die Anfrage beim Eintritt ein: eine spaetere Mutation des Aufrufers wirkt nicht", async () => {
+    let gezeigteEmpfaenger: string[] = [];
+    let loesen: (o: ConsentOutcome) => void = () => {};
+    const consent = vi.fn((opts) => {
+      gezeigteEmpfaenger = [...opts.req.to];
+      return new Promise<ConsentOutcome>((r) => { loesen = r; });
+    });
+    const send = vi.fn(async () => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
+    const api = createMailstoneApi(deps({ consent, send }));
+
+    const lebend = { ...req, to: ["kollege@firma.de"] };
+    const laufend = api.send(lebend);
+    await Promise.resolve();
+    // Der Aufrufer haelt dieselbe Referenz. Ohne Schnappschuss zeigte das Modal EINEN
+    // Empfaenger und heraus gingen ZWEI — kein boeser Wille noetig, ein wiederverwendetes
+    // Request-Objekt ueber einen Retry hinweg genuegt.
+    lebend.to.push("alle@firma.de");
+    lebend.subject = "manipuliert";
+    loesen({ kind: "send", transportId: "privat/mail", remember: false });
+
+    await expect(laufend).resolves.toEqual({ ok: true, messageId: "x@y", sentCopy: "ok" });
+    expect(gezeigteEmpfaenger).toEqual(["kollege@firma.de"]);
+    expect(send).toHaveBeenCalledWith("privat", expect.objectContaining({
+      to: ["kollege@firma.de"],
+      subject: "Hallo",
+    }));
+  });
+
+  // Important 3: drei Schichten urteilten verschieden ueber einen verwaisten Eintrag —
+  // `status()` sagte ready, `decideTrust` sagte trusted (mit toter transportId), und
+  // `resolveSender` scheiterte. Das faltete sich auf `send-failed` („SMTP hat abgelehnt"),
+  // obwohl nie ein Socket im Spiel war — dauerhaft, weil die Abkuerzung jedes Mal greift.
+  it("faellt auf das Modal zurueck, wenn die freigegebene Identitaet geloescht wurde", async () => {
+    const trusted: TrustedSender[] = [{ pluginId: "calendar-notes", transportId: "privat/geloescht" }];
+    const consent = vi.fn(async () => ({ kind: "declined" }) as ConsentOutcome);
+    const send = vi.fn(async () => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
+    const api = createMailstoneApi(deps({ trusted: () => trusted, consent, send }));
+    await expect(api.send(req)).resolves.toEqual({ ok: false, reason: "declined" });
+    expect(consent).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("nutzt die Abkuerzung weiter, solange die freigegebene Identitaet existiert", async () => {
+    // Gegenprobe zum Test darueber: der neue Guard darf die Abkuerzung nicht generell killen.
+    const trusted: TrustedSender[] = [{ pluginId: "calendar-notes", transportId: "privat/mail" }];
+    const consent = vi.fn(async () => ({ kind: "declined" }) as ConsentOutcome);
+    const api = createMailstoneApi(deps({ trusted: () => trusted, consent }));
+    await expect(api.send(req)).resolves.toEqual({ ok: true, messageId: "abc@example.net", sentCopy: "ok" });
+    expect(consent).not.toHaveBeenCalled();
+  });
+
+  // Important 4: `types.ts` definiert `invalid` als „Eingabe unbrauchbar (leere Empfaenger,
+  // KAPUTTE ADRESSE)". Die Adapter-Pruefung sah nur Typen — "max.mustermann" oeffnete das
+  // Modal, wurde bestaetigt und fiel erst in `validateOutgoing` durch → `send-failed`.
+  it("weist eine kaputte Adresse als invalid ab, ohne das Modal zu oeffnen", async () => {
+    const consent = vi.fn(async () => ({ kind: "declined" }) as ConsentOutcome);
+    const api = createMailstoneApi(deps({ consent }));
+    await expect(api.send({ ...req, to: ["max.mustermann"] })).resolves.toEqual({ ok: false, reason: "invalid" });
+    await expect(api.send({ ...req, to: ["gut@example.org", "auch.kaputt"] }))
+      .resolves.toEqual({ ok: false, reason: "invalid" });
+    // cc geht denselben Weg durch validateOutgoing und muss deshalb genauso frueh fallen.
+    await expect(api.send({ ...req, cc: ["kaputt@"] })).resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(consent).not.toHaveBeenCalled();
+  });
+
+  // Minor: `callerId` war das einzige ungeprüfte Feld — und das einzige, das ueber `remember`
+  // dauerhaft in data.json landet.
+  it("weist eine leere oder untypisierte callerId als invalid ab", async () => {
+    const consent = vi.fn(async () => ({ kind: "declined" }) as ConsentOutcome);
+    const remember = vi.fn();
+    const api = createMailstoneApi(deps({ consent, remember }));
+    await expect(api.send({ ...req, callerId: "" })).resolves.toEqual({ ok: false, reason: "invalid" });
+    await expect(api.send({ ...req, callerId: 42 as unknown as string }))
+      .resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(consent).not.toHaveBeenCalled();
+    expect(remember).not.toHaveBeenCalled();
+  });
+
+  // Minor: `SendConsentOptions.timeoutMs` war toter Code — kein Produktionsaufrufer setzte
+  // es, die 60 s lebten still im `??`-Default des Modals.
+  it("reicht die Frist als Konstante ins Modal durch", async () => {
+    let gesehen = -1;
+    const api = createMailstoneApi(deps({
+      consent: async (opts) => { gesehen = opts.timeoutMs; return { kind: "declined" }; },
+    }));
+    await api.send(req);
+    expect(gesehen).toBe(CONSENT_TIMEOUT_MS);
+    expect(CONSENT_TIMEOUT_MS).toBe(60_000);
   });
 });
 

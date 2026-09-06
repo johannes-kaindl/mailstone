@@ -39,7 +39,7 @@ import { createInboxHost, type CreateTaskOutcome } from "./obsidian/views/inbox-
 import type { InboxHost } from "./obsidian/views/inbox-panel";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
 import { createMailstoneApi, pluginName } from "./obsidian/plugin-api";
-import { askSendConsent } from "./obsidian/send-consent-modal";
+import { askSendConsent, closeOpenSendConsent } from "./obsidian/send-consent-modal";
 import { rememberSender } from "./core/api/trust";
 import type { MailstoneApi, TrustedSender } from "./core/api/types";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "./obsidian/views/mailstone-view";
@@ -457,6 +457,12 @@ export default class MailstonePlugin extends Plugin {
 
   onunload(): void {
     this.entladen = true;
+    // Das Flag allein genuegt nicht: ein offenes Zustimmungs-Modal haengt an keinem
+    // Lifecycle und stuende danach weiter da — der Nutzer klickte auf „Senden und immer
+    // erlauben" eines Plugins, das es nicht mehr gibt. Der Adapter faengt das inzwischen
+    // zwar auch ab (zweite `status()`-Pruefung), aber ein Dialog, der eine Frage stellt,
+    // die niemand mehr beantworten kann, gehoert weg.
+    closeOpenSendConsent();
     this.bridge?.unregister();
   }
 
