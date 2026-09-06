@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildMailTransport,
@@ -118,6 +120,63 @@ describe("buildMailTransport", () => {
       ics: "BEGIN:VCALENDAR",
     });
     expect(result).toEqual({ ok: false, error: "auth" });
+  });
+
+  // iMIP-Waechter (Ruling P8, Zusatz zu Task 4): die Spec sagt zu, dass der bestehende
+  // iMIP-Weg (calendar-notes) NICHT durch die neue Versand-API-Bestaetigung laeuft — sonst
+  // wuerde eine heute funktionierende Funktion ploetzlich Modals werfen. Ein GUI-Smoke-Punkt
+  // dafuer waere blind: CalendarNotesBridge exponiert keinen `transport`-Zugriff nach aussen
+  // (nur tryRegister/unregister/registered). Der Wachtgegenstand ist deshalb strukturell.
+  it("send() ruft sendService.send DIREKT — kein Consent-Schritt dazwischen", async () => {
+    const send = vi.fn().mockResolvedValue({ ok: true, messageId: "abc@example.com" });
+    const sendService: SendService = { send };
+    const transport = buildMailTransport({ accounts: () => makeAccounts(), sendService, label: "mailstone" });
+
+    const ergebnis = transport.send({
+      method: "REQUEST",
+      from: "privat/mail",
+      to: ["x@example.com"],
+      subject: "Termin",
+      text: "Text",
+      ics: "BEGIN:VCALENDAR",
+    });
+
+    // Ein Consent-Schritt waere asynchron VOR dem SendService-Aufruf (Modal-Open, Nutzer-
+    // Interaktion) — hier ist sendService.send bereits synchron aufgerufen, bevor auf das
+    // Ergebnis gewartet wird. Kein Modal-Mock, kein Timer, keine Zustimmungs-Option im
+    // Deps-Objekt von buildMailTransport ueberhaupt vorhanden.
+    expect(send).toHaveBeenCalledTimes(1);
+    await ergebnis;
+  });
+
+  it("importiert kein Modal/Consent-Modul (strukturelle Trennung vom Versand-API-Adapter)", () => {
+    const quelle = readFileSync(
+      resolve(__dirname, "../../src/obsidian/calendar-notes-bridge.ts"),
+      "utf8",
+    );
+    expect(quelle).not.toMatch(/send-consent-modal/);
+    expect(quelle).not.toMatch(/askSendConsent/);
+  });
+});
+
+describe("calendar-notes-bridge importiert plugin-api nicht", () => {
+  // Zweite Haelfte des iMIP-Waechters: plugin-api.ts ist der Ort, an dem die neue
+  // Zustimmungs-/Vertrauens-Logik lebt. Ein Import von dort waere der strukturelle Beleg,
+  // dass der iMIP-Pfad ploetzlich an dieser Logik haengt — auch ohne dass ein einzelner Test
+  // das Verhalten schon sichtbar bricht.
+  it("die Importzeilen von calendar-notes-bridge.ts nennen nur die vier bekannten Module", () => {
+    const quelle = readFileSync(
+      resolve(__dirname, "../../src/obsidian/calendar-notes-bridge.ts"),
+      "utf8",
+    );
+    const importZeilen = quelle
+      .split("\n")
+      .filter((zeile) => /^import /.test(zeile));
+    expect(importZeilen.some((z) => /plugin-api/.test(z))).toBe(false);
+    expect(importZeilen.some((z) => /["']obsidian["']/.test(z))).toBe(true);
+    expect(importZeilen.some((z) => /core\/settings/.test(z))).toBe(true);
+    expect(importZeilen.some((z) => /core\/send\/service/.test(z))).toBe(true);
+    expect(importZeilen.some((z) => /core\/send\/imip/.test(z))).toBe(true);
   });
 });
 
