@@ -194,6 +194,24 @@ describe("Befund 4 — is-checking ist waehrend eines Laufs wirklich erreichbar"
   });
 });
 
+describe("plugin.api", () => {
+  it("haengt am Plugin und traegt die Version", () => {
+    const { plugin } = aufbau([acc("privat")]);
+    plugin.sendService = { send: async () => ({ ok: true, messageId: "x@y", sentCopy: "ok" }) };
+    plugin.wireApi();
+    expect(plugin.api?.apiVersion).toBe(1);
+    expect(typeof plugin.api?.send).toBe("function");
+    expect(typeof plugin.api?.status).toBe("function");
+  });
+
+  it("meldet ohne Konto not-configured", () => {
+    const { plugin } = aufbau([]);
+    plugin.sendService = { send: async () => ({ ok: true, messageId: "x@y", sentCopy: "ok" }) };
+    plugin.wireApi();
+    expect(plugin.api?.status()).toEqual({ ready: false, reason: "not-configured" });
+  });
+});
+
 describe("Befund 5 — openSettings landet auf dem eigenen Tab", () => {
   it("oeffnet die Einstellungen UND waehlt den Mailstone-Tab", () => {
     const open = vi.fn();

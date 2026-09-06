@@ -10,12 +10,14 @@ import {
   type SettingGroupItem,
 } from "obsidian";
 import { t } from "../vendor/code-kit/i18n";
-import { confirmAction } from "../vendor/kit-obsidian/confirm";
+import { confirmAction, applyDestructive } from "../vendor/kit-obsidian/confirm";
 import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../core/send/secrets";
 import type { SocketTransport } from "../core/net/types";
+import type { TrustedSender } from "../core/api/types";
 import { AccountModal } from "./modals/account-modal";
+import { pluginName } from "./plugin-api";
 
 /** Was der Tab vom Plugin braucht — als Interface, damit Tests eine Attrappe geben können
  *  (Muster aus calendar-notes/src/obsidian/settings-tab.ts, dortiges `SettingsHost`). */
@@ -88,6 +90,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         desc: t("settings.debugLog.desc"),
         control: { type: "toggle", key: "debugLog" },
       },
+      // SettingDefinitionList kennt keinen eigenen `desc` — dieselbe Loesung wie beim
+      // taskPreset direkt darueber: die Erklaerung steht als eigene Info-Zeile davor.
+      { name: t("settings.trusted"), desc: t("settings.trusted.desc") },
+      this.trustedSendersGroup(),
     ];
   }
 
@@ -174,6 +180,38 @@ export class MailstoneSettingTab extends PluginSettingTab {
       await this.host.saveSettings();
       this.update();
     })();
+  }
+
+  // ── Vertrauensliste (Versand-API) ───────────────────────────────────────
+  // Widerruf einzeln je Eintrag (kein Add-Knopf hier: neue Eintraege entstehen nur ueber das
+  // Zustimmungs-Modal beim ersten Sendeversuch eines Fremdplugins, nie von Hand in den
+  // Einstellungen).
+  private trustedSendersGroup(): SettingDefinitionList {
+    const liste = this.host.settings.trustedSenders;
+    const items: SettingGroupItem[] = liste.map((eintrag) => ({
+      name: pluginName(this.app, eintrag.pluginId),
+      desc: eintrag.transportId,
+      render: (setting: Setting) => this.renderTrustedSenderRow(setting, eintrag),
+    }));
+    return {
+      type: "list",
+      items,
+      emptyState: t("settings.trusted.empty"),
+    };
+  }
+
+  private renderTrustedSenderRow(setting: Setting, eintrag: TrustedSender): void {
+    setting.addButton((b) =>
+      applyDestructive(
+        b.setButtonText(t("settings.trusted.revoke")).onClick(async () => {
+          this.host.settings.trustedSenders = this.host.settings.trustedSenders.filter(
+            (e) => e.pluginId !== eintrag.pluginId,
+          );
+          await this.host.saveSettings();
+          this.update();
+        }),
+      ),
+    );
   }
 
   // ── taskPreset (M5 § 5, "der Weg ohne TaskNotes") ───────────────────────

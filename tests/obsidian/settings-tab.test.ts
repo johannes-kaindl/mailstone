@@ -79,13 +79,14 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
 // (kein DOM-Rendering im Mock, s. Kommentar an newTab()).
 describe("MailstoneSettingTab — taskPreset", () => {
   function presetList(tab: MailstoneSettingTab) {
-    const defs = tab.getSettingDefinitions() as { type?: string; items?: unknown[] }[];
-    const list = defs.find((d) => d.type === "list" && !("heading" in d && (d as { heading?: string }).heading === "Konten"));
-    // Es gibt zwei Listen (Konten, taskPreset) — die zweite ist ohne Heading (s. Kommentar im
-    // Tab: die Erklaerung steht als eigene Info-Zeile davor).
-    const lists = defs.filter((d): d is { type: string; items: unknown[] } => d.type === "list");
-    expect(lists.length).toBe(2);
-    const preset = lists.find((d) => !("heading" in d));
+    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: unknown; items?: unknown[] }[];
+    // Seit Task 5 (Versand-API) gibt es drei Listen (Konten, taskPreset, Vertrauensliste) —
+    // taskPreset ist darunter die einzige OHNE Heading, DIE trotzdem einen addItem-Knopf
+    // traegt: die Vertrauensliste hat keinen (neue Eintraege entstehen nur ueber das
+    // Zustimmungs-Modal, nie von Hand in den Einstellungen, s. Kommentar im Tab).
+    const lists = defs.filter((d): d is { type: string; addItem?: unknown; items: unknown[] } => d.type === "list");
+    expect(lists.length).toBe(3);
+    const preset = lists.find((d) => !("heading" in d) && "addItem" in d);
     expect(preset).toBeDefined();
     return preset as { items: { name: string }[] };
   }
