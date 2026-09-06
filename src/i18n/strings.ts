@@ -208,6 +208,19 @@ export const en = {
   "settings.taskPreset.value.placeholder": "Value (e.g. open)",
   "settings.taskPreset.value.aria": "Field value",
   "settings.taskPreset.key.duplicate": "A field named \"{0}\" already exists.",
+
+  "api.consent.title": "Send mail on behalf of another plugin?",
+  "api.consent.caller": "Requesting plugin: {0}",
+  "api.consent.from": "Send as",
+  "api.consent.to": "To: {0}",
+  "api.consent.subject": "Subject: {0}",
+  "api.consent.send": "Send once",
+  "api.consent.remember": "Send and always allow",
+  "api.consent.cancel": "Cancel",
+  "settings.trusted": "Plugins allowed to send",
+  "settings.trusted.desc": "These plugins send mail without asking. Revoke a permission to have mailstone ask again.",
+  "settings.trusted.empty": "No plugin has been allowed yet.",
+  "settings.trusted.revoke": "Revoke",
 };
 export const de: typeof en = {
   "cmd.importEml.name": ".eml-Dateien aus einem Vault-Ordner importieren",
@@ -414,6 +427,19 @@ export const de: typeof en = {
   "settings.taskPreset.value.placeholder": "Wert (z. B. open)",
   "settings.taskPreset.value.aria": "Feldwert",
   "settings.taskPreset.key.duplicate": "Ein Feld namens \"{0}\" gibt es schon.",
+
+  "api.consent.title": "Mail im Auftrag eines anderen Plugins senden?",
+  "api.consent.caller": "Anfragendes Plugin: {0}",
+  "api.consent.from": "Senden als",
+  "api.consent.to": "An: {0}",
+  "api.consent.subject": "Betreff: {0}",
+  "api.consent.send": "Einmal senden",
+  "api.consent.remember": "Senden und immer erlauben",
+  "api.consent.cancel": "Abbrechen",
+  "settings.trusted": "Plugins mit Sendeerlaubnis",
+  "settings.trusted.desc": "Diese Plugins senden ohne Rückfrage. Wer eine Erlaubnis widerruft, wird wieder gefragt.",
+  "settings.trusted.empty": "Bisher hat kein Plugin eine Erlaubnis.",
+  "settings.trusted.revoke": "Widerrufen",
 };
 
 export function initI18n(raw: string): void { defineStrings({ en, de }); setLang(pickLang(raw)); }
