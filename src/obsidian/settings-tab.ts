@@ -15,6 +15,7 @@ import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../core/send/secrets";
 import type { SocketTransport } from "../core/net/types";
+import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
 import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
@@ -188,9 +189,15 @@ export class MailstoneSettingTab extends PluginSettingTab {
   // Einstellungen).
   private trustedSendersGroup(): SettingDefinitionList {
     const liste = this.host.settings.trustedSenders;
+    // Die rohe transportId ("privat/mail") sind zwei interne Ids und sagen dem Nutzer nicht,
+    // WORUEBER das fremde Plugin senden darf. Aufgeloest wird die Absenderadresse gezeigt.
+    // Faellt die Aufloesung ins Leere (verwaister Eintrag, weil die Identitaet geloescht
+    // wurde), bleibt die rohe Id stehen: eine Zeile, die man widerrufen koennen muss, darf
+    // nicht verschwinden, nur weil ihr Ziel nicht mehr existiert.
+    const moeglich = transportAccounts(this.host.settings.accounts);
     const items: SettingGroupItem[] = liste.map((eintrag) => ({
       name: pluginName(this.app, eintrag.pluginId),
-      desc: eintrag.transportId,
+      desc: moeglich.find((i) => i.id === eintrag.transportId)?.address ?? eintrag.transportId,
       render: (setting: Setting) => this.renderTrustedSenderRow(setting, eintrag),
     }));
     return {

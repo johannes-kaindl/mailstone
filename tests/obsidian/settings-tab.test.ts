@@ -75,6 +75,45 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
   });
 });
 
+// Fix-Runde 2, Minor: die Zeile zeigte die rohe transportId ("privat/mail") — zwei interne
+// Ids, die dem Nutzer nicht sagen, WORUEBER das fremde Plugin senden darf.
+describe("MailstoneSettingTab — Vertrauensliste", () => {
+  function trustList(tab: MailstoneSettingTab) {
+    const defs = tab.getSettingDefinitions() as
+      { type?: string; heading?: string; addItem?: unknown; items?: { name: string; desc: string }[] }[];
+    // Die Vertrauensliste ist die einzige Liste OHNE Heading und OHNE addItem-Knopf: neue
+    // Eintraege entstehen nur ueber das Zustimmungs-Modal, nie von Hand (s. Kommentar im Tab).
+    const list = defs.find((d) => d.type === "list" && d.heading === undefined && !("addItem" in d));
+    expect(list).toBeDefined();
+    return list!.items!;
+  }
+
+  function mitIdentitaet(): Account {
+    return {
+      ...newAccount("privat"),
+      label: "Privat",
+      identities: [{ id: "mail", address: "max@example.net", name: "Max" }],
+      defaultIdentityId: "mail",
+    };
+  }
+
+  it("loest die transportId zur Absenderadresse auf", () => {
+    const tab = newTab({ accounts: [mitIdentitaet()] });
+    tab["host"].settings.trustedSenders = [{ pluginId: "calendar-notes", transportId: "privat/mail" }];
+    expect(trustList(tab)[0]?.desc).toBe("max@example.net");
+  });
+
+  it("zeigt bei einem verwaisten Eintrag weiter die rohe Id, statt die Zeile zu verstecken", () => {
+    // Eine Freigabe, die man nicht zurueckziehen kann, ist keine — die Zeile muss bleiben,
+    // auch wenn die Identitaet, fuer die sie galt, geloescht wurde.
+    const tab = newTab({ accounts: [mitIdentitaet()] });
+    tab["host"].settings.trustedSenders = [{ pluginId: "calendar-notes", transportId: "privat/weg" }];
+    const items = trustList(tab);
+    expect(items.length).toBe(1);
+    expect(items[0]?.desc).toBe("privat/weg");
+  });
+});
+
 // M5 Task 7: die Settings-UI fuer taskPreset — nur die Struktur der Definitionen, wie oben
 // (kein DOM-Rendering im Mock, s. Kommentar an newTab()).
 describe("MailstoneSettingTab — taskPreset", () => {
