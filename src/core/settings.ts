@@ -1,6 +1,7 @@
 import { mergeSettings } from "../vendor/code-kit/settings";
 import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
 import type { TlsMode } from "./net/types";
+import type { TrustedSender } from "./api/types";
 
 export interface Identity { id: string; address: string; name: string }
 export interface Account {
@@ -21,7 +22,7 @@ export interface Account {
 // Hand-Edit in data.json). Das zu reparieren waere ein Eingriff in toFm/needsQuoting, der ALLE
 // Frontmatter-Felder betraefe — kein M5-Vorgang. Ein `number` ist davon nicht betroffen: er
 // laeuft an toFm vorbei und wird unquoted ausgegeben.
-export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; debugLog: boolean; openViewOnStartup: boolean }
+export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[] }
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -103,7 +104,7 @@ function repairAccount(raw: unknown): Account {
 // openViewOnStartup: Default AUS — ein Plugin, das sich beim Start ungefragt in die
 // Seitenleiste draengt, ist ein Aergernis (REGISTRY: Opt-in-Gate fuer Startup-Seiteneffekt,
 // n=2 in vim-dojo und kuro-gamification).
-export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, debugLog: false, openViewOnStartup: false };
+export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, debugLog: false, openViewOnStartup: false, trustedSenders: [] };
 
 /** Wirft nie: ein alteres `data.json` (oder ein Hand-Edit) kann `taskPreset`-Werte tragen, die
  *  der aktuelle Typ nicht mehr kennt — ein `boolean` (Fix-Runde 1, s. Kommentar an
@@ -119,10 +120,31 @@ function repairTaskPreset(raw: unknown): Record<string, string | number> {
   return out;
 }
 
+/** Wirft nie (gleiche Begruendung wie repairTaskPreset): ein Hand-Edit an `data.json` darf den
+ *  Ladevorgang nicht brechen. Unbrauchbare Eintraege fallen still weg — sie waren nie funktional.
+ *  Doppelte `pluginId` werden auf den ersten Eintrag reduziert, damit ein Widerruf in der UI
+ *  wirklich alles entfernt und nicht einen zweiten Eintrag stehen laesst. */
+function repairTrustedSenders(raw: unknown): TrustedSender[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TrustedSender[] = [];
+  const gesehen = new Set<string>();
+  for (const e of raw) {
+    if (!isObj(e)) continue;
+    const { pluginId, transportId } = e;
+    if (typeof pluginId !== "string" || !pluginId) continue;
+    if (typeof transportId !== "string" || !transportId) continue;
+    if (gesehen.has(pluginId)) continue;
+    gesehen.add(pluginId);
+    out.push({ pluginId, transportId });
+  }
+  return out;
+}
+
 export function loadSettings(raw: unknown): MailstoneSettings {
   const s = mergeSettings(DEFAULT_SETTINGS, raw && typeof raw === "object" ? raw : {});
   s.accounts = (Array.isArray(s.accounts) ? s.accounts : []).map((a) => repairAccount(a));
   s.taskPreset = repairTaskPreset(isObj(raw) ? raw.taskPreset : undefined);
+  s.trustedSenders = repairTrustedSenders(isObj(raw) ? raw.trustedSenders : undefined);
   const rawProfile = isObj(raw) && isObj(raw.profile) ? raw.profile : {};
   s.profile = {
     ...defaultMailProfile(),

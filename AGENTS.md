@@ -56,8 +56,11 @@ Grenze bewacht der Compiler, nicht die Aufmerksamkeit eines Reviewers:
 
 Das gilt auf **Konsumenten**-Ebene — der einzige Ort, der die schreibende Session als Typ
 entgegennimmt. **Verdrahtet** (also `imapConnectWritable(...)` aufgerufen) wird sie an drei
-Stellen in `src/main.ts` (Stand M5: Zeilen 524, 534, 557 — Übernehmen, Archivieren, Aufgabe
-anlegen im Posteingangs-Panel), die alle an `actions.ts` durchreichen.
+Stellen in `src/main.ts` (Übernehmen, Archivieren, Aufgabe anlegen im Posteingangs-Panel), die
+alle an `actions.ts` durchreichen. **Gefunden werden sie mit `grep -n "imapConnectWritable("`,
+nicht über Zeilennummern** — die hier notierten wanderten seit M5 zweimal (zuletzt +27 Zeilen
+durch die Versand-API), und eine veraltete Nummer schickt den nächsten Leser an die falsche
+Stelle, ohne dass etwas fehlschlägt.
 
 `SyncService` nimmt eine `ImapReadSession` entgegen; `select` steht ihm damit nicht zur
 Verfügung, ein versehentliches `SELECT` im Sync-Pfad ist ein **Typfehler**. Wer den
@@ -166,6 +169,46 @@ Aufruf widerlegt** (TaskNotes 4.12.5, gemessen 2026-09-05, Spec § 8/§ 2.2):
 **Wer `api.tasks.*` an einer zweiten Stelle verwendet, trägt sie hier ein** — bislang gilt:
 `createTaskViaBridge` in `src/obsidian/tasknotes-bridge.ts` ist die einzige.
 
+## Versand-API: eine deklarierte Abweichung vom Anbieter-Muster
+
+`plugin.api` bietet fremden Plugins Mail-Versand an (`src/obsidian/plugin-api.ts`,
+`createMailstoneApi`). Ein nicht gelistetes Plugin löst ein Bestätigungs-Modal aus; *„Senden und
+immer erlauben"* trägt es in `settings.trustedSenders` ein, danach sendet es still. Spec:
+`$VAULT/25_Coding/mailstone/_SDD/2026-09-06-versand-api-design.md`.
+
+**Das Anbieter-Muster der Dach-`REGISTRY.md` sagt in Punkt (6) „kein Zustimmungs-Tor"** — mit der
+Begründung, wer die API rufen könne, habe ohnehin vollen Vault-Zugriff. **Diese Begründung setzt
+voraus, dass die API nichts anbietet, was der Aufrufer nicht ohnehin hätte.** Bei `vault-rag`
+(Retrieval) und `local-image-generator` (lokale Bilderzeugung) trifft das zu. Hier nicht: die API
+gibt Zugriff auf ein **authentifiziertes SMTP-Konto**, dessen Zugangsdaten im Schlüsselbund von
+mailstone liegen — eine Rechteerweiterung, kein Convenience-Wrapper. Die tragende Achse von (6)
+lautet deshalb präzisiert: **ein Tor ist überflüssig, wo die API nur bündelt, was der Aufrufer
+schon darf — und nötig, wo sie ihm etwas Neues gibt.**
+
+⚠️ **`callerId` ist eine Selbstauskunft, keine Authentifizierung.** Obsidian kennt keinen
+Aufrufer-Kontext; jedes Plugin kann dort alles eintragen. Die Vertrauensliste schützt vor
+**Versehen** und schafft **Sichtbarkeit** — sie ist **kein Sicherheits-Perimeter**. Ein
+bösartiges Desktop-Plugin hat vollen Node-Zugriff und spricht SMTP selbst; dagegen schützt hier
+nichts, und die API soll auch nicht so beschrieben werden. Wer das später „absichert", optimiert
+an der falschen Stelle.
+
+**Zwei Namen, die nicht verwechselt werden dürfen:** `folders.allowlist` ist der **Server-Ordner**,
+der entscheidet, was Notiz wird — der Kernbegriff der Architektur. Die Plugin-Liste heißt
+`trustedSenders`, in Texten „vertraute Plugins". Das Wort „Allowlist" wird dafür nie verwendet.
+
+**Wer die API an einer zweiten Stelle exponiert, trägt sie hier ein** — bislang gilt:
+`createMailstoneApi` in `src/obsidian/plugin-api.ts` ist die einzige.
+
+**Der bestehende iMIP-Weg läuft unverändert weiter** (`registerMailTransport` bei
+`calendar-notes`) und geht **nicht** durch die Bestätigung — sonst würde eine heute
+funktionierende, im Echtbetrieb belegte Funktion plötzlich Modals werfen. Bewacht wird das als
+**Unit-Test** in `tests/obsidian/calendar-notes-bridge.test.ts`, nicht im GUI-Smoke:
+`CalendarNotesBridge` exponiert nur `tryRegister`/`unregister`/`registered`, ein GUI-Prüfpunkt
+hätte gar keinen Zugriff auf den Transport. Der Test sichert zweierlei — der Transport ruft
+`sendService.send` direkt, und die Bridge importiert `plugin-api` nicht. ⓘ Die zweite Hälfte
+prüft Importzeilen als Text und sieht deshalb **keine dynamischen** Importe; die Grenze steht im
+Testkommentar.
+
 ## Was Unit-Tests hier nicht belegen können
 
 `onload()` ist nicht erreichbar, die Plugin-Instanz sehr wohl (Konstruktor plus gesetzte Felder
@@ -174,7 +217,7 @@ sie ist `docs/SMOKE.md` der einzige Beleg: `registerView` und die Ribbon-Umstell
 vendorte `Plugin`-Mock verwirft Titel **und** Callback von `addRibbonIcon`), das
 `onLayoutReady`-Gate, und alles Sichtbare — ob ein Element Pixel hat, wo ein Knopf sitzt, ob
 eine Animation läuft. Dafür gibt es seit M4 den getrackten Treiber `npm run smoke:gui`
-(`scripts/gui-smoke.ts`, 20 Prüfpunkte gegen ein **laufendes** Obsidian, Stand M5) — er braucht
+(`scripts/gui-smoke.ts`, 24 Prüfpunkte gegen ein **laufendes** Obsidian, Stand Versand-API) — er braucht
 den CDP-Lock des Dachs und ein offenes Fenster für den Staging-Vault, das Protokoll steht in
 `docs/SMOKE.md`.
 

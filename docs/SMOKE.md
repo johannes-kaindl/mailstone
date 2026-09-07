@@ -703,3 +703,61 @@ im Unit-Test gedeckt und je einmal per Mutation gegengeprüft.
    Proben das Laufsymbol, und auch die drei Prüfpunkte mit **Obsidian-Neustart** (V5a, V1, V5b)
    blieben grün. Die Warnung war richtig, die Sorge trug nicht — festgehalten, weil ein
    Lastverdacht sonst beim nächsten Mal wieder unbelegt im Raum steht.
+
+## Versand-Plugin-API — vier neue Prüfpunkte (2026-09-06)
+
+**24/24 grün** (vorher 20). Neu sind V21–V24; sie prüfen die öffentliche `plugin.api`, über die
+fremde Plugins Mail versenden können.
+
+**Der Aufruf läuft aus dem Renderer** (`app.plugins.plugins["mailstone"].api.send(…)`) — exakt
+der Weg eines fremden Plugins. Unit-Tests können strukturell nicht zeigen, dass der Vertrag am
+echten Plugin-Objekt hängt und die Renderer-Grenze JSON-tauglich übersteht.
+
+| Punkt | Prüft | Ergebnis |
+|---|---|---|
+| V21 | Fläche der API — genau `apiVersion,send,status` | Flächen-Wächter: ein `this.api = this.facade` fiele hier auf |
+| V22 | `status()` synchron, ohne Identität `not-configured` | `{"ready":false,"reason":"not-configured"}` |
+| V23 | `send()` ohne Identität → `not-configured`, **kein** Modal | Modals 0 → 0 |
+| V24 | Erstkontakt öffnet das Modal, Abbrechen → `declined` | `{"ok":false,"reason":"declined"}` |
+
+⚠️ **Der erfolgreiche Versand wird bewusst NICHT gefahren** — ein Treiber, der ihn fährt,
+verschickt echte Mail. Er ist durch die `SendService`-Tests aus M2 gedeckt, inklusive des
+Echt-Versandtests gegen mailbox.org. Das ist eine benannte Lücke, keine übersehene.
+
+### Der Abschnitt bringt seinen eigenen Zustand mit — nach zwei Fehlschlägen
+
+Die ersten beiden Fassungen fielen durch, und der Grund lag **nicht** am Prüfling:
+
+1. **Fassung 1** suchte das Smoke-Testkonto (`gui-smoke-testkonto`) und setzte ihm eine
+   Identität. Der Rückgabewert des Setzens wurde nicht geprüft. Gemessen war zu diesem
+   Zeitpunkt ein *anderes* Konto aktiv, `find` lief ins Leere, und V24 meldete „kein Modal" —
+   ein Fehlschlag, der wie ein Produktfehler aussah.
+2. **Fassung 2** nahm `settings.accounts[0]` und prüfte den Rückgabewert. Jetzt sagte der
+   Fehler die Wahrheit: **kein Konto vorhanden**. Ein früherer Prüfpunkt räumt die Kontenliste
+   ab, bevor dieser Abschnitt läuft.
+3. **Fassung 3** legt die Kontenliste selbst an, misst, und stellt die vorherige exakt wieder
+   her — mit Beleg am Ergebnis (`JSON.stringify`-Vergleich), nicht als Annahme. Ein
+   fehlgeschlagener Restore **wirft**, statt still durchzurutschen.
+
+**Die Lehre ist die Bauart, nicht der Einzelfall** (CORE-TEST-21): ein Prüfpunkt, der Zustand
+von einem früheren erbt, misst irgendwann dessen Zustand statt des Prüflings — und meldet den
+Fehlschlag als Produktfehler. Wer eine Vorbedingung braucht, stellt sie selbst her und prüft,
+dass das gelungen ist.
+
+### Umgebung: Zweitinstanz statt Neustart
+
+Der Lauf lief gegen eine **zweite Obsidian-Instanz** (`--user-data-dir=/tmp/obs-mailstone-smoke`,
+`--remote-debugging-port=9333`), weil in der regulären Instanz zwei fremde Vaults offen standen
+und ein Quit deren Arbeit getroffen hätte. Drei Dinge, die dabei zu beachten waren:
+
+- ⚠️ **`obsidian://open?path=…` und `?vault=…` blieben wirkungslos** (Obsidian 1.14.0, zwei
+  Versuche, je 5 s Wartezeit) — der in der Dach-`AGENTS.md` beschriebene Weg, einen Vault als
+  zusätzliches Fenster zu öffnen, griff hier nicht. Die Zweitinstanz war deshalb nicht die
+  bequemere, sondern die einzige Option.
+- **Die Zweitinstanz startet mit der gebündelten 1.12.4**, mailstone verlangt aber
+  `minAppVersion: 1.13.0`. Ohne ein `cp obsidian-1.14.0.asar` ins Testprofil lädt das Plugin
+  gar nicht.
+- **Ein frisches Profil startet im Restricted Mode.** `enabledPlugins` listet die Plugins,
+  `app.plugins.plugins` bleibt trotzdem leer. `await app.plugins.setEnable(true)` schaltet sie
+  ein. Ohne diesen Schritt meldet der Treiber „registerView lief nicht" — was wie ein
+  Produktfehler aussieht und keiner ist.

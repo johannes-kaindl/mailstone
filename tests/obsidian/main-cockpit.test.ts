@@ -194,6 +194,52 @@ describe("Befund 4 — is-checking ist waehrend eines Laufs wirklich erreichbar"
   });
 });
 
+describe("plugin.api", () => {
+  it("haengt am Plugin und traegt die Version", () => {
+    const { plugin } = aufbau([acc("privat")]);
+    plugin.sendService = { send: async () => ({ ok: true, messageId: "x@y", sentCopy: "ok" }) };
+    plugin.wireApi();
+    expect(plugin.api?.apiVersion).toBe(1);
+    expect(typeof plugin.api?.send).toBe("function");
+    expect(typeof plugin.api?.status).toBe("function");
+  });
+
+  it("meldet ohne Konto not-configured", () => {
+    const { plugin } = aufbau([]);
+    plugin.sendService = { send: async () => ({ ok: true, messageId: "x@y", sentCopy: "ok" }) };
+    plugin.wireApi();
+    expect(plugin.api?.status()).toEqual({ ready: false, reason: "not-configured" });
+  });
+
+  // Fix-Runde 2, Important 1 — die ganze Kette, die keine Einzelpruefung sah: `api.send`
+  // oeffnet das ECHTE Modal (kein Stub), `onunload` schliesst es, und der Adapter meldet
+  // `unloaded`. Vorher blieb der Dialog stehen, ein Klick auf „Senden und immer erlauben"
+  // verschickte die Mail aus der toten Instanz und `saveSettings()` schrieb deren gesamten
+  // Snapshot (settings, zoneHashes, uidCache, runState) nach data.json.
+  it("onunload schliesst das offene Zustimmungs-Modal, der Aufruf endet als unloaded", async () => {
+    const konto = acc("privat");
+    konto.identities = [{ id: "mail", address: "max@example.net", name: "Max" }];
+    konto.defaultIdentityId = "mail";
+    const send = vi.fn(async () => ({ ok: true, messageId: "x@y", sentCopy: "ok" }));
+    const { plugin } = aufbau([konto]);
+    plugin.sendService = { send };
+    // `saveData` ist der Boden, auf dem `remember` → `saveSettings()` → `persist` landet:
+    // wird er beruehrt, hat die tote Instanz geschrieben.
+    plugin.saveData = vi.fn(async () => {});
+    plugin.wireApi();
+
+    const laufend = plugin.api.send({
+      callerId: "fremd", to: ["gast@example.org"], subject: "Betreff", body: "Text",
+    });
+    await Promise.resolve();
+    plugin.onunload();
+
+    await expect(laufend).resolves.toEqual({ ok: false, reason: "unloaded" });
+    expect(send).not.toHaveBeenCalled();
+    expect(plugin.saveData).not.toHaveBeenCalled();
+  });
+});
+
 describe("Befund 5 — openSettings landet auf dem eigenen Tab", () => {
   it("oeffnet die Einstellungen UND waehlt den Mailstone-Tab", () => {
     const open = vi.fn();

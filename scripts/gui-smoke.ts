@@ -76,7 +76,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachTo, clickReal, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, clickReal, pollUntil, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
 import { requireEigenerBuild } from "../../tools/obsidian-cdp/vault.js";
 
 // `import.meta.url` zeigt nach dem esbuild-Buendeln auf `.gui-smoke.mjs` im Repo-Root
@@ -1215,6 +1215,143 @@ async function te_postfachKnopfNurMitTaskNotes(cdp: Cdp): Promise<void> {
  *  Der Erfolgspfad schliesst im `finally` weiter unten; das hier deckt die Abbrueche davor. */
 let offeneVerbindung: Cdp | null = null;
 
+/**
+ * Versand-Plugin-API (Task 6 der Versand-API-Runde).
+ *
+ * Der Aufruf aus dem RENDERER ist exakt der Weg eines fremden Plugins — Unit-Tests koennen
+ * strukturell nicht zeigen, dass der Vertrag am echten Plugin-Objekt haengt und die
+ * Renderer-Grenze JSON-tauglich uebersteht.
+ *
+ * ⚠️ Der erfolgreiche Versand wird hier bewusst NICHT gefahren: er verschickte echte Mail.
+ * Geprueft werden Flaeche, `status()`, der `not-configured`-Pfad und der Modal-Pfad mit
+ * Abbruch. Der Versand selbst ist durch die SendService-Tests aus M2 gedeckt (inkl. des
+ * Echt-Versandtests gegen mailbox.org).
+ *
+ * Das Smoke-Testkonto traegt `identities: []` (s. testkontoSetzen) — ohne Identitaet liefert
+ * `transportAccounts` eine leere Liste und die API meldet `not-configured`. V23 nutzt genau
+ * das; V24 setzt fuer seinen Lauf eine Identitaet und nimmt sie danach zurueck.
+ */
+async function versandApiPruefen(cdp: Cdp): Promise<void> {
+  // Zustandsfrei: haengt die API ueberhaupt am Plugin-Objekt?
+  const flaeche = await evaluieren<string>(
+    cdp,
+    `const a = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}]?.api;
+     return a ? Object.keys(a).sort().join(",") : "keine api";`,
+  );
+  // Flaechen-Waechter: faellt jemand auf die Idee, das interne Objekt durchzureichen
+  // (`this.api = this.facade`), faellt es genau hier auf.
+  pruefe("V21 API haengt am Plugin, Flaeche genau apiVersion+send+status",
+    flaeche === "apiVersion,send,status", `Flaeche: ${flaeche}`);
+
+  // ── Vorzustand sichern ──────────────────────────────────────────────────────────────
+  // ⚠️ Dieser Abschnitt stellt JEDEN Zustand selbst her, den er misst, statt sich auf einen
+  // frueheren Pruefpunkt zu verlassen. Der erste Entwurf tat das Gegenteil: er suchte das
+  // Smoke-Testkonto und setzte ihm eine Identitaet. Gemessen 2026-09-06 war zu diesem
+  // Zeitpunkt ein ANDERES Konto aktiv, das `find` lief ins Leere, der ungeprueft
+  // gebliebene Rueckgabewert verschwieg es — und V24 fiel aus einem Grund durch, der nichts
+  // mit dem Prueflings-Verhalten zu tun hatte.
+  // Gemessen 2026-09-06: zum Zeitpunkt dieses Abschnitts ist `settings.accounts` LEER — ein
+  // frueherer Pruefpunkt raeumt sie ab. Deshalb bringt dieser Abschnitt sein eigenes Konto mit,
+  // statt eines vorzufinden: er setzt die ganze Liste, misst, und stellt die vorherige Liste
+  // exakt wieder her.
+  const vorherigeKonten = await evaluieren<string>(
+    cdp,
+    `return JSON.stringify(app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}].settings.accounts);`,
+  );
+  const API_KONTO_ID = "gui-smoke-api-konto";
+
+  try {
+    // ── Ohne Identitaet: not-configured, und ZWINGEND kein Modal ────────────────────────
+    const geleert = await evaluieren<boolean>(
+      cdp,
+      `const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+       p.settings.accounts = [{
+         id: ${JSON.stringify(API_KONTO_ID)}, label: "GUI-Smoke API-Konto",
+         imap: { host: "127.0.0.1", port: 1, tls: "implicit" },
+         smtp: { host: "127.0.0.1", port: 1, tls: "implicit" },
+         username: "api@example.invalid", secretId: "mailstone-" + ${JSON.stringify(API_KONTO_ID)},
+         identities: [], defaultIdentityId: "",
+         folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "Sent" },
+         sync: { enabled: false, intervalMin: 6000 },
+       }];
+       await p.saveSettings();
+       return p.settings.accounts.length === 1 && p.settings.accounts[0].identities.length === 0;`,
+    );
+    if (!geleert) throw new Error("V22/V23: eigenes Konto ohne Identitaet liess sich nicht herstellen — Messung ungueltig");
+    await warte(300);
+
+    const status = await evaluieren<string>(
+      cdp, `return JSON.stringify(app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}].api.status());`);
+    pruefe("V22 status() antwortet synchron und meldet not-configured ohne Identitaet",
+      status.includes('"ready":false') && status.includes("not-configured"), status);
+
+    // Den Nutzer zu fragen, was er nicht entscheiden kann, waere Klickweg ohne Ertrag.
+    const modalsVor = await evaluieren<number>(cdp, `return document.querySelectorAll(".modal-container").length;`);
+    const ohneKonto = await evaluieren<string>(
+      cdp,
+      `return JSON.stringify(await app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}].api.send({
+         callerId: "gui-smoke-fremd", to: ["probe@example.invalid"], subject: "Smoke", body: "Text" }));`,
+    );
+    const modalsNach = await evaluieren<number>(cdp, `return document.querySelectorAll(".modal-container").length;`);
+    pruefe("V23 send() ohne Identitaet liefert not-configured und oeffnet kein Modal",
+      ohneKonto.includes("not-configured") && modalsVor === modalsNach,
+      `${ohneKonto}, Modals ${String(modalsVor)} -> ${String(modalsNach)}`);
+
+    // ── Mit Identitaet: das Modal muss aufgehen ─────────────────────────────────────────
+    const gesetzt = await evaluieren<boolean>(
+      cdp,
+      `const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+       const k = p.settings.accounts.find(a => a.id === ${JSON.stringify(API_KONTO_ID)});
+       if (!k) return false;
+       k.identities = [{ id: "smoke", address: "smoke@example.invalid", name: "GUI-Smoke" }];
+       k.defaultIdentityId = "smoke";
+       await p.saveSettings();
+       return p.api.status().ready === true;`,
+    );
+    if (!gesetzt) throw new Error("V24: sendefaehiger Zustand liess sich nicht herstellen — Messung ungueltig");
+    await warte(300);
+
+    await evaluieren(
+      cdp,
+      `window.__ms_probe = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}].api.send({
+         callerId: "gui-smoke-fremd", to: ["probe@example.invalid"], subject: "Smoke", body: "Textzeile" });
+       return true;`,
+    );
+    const modalDa = await pollUntil<boolean>(
+      cdp, `return !!document.querySelector(".mailstone-consent-body");`, 8000, 200);
+    if (modalDa !== true) {
+      pruefe("V24 Erstkontakt oeffnet das Bestaetigungs-Modal", false, "kein Modal binnen 8 s");
+      await evaluieren(cdp, `delete window.__ms_probe; return true;`).catch(() => undefined);
+    } else {
+      await clickReal(
+        cdp,
+        `[...document.querySelectorAll(".modal-button-container button")].find(b => /Abbrechen|Cancel/.test(b.textContent))`,
+        150,
+      );
+      const ausgang = await evaluieren<string>(cdp, `const r = await window.__ms_probe; delete window.__ms_probe; return JSON.stringify(r);`);
+      pruefe("V24 Erstkontakt oeffnet das Modal, Abbrechen liefert declined",
+        ausgang.includes("declined"), ausgang);
+    }
+  } finally {
+    // Zurueckgeben, was da war — und am Ergebnis belegen, nicht annehmen (dieselbe Doktrin
+    // wie beim TaskNotes-Slot weiter oben). Ein fehlgeschlagener Restore darf nicht
+    // stillschweigend durchrutschen.
+    const zurueck = await evaluieren<boolean>(
+      cdp,
+      `const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
+       p.settings.accounts = JSON.parse(${JSON.stringify(vorherigeKonten)});
+       await p.saveSettings();
+       return JSON.stringify(p.settings.accounts) === ${JSON.stringify(vorherigeKonten)};`,
+    ).catch(() => false);
+    if (!zurueck) {
+      throw new Error(
+        "Versand-API-Abschnitt: Kontenliste NICHT auf den Vorzustand zurueckgesetzt — " +
+          "der Vault-Zustand ist veraendert.",
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const cdp = await attachTo("workspace", PORT, VAULT);
   offeneVerbindung = cdp;
@@ -1329,6 +1466,10 @@ async function main(): Promise<void> {
         );
       }
     }
+    console.log("");
+
+    console.log("── Versand-Plugin-API (kein echter Versand, s. Kommentar an der Funktion)");
+    await versandApiPruefen(cdp);
     console.log("");
   } finally {
     // Aufräumen darf nie am Ergebnis hängen: auch ein abgebrochener Lauf gibt den Vault so

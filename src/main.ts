@@ -38,6 +38,10 @@ import type { CockpitHost } from "./obsidian/views/cockpit-panel";
 import { createInboxHost, type CreateTaskOutcome } from "./obsidian/views/inbox-host";
 import type { InboxHost } from "./obsidian/views/inbox-panel";
 import { confirmAction } from "./vendor/kit-obsidian/confirm";
+import { createMailstoneApi, pluginName } from "./obsidian/plugin-api";
+import { askSendConsent, closeOpenSendConsent } from "./obsidian/send-consent-modal";
+import { rememberSender } from "./core/api/trust";
+import type { MailstoneApi, TrustedSender } from "./core/api/types";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "./obsidian/views/mailstone-view";
 
 // runState ist Laufzeitzustand wie zoneHashes und uidCache, keine Einstellung — s.
@@ -268,6 +272,8 @@ export default class MailstonePlugin extends Plugin {
    *  Cockpit gerade?" ist er damit unbrauchbar, obwohl er fuer seine eigene Frage
    *  („darf ich jetzt schreiben?") richtig ist. */
   private cockpitRuns = 0;
+  api: MailstoneApi | null = null;
+  private entladen = false;
 
   async onload(): Promise<void> {
     const raw = (await this.loadData()) as Partial<PersistedState> | null;
@@ -300,6 +306,7 @@ export default class MailstonePlugin extends Plugin {
       randomId: () => crypto.randomUUID(),
       ...(this.settings.debugLog ? { log: (l: string) => console.debug("[mailstone smtp]", l) } : {}),
     });
+    this.wireApi();
 
     this.uidCache = createUidCache(raw?.uidCache);
     const hashes = { get: (k: string) => this.zoneHashes[k] ?? null, set: (k: string, v: string) => { this.zoneHashes[k] = v; } };
@@ -429,7 +436,33 @@ export default class MailstonePlugin extends Plugin {
     });
   }
 
+  /** Direkt nach dem SendService setzen: sobald das Plugin-Objekt in app.plugins.plugins
+   *  auftaucht, soll `api` da sein — ein Konsument darf es nie halb initialisiert antreffen. */
+  wireApi(): void {
+    this.api = createMailstoneApi({
+      unloaded: () => this.entladen,
+      accounts: () => this.settings.accounts,
+      trusted: () => this.settings.trustedSenders,
+      remember: (eintrag: TrustedSender) => {
+        // Die Ersetzungs-Regel liegt pur in core/api/trust.ts und ist dort getestet —
+        // hier steht nur noch der Seiteneffekt.
+        this.settings.trustedSenders = rememberSender(this.settings.trustedSenders, eintrag);
+        void this.saveSettings();
+      },
+      callerLabel: (id) => pluginName(this.app, id),
+      consent: (opts) => askSendConsent(this.app, opts, window),
+      send: (accountId, msg) => this.sendService.send(accountId, msg),
+    });
+  }
+
   onunload(): void {
+    this.entladen = true;
+    // Das Flag allein genuegt nicht: ein offenes Zustimmungs-Modal haengt an keinem
+    // Lifecycle und stuende danach weiter da — der Nutzer klickte auf „Senden und immer
+    // erlauben" eines Plugins, das es nicht mehr gibt. Der Adapter faengt das inzwischen
+    // zwar auch ab (zweite `status()`-Pruefung), aber ein Dialog, der eine Frage stellt,
+    // die niemand mehr beantworten kann, gehoert weg.
+    closeOpenSendConsent();
     this.bridge?.unregister();
   }
 
