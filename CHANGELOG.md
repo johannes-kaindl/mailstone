@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-07
+
 ### Hinzugefügt
 - **Andere Plugins können Mail über mailstone verschicken.** Beim ersten Mal fragt ein Dialog
   mit Absender, Empfänger, Betreff und dem vollständigen Text; wer *Senden und immer erlauben*
