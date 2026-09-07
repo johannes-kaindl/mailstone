@@ -60,7 +60,7 @@ der Plugins von beliebigen Git-Forges installiert und aktualisiert. Diesen Katal
 abonnieren:
 
 ```
-https://git.jkaindl.de/jkaindl/obsidian-plugin-catalog/raw/branch/main/catalog.json
+https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json
 ```
 
 Mailstone erscheint danach in der Plugin-Liste des Sideloaders und aktualisiert sich wie jedes
