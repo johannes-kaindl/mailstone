@@ -108,7 +108,6 @@ export class CockpitPanel {
     // nichts tun kann, darf nicht bedienbar aussehen.
     alle.disabled = vm.busy || vm.empty;
     alle.addEventListener("click", () => this.host.syncNow(undefined));
-    if (vm.busy) kopf.createDiv({ cls: "mailstone-cockpit-hint", text: t("cockpit.running") });
 
     if (vm.empty) {
       const leer = root.createDiv({ cls: "mailstone-cockpit-empty" });

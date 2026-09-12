@@ -152,8 +152,8 @@ describe("Befund 4 — is-checking ist waehrend eines Laufs wirklich erreichbar"
   it("meldet den Lauf, solange er haengt — und nimmt ihn danach zurueck", async () => {
     // Der BusyGuard allein taugt dafuer nicht: er wird erst IN syncAccount belegt und dort im
     // finally sofort wieder freigegeben. Beim Render war er darum immer frei, und
-    // `cockpit.running`, `cockpit.aria.checking`, `.is-checking` und @keyframes mailstone-spin
-    // waren praktisch tot.
+    // `cockpit.aria.checking`, `.is-checking` und @keyframes mailstone-spin waren praktisch
+    // tot.
     let freigeben = (): void => undefined;
     const tor = new Promise<void>((r) => { freigeben = r; });
     const { plugin, host, notify } = aufbau([acc("a")], async (id) => {
@@ -168,7 +168,10 @@ describe("Befund 4 — is-checking ist waehrend eines Laufs wirklich erreichbar"
     expect(host.isBusy()).toBe(true);
     const checking = findAll(el, "mailstone-cockpit-status").filter((s) => String(s.className).split(" ").includes("is-checking"));
     expect(checking).toHaveLength(1);
-    expect(String(findAll(el, "mailstone-cockpit-head")[0].textContent)).toContain("Synchronisiert…");
+    // Kein Text-Hinweis mehr (Quicktask 2026-09-12): der is-checking-Spinner traegt den
+    // "laeuft"-Zustand allein, ein zusaetzlicher volltextbreiter Hinweis war redundant und
+    // verdeckte in schmalen Seitenleisten den Kopf.
+    expect(findAll(el, "mailstone-cockpit-hint")).toHaveLength(0);
 
     freigeben();
     await lauf;
