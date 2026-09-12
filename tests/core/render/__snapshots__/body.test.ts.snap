@@ -12,7 +12,7 @@ der Termin verschiebt sich auf Donnerstag.
 exports[`renderMessageBlock > beginnt mit ## Nachricht und rendert Fixtures stabil (Snapshot) > multipart-alternative-stub-plain 1`] = `
 "## Nachricht
 
-# Neuigkeiten
+### Neuigkeiten
 
 Erster Absatz mit [Link](https://example.com/a).
 

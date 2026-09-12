@@ -25,6 +25,18 @@ describe("htmlToMarkdown", () => {
     expect(md).toContain("[Link](https://example.com/a)");
     expect(md).not.toContain("<table");
   });
+  it("Ueberschriften aus der Mail werden unter das Block-Level (## Nachricht) demotet", () => {
+    // Ein h1 aus einer Newsletter-Mail wuerde unveraendert als "#" neben dem Notiz-Titel
+    // stehen und Obsidians Gliederung aufbrechen (h1 "unter" einer h2 ist keine gueltige
+    // Verschachtelung). Verschoben um zwei Ebenen, gedeckelt bei h6.
+    const md = htmlToMarkdown("<h1>Eins</h1><h2>Zwei</h2><h4>Vier</h4><h6>Sechs</h6>");
+    expect(md).toContain("### Eins");
+    expect(md).toContain("#### Zwei");
+    expect(md).toContain("###### Vier");
+    expect(md).toContain("###### Sechs");
+    expect(md).not.toMatch(/^#[^#]/m);
+    expect(md).not.toMatch(/^##[^#]/m);
+  });
 });
 describe("renderMessageBlock", () => {
   it("beginnt mit ## Nachricht und rendert Fixtures stabil (Snapshot)", async () => {

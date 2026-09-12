@@ -40,6 +40,17 @@ function turndown(): TurndownService {
       return `(Inline-Bild: ${label})`;
     },
   });
+  // Ueberschriften der Mail um zwei Ebenen unter den Block-Header ("## Nachricht") schieben,
+  // gedeckelt bei h6: ein h1 aus einer Newsletter-Mail unveraendert durchgereicht laege optisch
+  // NEBEN dem Notiz-Titel und ist keine gueltige Verschachtelung unter der h2-Blockueberschrift
+  // — Obsidians Gliederung reisst genau dort auf.
+  td.addRule("heading-demote", {
+    filter: ["h1", "h2", "h3", "h4", "h5", "h6"],
+    replacement: (content, node) => {
+      const level = Math.min(Number(node.nodeName.charAt(1)) + 2, 6);
+      return `\n\n${"#".repeat(level)} ${content}\n\n`;
+    },
+  });
   // Tabellen: Zellen als Text mit Leerzeichen, Zeilen als Absaetze (Layout-Tabellen in Mails sind kein Tabellendaten)
   td.addRule("table-cell", { filter: ["td", "th"], replacement: (content) => `${content.trim()} ` });
   td.addRule("table-row", { filter: "tr", replacement: (content) => `${content.trim()}\n\n` });
