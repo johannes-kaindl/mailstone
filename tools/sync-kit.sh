@@ -15,7 +15,7 @@
 # einen Diff erzeugen).
 set -e
 KIT=${KIT_DIR:-../obsidian-kit}
-CODEKIT=${CODEKIT_DIR:-/Users/Shared/code/code-kit}
+CODEKIT=${CODEKIT_DIR:-"$HOME/Projects/jkaindl/libs/code-kit"}
 KIT_REF=${KIT_REF:-0.28.0}
 CODEKIT_REF=${CODEKIT_REF:-0.1.0}
 
