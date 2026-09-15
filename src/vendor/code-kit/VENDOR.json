@@ -1,6 +1,6 @@
 {
   "source": "code-kit",
-  "version": "0.1.0",
-  "sha": "b62fb59",
+  "version": "0.6.0",
+  "sha": "918ed85",
   "vendored": "timeout.ts, sha256.ts, filename-template.ts, settings.ts, i18n.ts"
 }
