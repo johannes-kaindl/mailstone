@@ -440,8 +440,8 @@ export const de: typeof en = {
   "settings.taskPreset.key.duplicate": "Ein Feld namens \"{0}\" gibt es schon.",
 
   "settings.onCreateAllowedValues": "Erlaubte Werte bei Neuanlage",
-  "settings.onCreateAllowedValues.desc": "Werte, die beim Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben werden duerfen (Default: mail). Ein Wert ausserhalb dieser Liste wird beim Laden verworfen und auf den Default zurueckgesetzt — s. Hinweis.",
-  "settings.onCreateAllowedValues.empty": "Kein Wert erlaubt — mailstone faellt auf den Default (mail) zurueck.",
+  "settings.onCreateAllowedValues.desc": "Werte, die beim Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben werden dürfen (Default: mail). Ein Wert außerhalb dieser Liste wird beim Laden verworfen und auf den Default zurückgesetzt — s. Hinweis.",
+  "settings.onCreateAllowedValues.empty": "Kein Wert erlaubt — mailstone fällt auf den Default (mail) zurück.",
   "settings.onCreateAllowedValues.add": "Wert hinzufügen",
   "settings.onCreateAllowedValues.placeholder": "Wert (z. B. mail)",
   "settings.onCreateAllowedValues.aria": "Erlaubter Wert",
