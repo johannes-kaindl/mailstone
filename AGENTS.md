@@ -209,6 +209,20 @@ hätte gar keinen Zugriff auf den Transport. Der Test sichert zweierlei — der 
 prüft Importzeilen als Text und sieht deshalb **keine dynamischen** Importe; die Grenze steht im
 Testkommentar.
 
+## UI-Abweichungen
+
+Deklaration nach `UI-STANDARD.md` §1a — von einem verbindlichen §8-Baustein abzuweichen ist
+erlaubt, stillschweigend abzuweichen nicht.
+
+- **endpoint-list** — Grund: `taskPresetGroup` in `src/obsidian/settings-tab.ts` ist ein
+  schlichter Schlüssel/Wert-Editor für `taskPreset` (zwei Textfelder je Zeile), keine
+  Provider-Endpunkte. Der Kit-Baustein `buildEndpointList` ist auf Endpunkte zugeschnitten (URL +
+  Schlüssel + Modell-Dropdown + Probe + Presets) und in mailstone nicht vendort — ihn für zwei
+  Textfelder zu importieren wäre semantisch falsch und zöge unbenutzten Ballast (Modell-Cache,
+  Erreichbarkeitsprobe) mit. Struktur ist trotzdem dieselbe native `SettingDefinitionList`
+  (Add/Delete, `emptyState`) wie bei den Konten, nicht neu erfunden.
+  gilt-solange: `src/obsidian/settings-tab.ts` enthaelt-nicht `from "../vendor/kit-obsidian/endpoint-list"`.
+
 ## Was Unit-Tests hier nicht belegen können
 
 `onload()` ist nicht erreichbar, die Plugin-Instanz sehr wohl (Konstruktor plus gesetzte Felder
