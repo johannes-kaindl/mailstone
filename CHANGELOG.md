@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Neue Einstellung „Erlaubte Werte bei Neuanlage".** Beim Laden werden die Werte im
+  `onCreate`-Frontmatter (z. B. `type: mail`) gegen eine plugin-eigene, in den Einstellungen
+  konfigurierbare Liste geprüft (Default: `mail`). Ein Wert außerhalb der Liste wird nicht
+  still verworfen, sondern auf den Default zurückgesetzt und per Hinweis gemeldet
+
+### Geändert
+- **Kit-Pin auf `obsidian-kit` 0.36.2 / `code-kit` 0.6.0.**
+
 ## [0.5.0] — 2026-09-07
 
 ### Hinzugefügt

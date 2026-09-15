@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_SETTINGS, loadSettings, newAccount, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
+import { DEFAULT_SETTINGS, loadSettings, newAccount, onCreateInvalidValues, rawOnCreate, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
 import type { TrustedSender } from "../../src/core/api/types";
 
 describe("settings", () => {
@@ -137,5 +137,66 @@ describe("trustedSenders", () => {
       ],
     };
     expect(loadSettings(raw).trustedSenders).toEqual([{ pluginId: "a", transportId: "erste/id" }]);
+  });
+});
+
+// Enum-Pruefung fuer onCreate-Werte (Johannes, 2026-09-15): plugin-eigene, in den Settings
+// konfigurierbare Liste erlaubter Werte statt eines Lesezugriffs auf eine Vault-Datei
+// (_types/mail.md, Portabilitaet). Ein ungueltiger Wert wird NICHT still verworfen
+// (CORE-DATA-01) — loadSettings faellt auf das Default-onCreate zurueck, die Notice dafuer
+// entsteht separat in main.ts (src/core/** bleibt obsidian-frei).
+describe("onCreate-Enum", () => {
+  it("Default onCreateAllowedValues sind die heutigen Werte ('mail')", () => {
+    expect(DEFAULT_SETTINGS.onCreateAllowedValues).toEqual(["mail"]);
+  });
+
+  it("loadSettings uebernimmt onCreate, wenn alle Werte erlaubt sind", () => {
+    const s = loadSettings({ profile: { onCreate: { type: "mail" } } });
+    expect(s.profile.onCreate).toEqual({ type: "mail" });
+  });
+
+  it("loadSettings faellt bei einem nicht erlaubten onCreate-Wert auf das Default-onCreate zurueck", () => {
+    const s = loadSettings({ profile: { onCreate: { type: "unbekannt" } } });
+    expect(s.profile.onCreate).toEqual({ type: "mail" });
+  });
+
+  it("loadSettings prueft gegen eine eigene onCreateAllowedValues-Liste, nicht nur den Default", () => {
+    const s = loadSettings({ onCreateAllowedValues: ["mail", "task"], profile: { onCreate: { type: "task" } } });
+    expect(s.profile.onCreate).toEqual({ type: "task" });
+    expect(s.onCreateAllowedValues).toEqual(["mail", "task"]);
+  });
+
+  it("nicht-string-Werte in onCreate sind kein Enum-Fall und bleiben unangetastet", () => {
+    const s = loadSettings({ profile: { onCreate: { type: "mail", prio: 3, archiviert: true } } });
+    expect(s.profile.onCreate).toEqual({ type: "mail", prio: 3, archiviert: true });
+  });
+
+  it("loadSettings faellt ohne onCreate im Rohwert auf das Default-onCreate zurueck", () => {
+    expect(loadSettings({}).profile.onCreate).toEqual({ type: "mail" });
+  });
+
+  it("repairOnCreateAllowedValues faellt bei leerer/fremder Liste auf ['mail'] zurueck", () => {
+    expect(loadSettings({ onCreateAllowedValues: [] }).onCreateAllowedValues).toEqual(["mail"]);
+    expect(loadSettings({ onCreateAllowedValues: "mail" }).onCreateAllowedValues).toEqual(["mail"]);
+  });
+
+  it("repairOnCreateAllowedValues filtert fremde Eintraege, trimmt und dedupliziert", () => {
+    const s = loadSettings({ onCreateAllowedValues: [1, "", "  ", "task", "task", " mail "] });
+    expect(s.onCreateAllowedValues).toEqual(["task", "mail"]);
+  });
+
+  it("onCreateInvalidValues meldet nur String-Werte ausserhalb der Liste", () => {
+    expect(onCreateInvalidValues({ type: "mail", other: "task" }, ["mail"])).toEqual(["task"]);
+    expect(onCreateInvalidValues({ type: "mail" }, ["mail"])).toEqual([]);
+    expect(onCreateInvalidValues({ type: "mail", prio: 3 }, ["mail"])).toEqual([]);
+    expect(onCreateInvalidValues(undefined, ["mail"])).toEqual([]);
+  });
+
+  it("rawOnCreate extrahiert profile.onCreate aus einem rohen Settings-Objekt", () => {
+    expect(rawOnCreate({ profile: { onCreate: { type: "task" } } })).toEqual({ type: "task" });
+    expect(rawOnCreate({ profile: {} })).toBeUndefined();
+    expect(rawOnCreate({})).toBeUndefined();
+    expect(rawOnCreate(null)).toBeUndefined();
+    expect(rawOnCreate({ profile: { onCreate: "junk" } })).toBeUndefined();
   });
 });

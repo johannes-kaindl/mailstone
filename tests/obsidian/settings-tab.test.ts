@@ -5,6 +5,7 @@ import { loadSettings, newAccount, type Account, type MailstoneSettings } from "
 import type { SecretStore } from "../../src/core/send/secrets";
 import type { SocketTransport } from "../../src/core/net/types";
 import { initI18n } from "../../src/i18n/strings";
+import { t } from "../../src/vendor/code-kit/i18n";
 
 initI18n("de");
 
@@ -118,14 +119,13 @@ describe("MailstoneSettingTab — Vertrauensliste", () => {
 // (kein DOM-Rendering im Mock, s. Kommentar an newTab()).
 describe("MailstoneSettingTab — taskPreset", () => {
   function presetList(tab: MailstoneSettingTab) {
-    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: unknown; items?: unknown[] }[];
-    // Seit Task 5 (Versand-API) gibt es drei Listen (Konten, taskPreset, Vertrauensliste) —
-    // taskPreset ist darunter die einzige OHNE Heading, DIE trotzdem einen addItem-Knopf
-    // traegt: die Vertrauensliste hat keinen (neue Eintraege entstehen nur ueber das
-    // Zustimmungs-Modal, nie von Hand in den Einstellungen, s. Kommentar im Tab).
-    const lists = defs.filter((d): d is { type: string; addItem?: unknown; items: unknown[] } => d.type === "list");
-    expect(lists.length).toBe(3);
-    const preset = lists.find((d) => !("heading" in d) && "addItem" in d);
+    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; items?: unknown[] }[];
+    // Seit Welle 2 (onCreate-Enum) gibt es vier Listen (Konten, taskPreset, onCreateAllowedValues,
+    // Vertrauensliste). Beide neuen/bestehenden Ohne-Heading-Listen (taskPreset,
+    // onCreateAllowedValues) tragen einen addItem-Knopf — unterschieden ueber dessen Beschriftung.
+    const lists = defs.filter((d): d is { type: string; addItem?: { name?: string }; items: unknown[] } => d.type === "list");
+    expect(lists.length).toBe(4);
+    const preset = lists.find((d) => d.addItem?.name === t("settings.taskPreset.add"));
     expect(preset).toBeDefined();
     return preset as { items: { name: string }[] };
   }
@@ -168,5 +168,62 @@ describe("MailstoneSettingTab — taskPreset", () => {
     await (tab as unknown as { renameTaskPresetKey: (i: number, k: string) => Promise<void> }).renameTaskPresetKey(0, "prio");
     expect(tab["host"].settings.taskPreset).toEqual({ status: "open", prio: "high" });
     expect(NoticeSpy.instances.length).toBe(1);
+  });
+});
+
+// Punkt 3 der Welle-2-Aufgabe: plugin-eigene, in den Settings konfigurierbare Liste erlaubter
+// onCreate-Werte (Default ["mail"]). Struktur wie taskPresetGroup, aber eine Zeile pro Wert
+// (kein Schluessel/Wert-Paar).
+describe("MailstoneSettingTab — onCreateAllowedValues", () => {
+  function valuesList(tab: MailstoneSettingTab) {
+    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; items?: { name: string }[] }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.onCreateAllowedValues.add"));
+    expect(list).toBeDefined();
+    return list as { items: { name: string }[] };
+  }
+
+  it("zeigt den Default-Wert 'mail' als Zeile", () => {
+    const tab = newTab();
+    expect(valuesList(tab).items.map((i) => i.name)).toEqual(["mail"]);
+  });
+
+  it("addItem haengt eine neue, leere Zeile an", async () => {
+    const tab = newTab();
+    (tab as unknown as { update: () => void }).update = () => {};
+    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string; action: () => void } }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.onCreateAllowedValues.add"))!;
+    list.addItem!.action();
+    await Promise.resolve();
+    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail", ""]);
+  });
+
+  it("onDelete entfernt die Zeile am Index", async () => {
+    const tab = newTab();
+    tab["host"].settings.onCreateAllowedValues = ["mail", "task"];
+    (tab as unknown as { update: () => void }).update = () => {};
+    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; onDelete?: (i: number) => void }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.onCreateAllowedValues.add"))!;
+    list.onDelete!(0);
+    await Promise.resolve();
+    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["task"]);
+  });
+
+  it("rename auf einen bestehenden Wert wird abgelehnt, kein Wert geht verloren", async () => {
+    const tab = newTab();
+    tab["host"].settings.onCreateAllowedValues = ["mail", "task"];
+    (tab as unknown as { update: () => void }).update = () => {};
+    const NoticeSpy = (await import("obsidian")).Notice as unknown as { instances: unknown[] };
+    NoticeSpy.instances.length = 0;
+    await (tab as unknown as { renameOnCreateAllowedValue: (i: number, v: string) => Promise<void> }).renameOnCreateAllowedValue(0, "task");
+    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail", "task"]);
+    expect(NoticeSpy.instances.length).toBe(1);
+  });
+
+  it("rename auf einen leeren Wert entfernt die Zeile", async () => {
+    const tab = newTab();
+    tab["host"].settings.onCreateAllowedValues = ["mail", "task"];
+    (tab as unknown as { update: () => void }).update = () => {};
+    await (tab as unknown as { renameOnCreateAllowedValue: (i: number, v: string) => Promise<void> }).renameOnCreateAllowedValue(1, "  ");
+    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail"]);
   });
 });

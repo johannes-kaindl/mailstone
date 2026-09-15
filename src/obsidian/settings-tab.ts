@@ -81,6 +81,8 @@ export class MailstoneSettingTab extends PluginSettingTab {
       // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
       { name: t("settings.taskPreset"), desc: t("settings.taskPreset.desc") },
       this.taskPresetGroup(),
+      { name: t("settings.onCreateAllowedValues"), desc: t("settings.onCreateAllowedValues.desc") },
+      this.onCreateAllowedValuesGroup(),
       {
         name: t("settings.openViewOnStartup"),
         desc: t("settings.openViewOnStartup.desc"),
@@ -322,6 +324,68 @@ export class MailstoneSettingTab extends PluginSettingTab {
     let key = "field";
     for (let n = 2; existing.includes(key); n += 1) key = `field-${n}`;
     this.applyTaskPreset([...this.taskPresetEntries(), [key, ""]]);
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  // ── onCreateAllowedValues (Welle 2, Punkt 3: "der Weg ohne _types/mail.md") ─────────────
+  // Eine Zeile je erlaubtem Wert (kein Schluessel/Wert-Paar wie bei taskPreset) — Struktur
+  // ist trotzdem dieselbe native `SettingDefinitionList`. `loadSettings` (core/settings.ts)
+  // prueft das geladene `profile.onCreate` gegen genau diese Liste und faellt bei einem
+  // fremden Wert auf den Default zurueck; main.ts zeigt dafuer eine Notice (core bleibt frei
+  // von Obsidian-Importen).
+  private onCreateAllowedValuesGroup(): SettingDefinitionList {
+    const werte = this.host.settings.onCreateAllowedValues;
+    const items: SettingGroupItem[] = werte.map((wert, index) => ({
+      name: wert,
+      render: (setting: Setting) => this.renderOnCreateAllowedValueRow(setting, index),
+    }));
+    return {
+      type: "list",
+      items,
+      emptyState: t("settings.onCreateAllowedValues.empty"),
+      onDelete: (index) => { void this.removeOnCreateAllowedValue(index); },
+      addItem: { name: t("settings.onCreateAllowedValues.add"), action: () => { void this.addOnCreateAllowedValue(); } },
+    };
+  }
+
+  private renderOnCreateAllowedValueRow(setting: Setting, index: number): void {
+    const wert = this.host.settings.onCreateAllowedValues[index] ?? "";
+    setting.addText((tx) => {
+      tx.setPlaceholder(t("settings.onCreateAllowedValues.placeholder")).setValue(wert);
+      tx.inputEl.setAttribute("aria-label", t("settings.onCreateAllowedValues.aria"));
+      tx.inputEl.addEventListener("blur", () => { void this.renameOnCreateAllowedValue(index, tx.getValue()); });
+    });
+  }
+
+  /** Dieselbe Kollisionsvermeidung wie bei taskPreset (renameTaskPresetKey): eine Umbenennung
+   *  auf einen bereits vorhandenen Wert wird abgelehnt statt ihn per Set stillschweigend zu
+   *  deduplizieren — sonst verschwindet der Zielwert der Umbenennung spurlos. Ein leerer Wert
+   *  entfernt die Zeile (wie ein leerer taskPreset-Schluessel). */
+  private async renameOnCreateAllowedValue(index: number, neuRoh: string): Promise<void> {
+    const werte = this.host.settings.onCreateAllowedValues;
+    if (index < 0 || index >= werte.length) return;
+    const neu = neuRoh.trim();
+    if (neu === werte[index]) return;
+    if (!neu) { await this.removeOnCreateAllowedValue(index); return; }
+    if (werte.some((w, i) => i !== index && w === neu)) {
+      new Notice(t("settings.onCreateAllowedValues.duplicate", neu));
+      this.update();
+      return;
+    }
+    this.host.settings.onCreateAllowedValues = werte.map((w, i) => (i === index ? neu : w));
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  private async removeOnCreateAllowedValue(index: number): Promise<void> {
+    this.host.settings.onCreateAllowedValues = this.host.settings.onCreateAllowedValues.filter((_, i) => i !== index);
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  private async addOnCreateAllowedValue(): Promise<void> {
+    this.host.settings.onCreateAllowedValues = [...this.host.settings.onCreateAllowedValues, ""];
     await this.host.saveSettings();
     this.update();
   }

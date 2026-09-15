@@ -208,6 +208,19 @@ export const en = {
   "settings.taskPreset.value.aria": "Field value",
   "settings.taskPreset.key.duplicate": "A field named \"{0}\" already exists.",
 
+  // Welle 2, Punkt 3: plugin-owned, settings-configurable allowlist for the "onCreate" values
+  // written into a mail note's frontmatter at creation (e.g. type: mail). Replaces the earlier
+  // plan of reading an enum from a vault-specific schema file (_types/mail.md) — that would
+  // couple the plugin to one vault's schema (decided 2026-09-15, portability).
+  "settings.onCreateAllowedValues": "Allowed note-creation values",
+  "settings.onCreateAllowedValues.desc": "Values allowed for the fields written once when a mail note is first created (default: mail). A value stored outside this list is rejected on load and reset to the default — see the notice.",
+  "settings.onCreateAllowedValues.empty": "No value allowed — mailstone falls back to the default (mail).",
+  "settings.onCreateAllowedValues.add": "Add value",
+  "settings.onCreateAllowedValues.placeholder": "Value (e.g. mail)",
+  "settings.onCreateAllowedValues.aria": "Allowed value",
+  "settings.onCreateAllowedValues.duplicate": "The value \"{0}\" is already allowed.",
+  "notice.settings.onCreateInvalid": "⚠️ Note-creation value \"{0}\" is not in the allowed list — reset to the default (mail). Check Settings → Allowed note-creation values.",
+
   "api.consent.title": "Send mail on behalf of another plugin?",
   "api.consent.caller": "Requesting plugin: {0}",
   "api.consent.from": "Send as",
@@ -425,6 +438,15 @@ export const de: typeof en = {
   "settings.taskPreset.value.placeholder": "Wert (z. B. open)",
   "settings.taskPreset.value.aria": "Feldwert",
   "settings.taskPreset.key.duplicate": "Ein Feld namens \"{0}\" gibt es schon.",
+
+  "settings.onCreateAllowedValues": "Erlaubte Werte bei Neuanlage",
+  "settings.onCreateAllowedValues.desc": "Werte, die beim Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben werden duerfen (Default: mail). Ein Wert ausserhalb dieser Liste wird beim Laden verworfen und auf den Default zurueckgesetzt — s. Hinweis.",
+  "settings.onCreateAllowedValues.empty": "Kein Wert erlaubt — mailstone faellt auf den Default (mail) zurueck.",
+  "settings.onCreateAllowedValues.add": "Wert hinzufügen",
+  "settings.onCreateAllowedValues.placeholder": "Wert (z. B. mail)",
+  "settings.onCreateAllowedValues.aria": "Erlaubter Wert",
+  "settings.onCreateAllowedValues.duplicate": "Den Wert \"{0}\" gibt es schon.",
+  "notice.settings.onCreateInvalid": "⚠️ Wert \"{0}\" bei Neuanlage ist nicht in der erlaubten Liste — auf den Default (mail) zurückgesetzt. Siehe Einstellungen → Erlaubte Werte bei Neuanlage.",
 
   "api.consent.title": "Mail im Auftrag eines anderen Plugins senden?",
   "api.consent.caller": "Anfragendes Plugin: {0}",

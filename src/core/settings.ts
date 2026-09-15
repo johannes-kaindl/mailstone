@@ -22,7 +22,7 @@ export interface Account {
 // Hand-Edit in data.json). Das zu reparieren waere ein Eingriff in toFm/needsQuoting, der ALLE
 // Frontmatter-Felder betraefe — kein M5-Vorgang. Ein `number` ist davon nicht betroffen: er
 // laeuft an toFm vorbei und wird unquoted ausgegeben.
-export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[] }
+export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; onCreateAllowedValues: string[]; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[] }
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -104,7 +104,36 @@ function repairAccount(raw: unknown): Account {
 // openViewOnStartup: Default AUS — ein Plugin, das sich beim Start ungefragt in die
 // Seitenleiste draengt, ist ein Aergernis (REGISTRY: Opt-in-Gate fuer Startup-Seiteneffekt,
 // n=2 in vim-dojo und kuro-gamification).
-export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, debugLog: false, openViewOnStartup: false, trustedSenders: [] };
+export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, onCreateAllowedValues: ["mail"], debugLog: false, openViewOnStartup: false, trustedSenders: [] };
+
+/** Reine Pruefung ohne Reparatur: welche STRING-Werte in `onCreate` stehen nicht in `allowed`?
+ *  Nicht-String-Werte (number/boolean/string[], s. `FmVal`) sind kein Enum-Fall und bleiben
+ *  unberuehrt — die Liste beschreibt Kategorien wie "mail"/"task", keine beliebigen
+ *  Frontmatter-Werte. Wiederverwendet in `loadSettings` (Reparatur) UND in main.ts
+ *  (Notice-Entscheidung) — dieselbe Berechnung an beiden Stellen statt zweier Fassungen, die
+ *  auseinanderlaufen koennten. */
+export function onCreateInvalidValues(onCreate: Record<string, unknown> | undefined, allowed: readonly string[]): string[] {
+  if (!onCreate) return [];
+  return Object.values(onCreate).filter((v): v is string => typeof v === "string" && !allowed.includes(v));
+}
+
+/** Extrahiert `raw.profile.onCreate` als Objekt, ohne es zu reparieren — main.ts (obsidian-Schicht)
+ *  braucht dieselbe Extraktion fuer die Notice-Entscheidung, ohne core-interne `isObj`-Logik zu
+ *  duplizieren. */
+export function rawOnCreate(raw: unknown): Record<string, unknown> | undefined {
+  if (!isObj(raw) || !isObj(raw.profile) || !isObj(raw.profile.onCreate)) return undefined;
+  return raw.profile.onCreate;
+}
+
+/** Eine Enum-Liste ohne Duplikate/Leerstrings; ein leeres oder fremdes `raw` faellt auf die
+ *  heutigen onCreate-Werte zurueck (Default `["mail"]`) statt eine leere Liste zuzulassen — eine
+ *  leere Allowlist wuerde JEDEN onCreate-Wert als ungueltig behandeln. */
+function repairOnCreateAllowedValues(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [...DEFAULT_SETTINGS.onCreateAllowedValues];
+  const werte = raw.filter((v): v is string => typeof v === "string" && v.trim().length > 0).map((v) => v.trim());
+  const eindeutig = [...new Set(werte)];
+  return eindeutig.length > 0 ? eindeutig : [...DEFAULT_SETTINGS.onCreateAllowedValues];
+}
 
 /** Wirft nie: ein alteres `data.json` (oder ein Hand-Edit) kann `taskPreset`-Werte tragen, die
  *  der aktuelle Typ nicht mehr kennt — ein `boolean` (Fix-Runde 1, s. Kommentar an
@@ -144,13 +173,16 @@ export function loadSettings(raw: unknown): MailstoneSettings {
   const s = mergeSettings(DEFAULT_SETTINGS, raw && typeof raw === "object" ? raw : {});
   s.accounts = (Array.isArray(s.accounts) ? s.accounts : []).map((a) => repairAccount(a));
   s.taskPreset = repairTaskPreset(isObj(raw) ? raw.taskPreset : undefined);
+  s.onCreateAllowedValues = repairOnCreateAllowedValues(isObj(raw) ? raw.onCreateAllowedValues : undefined);
   s.trustedSenders = repairTrustedSenders(isObj(raw) ? raw.trustedSenders : undefined);
   const rawProfile = isObj(raw) && isObj(raw.profile) ? raw.profile : {};
+  const onCreateRoh = rawOnCreate(raw);
+  const onCreateUngueltig = onCreateInvalidValues(onCreateRoh, s.onCreateAllowedValues);
   s.profile = {
     ...defaultMailProfile(),
     ...s.profile,
     fields: { ...defaultMailProfile().fields, ...(isObj(rawProfile.fields) ? rawProfile.fields : {}) },
-    onCreate: { ...(isObj(rawProfile.onCreate) ? (rawProfile.onCreate as Record<string, FmVal>) : defaultMailProfile().onCreate) },
+    onCreate: onCreateRoh && onCreateUngueltig.length === 0 ? { ...(onCreateRoh as Record<string, FmVal>) } : { ...defaultMailProfile().onCreate },
   };
   return s;
 }

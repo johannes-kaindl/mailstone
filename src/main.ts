@@ -1,5 +1,5 @@
 import { Notice, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
-import { loadSettings, type Account, type MailstoneSettings } from "./core/settings";
+import { loadSettings, onCreateInvalidValues, rawOnCreate, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
 import { t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
@@ -277,10 +277,19 @@ export default class MailstonePlugin extends Plugin {
 
   async onload(): Promise<void> {
     const raw = (await this.loadData()) as Partial<PersistedState> | null;
-    this.settings = loadSettings(raw?.settings ?? raw);
+    const rawSettings = raw?.settings ?? raw;
+    this.settings = loadSettings(rawSettings);
     this.zoneHashes = raw?.zoneHashes ?? {};
     this.runState = parseRunState(raw?.runState);
     initI18n(this.settings.language === "auto" ? getLanguage() : this.settings.language);
+    // loadSettings faellt bei einem onCreate-Wert ausserhalb von onCreateAllowedValues still auf
+    // den Default zurueck (CORE-DATA-01 verbietet ein STILLES Verwerfen) — dieselbe Pruefung
+    // hier NOCHMAL auf denselben Rohwert, weil `core/settings.ts` obsidian-frei bleibt (AGENTS.md)
+    // und deshalb selbst keine Notice werfen darf.
+    const [ersterUngueltigerOnCreateWert] = onCreateInvalidValues(rawOnCreate(rawSettings), this.settings.onCreateAllowedValues);
+    if (ersterUngueltigerOnCreateWert) {
+      new Notice(t("notice.settings.onCreateInvalid", ersterUngueltigerOnCreateWert));
+    }
     const secrets = obsidianSecretStore(this.app);
     // Objektreferenz statt Kopie: this.settings wird nach dieser Stelle im onload() nicht mehr
     // neu zugewiesen (nur Felder darin mutiert), der Tab sieht also stets den aktuellen Stand.
