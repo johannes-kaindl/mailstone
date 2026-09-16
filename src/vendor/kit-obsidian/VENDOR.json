@@ -1,6 +1,6 @@
 {
   "source": "obsidian-kit",
-  "version": "0.36.2",
-  "sha": "2ac7108",
-  "vendored": "settings_walker.ts, folder-suggest.ts, confirm.ts, hub.ts"
+  "version": "0.37.1",
+  "sha": "4cfa746",
+  "vendored": "settings_walker.ts, folder-suggest.ts, confirm.ts, hub.ts, secrets.ts"
 }

@@ -13,7 +13,7 @@ import { t } from "../vendor/code-kit/i18n";
 import { confirmAction, applyDestructive } from "../vendor/kit-obsidian/confirm";
 import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
-import type { SecretStore } from "../core/send/secrets";
+import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
@@ -173,10 +173,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         return;
       }
       this.host.settings.accounts = this.host.settings.accounts.filter((a) => a.id !== account.id);
-      // SecretStore kennt keine echte "delete"-Operation (nur get/set/has) — best-effort mit
-      // leerem Wert ueberschreiben, statt so zu tun, als waere das Secret entfernt worden.
+      // best-effort: der Schluesselbund-Eintrag darf ein entferntes Konto nicht ueberdauern,
+      // ein Fehlschlag beim Aufraeumen darf das Entfernen selbst aber nicht verhindern.
       try {
-        this.host.secrets.set(account.secretId, "");
+        this.host.secrets.delete(account.secretId);
       } catch {
         /* best effort */
       }

@@ -16,8 +16,8 @@
 set -e
 KIT=${KIT_DIR:-../obsidian-kit}
 CODEKIT=${CODEKIT_DIR:-"$HOME/Projects/jkaindl/libs/code-kit"}
-KIT_REF=${KIT_REF:-0.28.0}
-CODEKIT_REF=${CODEKIT_REF:-0.1.0}
+KIT_REF=${KIT_REF:-0.37.1}
+CODEKIT_REF=${CODEKIT_REF:-0.6.0}
 
 # Der Tag-Commit, nicht der Repo-HEAD: HEAD steht auf einem spaeteren Stand, und ein daraus
 # gelesener SHA widerspraeche der vendorierten Version. `^{commit}` peelt ein annotiertes Tag
@@ -31,8 +31,8 @@ CK_SHA=$(sha_von "$CODEKIT" "$CODEKIT_REF"); CK_VER=$(ver_von "$CODEKIT" "$CODEK
 mkdir -p src/vendor/code-kit src/vendor/kit src/vendor/kit-obsidian tests/vendor/kit
 
 CK_MODULES="timeout sha256 filename-template settings i18n"
-K_PURE="frontmatter vault-path"
-K_OBS="settings_walker folder-suggest confirm hub"
+K_PURE="frontmatter vault-path secrets"
+K_OBS="settings_walker folder-suggest confirm hub secrets"
 
 # VORPRUEFUNG, bevor irgendetwas geschrieben wird.
 #
@@ -88,6 +88,12 @@ done
 vendor tests/vendor/kit/obsidian-mock.ts "$KIT" "$KIT_REF" obsidian-kit "$K_VER" src/testing/obsidian-mock.ts
 for f in $K_OBS; do
   vendor "src/vendor/kit-obsidian/$f.ts" "$KIT" "$KIT_REF" obsidian-kit "$K_VER" "src/obsidian/$f.ts"
+  # Import-Umschreibung (Muster calendar-notes/tools/sync-kit.sh): obsidian-kit haelt die
+  # reinen Module unter src/pure/, hier liegen sie sibling zu kit-obsidian/ unter src/vendor/kit/
+  # — ein Import "../pure/x" aus der Kit-Quelle muss deshalb auf "../kit/x" zeigen (gleiche
+  # relative Tiefe, nur anderer Ordnername). Betrifft secrets.ts (importiert ../pure/secrets).
+  sed -i.bak 's#from "\.\./pure/#from "../kit/#g' "src/vendor/kit-obsidian/$f.ts"
+  rm -f "src/vendor/kit-obsidian/$f.ts.bak"
 done
 
 # stamp <verzeichnis> <source> <version> <sha> <modul-liste>

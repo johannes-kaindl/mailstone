@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { App, Plugin } from "obsidian";
 import { MailstoneSettingTab, type SettingsHost } from "../../src/obsidian/settings-tab";
 import { loadSettings, newAccount, type Account, type MailstoneSettings } from "../../src/core/settings";
-import type { SecretStore } from "../../src/core/send/secrets";
+import type { SecretStore } from "../../src/vendor/kit/secrets";
 import type { SocketTransport } from "../../src/core/net/types";
 import { initI18n } from "../../src/i18n/strings";
 import { t } from "../../src/vendor/code-kit/i18n";
@@ -20,6 +20,7 @@ function fakeSecrets(overrides?: Partial<SecretStore>): SecretStore {
     get: (id) => store.get(id) ?? null,
     set: (id, v) => { store.set(id, v); },
     has: (id) => (store.get(id) ?? "") !== "",
+    delete: (id) => { store.delete(id); },
     ...overrides,
   };
 }

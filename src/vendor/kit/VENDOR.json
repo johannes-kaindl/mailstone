@@ -1,6 +1,6 @@
 {
   "source": "obsidian-kit",
-  "version": "0.36.2",
-  "sha": "2ac7108",
-  "vendored": "frontmatter.ts, vault-path.ts"
+  "version": "0.37.1",
+  "sha": "4cfa746",
+  "vendored": "frontmatter.ts, vault-path.ts, secrets.ts"
 }

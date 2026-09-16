@@ -14,6 +14,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Geändert
 - **Kit-Pin auf `obsidian-kit` 0.36.2 / `code-kit` 0.6.0.**
+- **Kit-Pin auf `obsidian-kit` 0.37.1.** Zusätzlich vendort: das Schlüsselbund-Modul
+  (`src/vendor/kit/secrets.ts` + `src/vendor/kit-obsidian/secrets.ts`) ersetzt die
+  eigene Kopie. Sichtbare Verhaltensänderungen (CORE-META-21): ein Passwort mit
+  abschließendem Zeilenumbruch (typischer `pbcopy < datei`-Rest) wird jetzt vor dem
+  Speichern bereinigt; ein leeres Schlüsselbund-Secret liefert jetzt `null` statt eines
+  leeren Strings — Sync und Versand melden dafür korrekt „kein Secret" statt einen
+  Login-Versuch mit leerem Passwort zu unternehmen; Konto-Entfernen ruft jetzt `delete()`
+  statt `set(id, "")` (technisch identische Wirkung beim Obsidian-Schlüsselbund, da die
+  API kein echtes Löschen kennt).
+- **C0-Wächter nachgerüstet** (`scripts/check-no-nul-bytes.mjs`, verdrahtet in `check:pure`).
 
 ## [0.5.0] — 2026-09-07
 

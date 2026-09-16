@@ -1,4 +1,5 @@
 import { mergeSettings } from "../vendor/code-kit/settings";
+import { secretIdFor as kitSecretIdFor } from "../vendor/kit/secrets";
 import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
 import type { TlsMode } from "./net/types";
 import type { TrustedSender } from "./api/types";
@@ -28,7 +29,7 @@ function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
-export function secretIdFor(accountId: string): string { return `mailstone-${accountId}`; }
+export function secretIdFor(accountId: string): string { return kitSecretIdFor("mailstone", accountId); }
 
 const SLUG_TRANSLIT: Record<string, string> = { ä: "ae", ö: "oe", ü: "ue", ß: "ss", Ä: "ae", Ö: "oe", Ü: "ue" };
 

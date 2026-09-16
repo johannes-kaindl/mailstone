@@ -4,7 +4,7 @@
 // TAB (getSettingDefinitions), nicht Modals.
 import { ButtonComponent, Modal, Notice, SecretComponent, Setting, type App } from "obsidian";
 import type { Account, Identity } from "../../core/settings";
-import type { SecretStore } from "../../core/send/secrets";
+import type { SecretStore } from "../../vendor/kit/secrets";
 import { isAddress } from "../../core/send/outgoing";
 import { smtpProbe, type SmtpProbeOptions } from "../../core/smtp/client";
 import { isLoopback } from "../../core/send/service";
