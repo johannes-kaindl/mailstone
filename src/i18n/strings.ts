@@ -76,6 +76,10 @@ export const en = {
   "settings.account.noSecret": "No password stored",
   "settings.debugLog": "Debug log",
   "settings.debugLog.desc": "Writes the IMAP/SMTP dialogue to the developer console. Passwords are masked. Off by default.",
+  "settings.lastSync": "Sync status",
+  "settings.lastSync.desktopOnly": "Synchronisation only works on the desktop.",
+  "settings.lastSync.value": "Last successful sync: {0}",
+  "settings.lastSync.never": "No successful sync yet.",
 
   "error.send.unknown-account": "Unknown account.",
   "error.send.unknown-identity": "Unknown identity.",
@@ -160,8 +164,10 @@ export const en = {
   "cockpit.aria.warning": "Last run succeeded, but left something out",
   "cockpit.aria.error": "Last run failed",
   "cockpit.aria.checking": "Synchronisation running",
+  "cockpit.mobile.hint": "Synchronisation only works on the desktop. Already synchronised notes stay readable here; open Mailstone on the desktop to fetch new mail.",
 
   "inbox.title": "Inbox",
+  "inbox.mobile.hint": "The inbox reads the mailbox live and only works on the desktop.",
   "inbox.aria.error": "Loading the inbox failed",
   "inbox.refresh": "Refresh",
   "inbox.empty": "No messages in this folder.",
@@ -310,6 +316,10 @@ export const de: typeof en = {
   "settings.account.noSecret": "Kein Passwort hinterlegt",
   "settings.debugLog": "Debug-Protokoll",
   "settings.debugLog.desc": "Schreibt den IMAP-/SMTP-Dialog in die Entwicklerkonsole. Passwörter werden maskiert. Standardmäßig aus.",
+  "settings.lastSync": "Sync-Stand",
+  "settings.lastSync.desktopOnly": "Synchronisierung funktioniert nur am Desktop.",
+  "settings.lastSync.value": "Letzter erfolgreicher Sync: {0}",
+  "settings.lastSync.never": "Noch kein erfolgreicher Sync.",
 
   "error.send.unknown-account": "Unbekanntes Konto.",
   "error.send.unknown-identity": "Unbekannte Identität.",
@@ -394,8 +404,10 @@ export const de: typeof en = {
   "cockpit.aria.warning": "Letzter Lauf erfolgreich, hat aber etwas ausgelassen",
   "cockpit.aria.error": "Letzter Lauf gescheitert",
   "cockpit.aria.checking": "Abgleich läuft",
+  "cockpit.mobile.hint": "Synchronisierung funktioniert nur am Desktop. Bereits synchronisierte Notizen bleiben hier lesbar — öffne Mailstone am Desktop, um neue Mails zu holen.",
 
   "inbox.title": "Posteingang",
+  "inbox.mobile.hint": "Der Posteingang liest die Mailbox live und funktioniert nur am Desktop.",
   "inbox.aria.error": "Laden des Posteingangs gescheitert",
   "inbox.refresh": "Aktualisieren",
   "inbox.empty": "Keine Nachrichten in diesem Ordner.",

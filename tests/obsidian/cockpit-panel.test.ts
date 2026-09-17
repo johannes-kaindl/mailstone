@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { makeFakeEl } from "../vendor/kit/obsidian-mock";
+import { makeFakeEl, Platform } from "../vendor/kit/obsidian-mock";
 import { CockpitPanel, type CockpitHost } from "../../src/obsidian/views/cockpit-panel";
 import { newAccount, type Account } from "../../src/core/settings";
 import type { RunState } from "../../src/core/sync/run-state";
@@ -224,5 +224,29 @@ describe("CockpitPanel — Lebenszyklus", () => {
     p.mount(makeFakeEl());
     p.destroy();
     expect(unsub).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CockpitPanel — Mobile (Welle 7, Lesemodus)", () => {
+  it("auf Mobile: kein 'Alle synchronisieren', kein Konto-Sync-Knopf, stattdessen ein Hinweis", () => {
+    const prev = Platform.isMobile;
+    Platform.isMobile = true;
+    try {
+      const el = makeFakeEl();
+      new CockpitPanel(fakeHost({ accounts: () => [acc("a")] })).mount(el);
+      expect(findAll(el, "mailstone-cockpit-sync-all")).toHaveLength(0);
+      expect(findAll(el, "mailstone-cockpit-sync")).toHaveLength(0);
+      expect(findAll(el, "mailstone-cockpit-mobile-hint")).toHaveLength(1);
+    } finally {
+      Platform.isMobile = prev;
+    }
+  });
+
+  it("am Desktop: Hinweis fehlt, Sync-Knoepfe stehen wie gewohnt da", () => {
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")] })).mount(el);
+    expect(findAll(el, "mailstone-cockpit-mobile-hint")).toHaveLength(0);
+    expect(findAll(el, "mailstone-cockpit-sync-all")).toHaveLength(1);
+    expect(findAll(el, "mailstone-cockpit-sync")).toHaveLength(1);
   });
 });

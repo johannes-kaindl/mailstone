@@ -1,4 +1,4 @@
-import { setIcon } from "obsidian";
+import { Platform, setIcon } from "obsidian";
 import { t } from "../../vendor/code-kit/i18n";
 import type { Account } from "../../core/settings";
 import type { Unsubscribe } from "../../core/sync/events";
@@ -103,11 +103,17 @@ export class CockpitPanel {
     // Der EINE is-checking-Indikator der Ansicht — in der Kopfzeile, nicht in den Zeilen.
     if (vm.busy) statusSpan(kopf, "checking", "loader", "cockpit.aria.checking");
     kopf.createEl("h3", { text: t("cockpit.title") });
-    const alle = kopf.createEl("button", { cls: "mailstone-cockpit-sync-all", text: t("cockpit.syncAll") });
-    // Auch im Empty-State gesperrt: ohne Konto kann der Knopf nichts tun, und ein Knopf, der
-    // nichts tun kann, darf nicht bedienbar aussehen.
-    alle.disabled = vm.busy || vm.empty;
-    alle.addEventListener("click", () => this.host.syncNow(undefined));
+    // Sync braucht die Socket-Schicht, die auf Mobile nicht laedt (Welle 7) — der Knopf faellt
+    // weg statt gesperrt dazustehen, ein Hinweistext ersetzt ihn (UI-STANDARD §10).
+    if (Platform.isMobile) {
+      root.createDiv({ cls: "mailstone-cockpit-mobile-hint", text: t("cockpit.mobile.hint") });
+    } else {
+      const alle = kopf.createEl("button", { cls: "mailstone-cockpit-sync-all", text: t("cockpit.syncAll") });
+      // Auch im Empty-State gesperrt: ohne Konto kann der Knopf nichts tun, und ein Knopf, der
+      // nichts tun kann, darf nicht bedienbar aussehen.
+      alle.disabled = vm.busy || vm.empty;
+      alle.addEventListener("click", () => this.host.syncNow(undefined));
+    }
 
     if (vm.empty) {
       const leer = root.createDiv({ cls: "mailstone-cockpit-empty" });
@@ -127,9 +133,11 @@ export class CockpitPanel {
     if (row.state !== "never") statusSpan(kopf, row.state, ICONS[row.state], ARIA[row.state]);
     kopf.createSpan({ cls: "mailstone-cockpit-label", text: row.label });
 
-    const knopf = kopf.createEl("button", { cls: "mailstone-cockpit-sync", text: t("cockpit.syncOne") });
-    knopf.disabled = busy;
-    knopf.addEventListener("click", () => this.host.syncNow(row.accountId));
+    if (!Platform.isMobile) {
+      const knopf = kopf.createEl("button", { cls: "mailstone-cockpit-sync", text: t("cockpit.syncOne") });
+      knopf.disabled = busy;
+      knopf.addEventListener("click", () => this.host.syncNow(row.accountId));
+    }
 
     const meta = zeile.createDiv({ cls: "mailstone-cockpit-meta" });
     meta.createDiv({ text: row.lastRunAt === null ? t("cockpit.never") : t("cockpit.lastRun", uhrzeit(row.lastRunAt)) });

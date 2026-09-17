@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { syncFailureStatus, syncNotices, syncIdleStatus, createPersister, safeRunCommand, suppressDoneNotice, staleSkipCount, taskCreatedNotice } from "../../src/main";
+import { syncFailureStatus, syncNotices, syncIdleStatus, createPersister, safeRunCommand, suppressDoneNotice, staleSkipCount, taskCreatedNotice, networkFeaturesAvailable } from "../../src/main";
 import type { SyncRunResult } from "../../src/core/sync/service";
 import type { RunResult } from "../../src/obsidian/command-flow";
 import type { CommandExecuteResult } from "../../src/core/commands/execute";
@@ -276,5 +276,22 @@ describe("syncFailureStatus — busy im stillen Lauf", () => {
 
   it("meldet busy im beaufsichtigten Lauf unveraendert", () => {
     expect(syncFailureStatus([{ ok: false, accountId: "a1", code: "busy" }], false)).toBe(`Mailstone: ${t("error.sync.busy")}`);
+  });
+});
+
+// Welle 7, Owner-Task „Lesemodus auf Mobile": Sync-Befehl, periodischer Sync und der
+// Versand-Befehl haengen alle an dieser Funktion (onload() selbst ist laut AGENTS.md nicht
+// testbar) — deshalb hier direkt gegen ein Platform-Attrappe geprueft.
+describe("networkFeaturesAvailable", () => {
+  it("ist wahr am Desktop — Sync-/Versand-Befehle werden registriert", () => {
+    expect(networkFeaturesAvailable({ isMobile: false })).toBe(true);
+  });
+
+  it("ist falsch auf Mobile — die Socket-Schicht laedt dort nicht (tls-transport.ts)", () => {
+    expect(networkFeaturesAvailable({ isMobile: true })).toBe(false);
+  });
+
+  it("liest ohne Argument das echte Platform-Objekt", () => {
+    expect(typeof networkFeaturesAvailable()).toBe("boolean");
   });
 });

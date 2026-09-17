@@ -1,4 +1,4 @@
-import { Notice, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
+import { Notice, Platform, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
 import { loadSettings, onCreateInvalidValues, rawOnCreate, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
 import { t } from "./vendor/code-kit/i18n";
@@ -113,6 +113,15 @@ export function syncFailureStatus(results: readonly SyncRunResult[], silent = fa
   const relevant = silent ? failures.filter((r) => r.code !== "busy") : failures;
   const failed = relevant[0];
   return failed ? `Mailstone: ${t(`error.sync.${failed.code}`)}` : null;
+}
+
+/** Sync, Versand und der live lesende Posteingang brauchen alle dieselbe Socket-Schicht
+ *  (`tls-transport.ts`, `Platform.isDesktop`-Guard) — auf Mobile laedt sie nicht, also bleiben
+ *  auch die zugehoerigen Befehle/Tabs aus (Welle 7, Owner-Task „Lesemodus auf Mobile": nur
+ *  bereits synchronisierte Notizen sind auf Mobile lesbar). Reine Funktion, damit sie ohne
+ *  Plugin-Instanz testbar ist — `onload()` selbst ist es laut AGENTS.md nicht. */
+export function networkFeaturesAvailable(platform: Pick<typeof Platform, "isMobile"> = Platform): boolean {
+  return !platform.isMobile;
 }
 
 export interface SyncNotice { key: string; args: (string | number)[] }
@@ -299,6 +308,7 @@ export default class MailstonePlugin extends Plugin {
         saveSettings: () => this.saveSettings(),
         secrets,
         transport: () => nodeSocketTransport(),
+        runState: () => this.runState,
       }),
     );
     const notify = noticeNotifier();
@@ -344,7 +354,9 @@ export default class MailstonePlugin extends Plugin {
       this.status.setText(syncIdleStatus(counts, new Date().toLocaleTimeString()));
     });
 
-    this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
+    if (networkFeaturesAvailable()) {
+      this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
+    }
 
     // Genau ein registerView-Type (UI-STANDARD §1): das Ribbon-Symbol OEFFNET die Ansicht,
     // es startet keinen Lauf mehr — "sync-mailbox" in der Befehlspalette bleibt der Weg fuer
@@ -390,9 +402,11 @@ export default class MailstonePlugin extends Plugin {
     // Beim Laden gilt jedes vorhandene Konto als gerade gelaufen, sonst synchronisierte der erste
     // Takt unmittelbar nach dem Start. Ein spaeter angelegtes Konto hat keinen Eintrag und ist
     // damit sofort faellig — genau das erwartet man nach dem Einrichten.
-    const startedAt = Date.now();
-    for (const a of this.settings.accounts) this.lastRun[a.id] = startedAt;
-    this.registerInterval(window.setInterval(() => { void this.runDueSyncs(notify, this.lastRun); }, TICK_MS));
+    if (networkFeaturesAvailable()) {
+      const startedAt = Date.now();
+      for (const a of this.settings.accounts) this.lastRun[a.id] = startedAt;
+      this.registerInterval(window.setInterval(() => { void this.runDueSyncs(notify, this.lastRun); }, TICK_MS));
+    }
 
     this.bridge = createCalendarNotesBridge(
       this.app,
@@ -438,11 +452,13 @@ export default class MailstonePlugin extends Plugin {
       },
     });
 
-    this.addCommand({
-      id: "send-test-mail",
-      name: t("cmd.sendTest.name"),
-      callback: () => void this.sendTestMail(notify),
-    });
+    if (networkFeaturesAvailable()) {
+      this.addCommand({
+        id: "send-test-mail",
+        name: t("cmd.sendTest.name"),
+        callback: () => void this.sendTestMail(notify),
+      });
+    }
   }
 
   /** Direkt nach dem SendService setzen: sobald das Plugin-Objekt in app.plugins.plugins

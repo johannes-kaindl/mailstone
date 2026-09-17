@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Lesemodus auf Mobile.** `isDesktopOnly` steht jetzt auf `false`: bereits synchronisierte
+  Mail-Notizen sind auf Mobile wie jede andere Markdown-Notiz lesbar, Übersicht (Cockpit) und
+  die TaskNotes-Verknüpfung bleiben aktiv. Sync, Versand (Test-Mail) und der Posteingang-Tab
+  (live-lesendes IMAP-Browsing) brauchen die Socket-Schicht, die auf Mobile nicht lädt — ihre
+  Befehle/Tabs/Knöpfe bleiben deshalb aus, ein Hinweistext ersetzt sie. Die Einstellungen
+  nennen auf Mobile den Zeitpunkt des letzten erfolgreichen Desktop-Syncs. Kein Bearbeiten,
+  kein Merge-Pfad — beides bleibt eine spätere Etappe, sobald ein konkreter Mobile-Fall es
+  verlangt (Entscheidung Johannes 2026-09-16/17).
 - **Neue Einstellung „Erlaubte Werte bei Neuanlage".** Beim Laden werden die Werte im
   `onCreate`-Frontmatter (z. B. `type: mail`) gegen eine plugin-eigene, in den Einstellungen
   konfigurierbare Liste geprüft (Default: `mail`). Ein Wert außerhalb der Liste wird nicht

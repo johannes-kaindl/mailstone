@@ -1,5 +1,6 @@
 import {
   Notice,
+  Platform,
   PluginSettingTab,
   getLanguage,
   type App,
@@ -17,6 +18,7 @@ import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
+import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
 import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
 
@@ -28,6 +30,8 @@ export interface SettingsHost {
   secrets: SecretStore;
   /** Fabrik statt Instanz: der Verbindungstest im Konto-Editor bekommt einen frischen Transport. */
   transport(): SocketTransport;
+  /** Fuer den Sync-Stand-Hinweis auf Mobile (Welle 7) — Sync laeuft nur am Desktop. */
+  runState(): RunState;
 }
 
 /** M1: Ordner, Jahr-Unterordner, Dateiname-Template, Sprache. M2: Konten (Accounts-Liste +
@@ -51,6 +55,13 @@ export class MailstoneSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
+  /** Text fuer den Sync-Stand-Hinweis: Sync/Versand/Posteingang laufen nur am Desktop
+   *  (Welle 7), diese Zeile sagt auf Mobile, wie aktuell die angezeigten Notizen sind. */
+  private lastSyncDesc(): string {
+    const at = latestSuccessfulSyncAt(this.host.runState());
+    return at === null ? t("settings.lastSync.never") : t("settings.lastSync.value", new Date(at).toLocaleString());
+  }
+
   // ── Die eine Wahrheit ────────────────────────────────────────────────────
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
@@ -62,6 +73,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
           options: { auto: t("settings.language.auto"), en: "English", de: "Deutsch" },
         },
       },
+      // Nur auf Mobile: am Desktop zeigt das Cockpit den Sync-Stand je Konto schon live an
+      // (CockpitPanel), diese Zeile waere dort eine zweite Wahrheit desselben Werts.
+      ...(Platform.isMobile
+        ? [{ name: t("settings.lastSync"), desc: `${t("settings.lastSync.desktopOnly")} ${this.lastSyncDesc()}` }]
+        : []),
       {
         name: t("settings.folder"),
         desc: t("settings.folder.desc"),

@@ -93,3 +93,16 @@ export function nextDueAt(account: Account, lastRunMs: number | undefined): numb
   if (lastRunMs === undefined) return null;
   return lastRunMs + intervalMs(account);
 }
+
+/** Der juengste ERFOLGREICHE Lauf ueber alle Konten — Grundlage fuer den Sync-Stand-Hinweis
+ *  auf Mobile (Welle 7, Owner-Task „Lesemodus auf Mobile"): Sync laeuft nur am Desktop, die
+ *  Settings-Seite auf Mobile nennt deshalb, wann die angezeigten Notizen zuletzt aktuell
+ *  waren. Ein gescheiterter Lauf zaehlt nicht — er hat nichts synchronisiert. */
+export function latestSuccessfulSyncAt(state: RunState): number | null {
+  let latest: number | null = null;
+  for (const info of Object.values(state)) {
+    if (!info.ok) continue;
+    if (latest === null || info.at > latest) latest = info.at;
+  }
+  return latest;
+}

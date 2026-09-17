@@ -1,4 +1,4 @@
-import { ItemView, type App, type WorkspaceLeaf } from "obsidian";
+import { ItemView, Platform, type App, type WorkspaceLeaf } from "obsidian";
 import { t } from "../../vendor/code-kit/i18n";
 import { buildHubInto, type HubController } from "../../vendor/kit-obsidian/hub";
 import { CockpitPanel, type CockpitHost } from "./cockpit-panel";
@@ -26,10 +26,13 @@ export class MailstoneView extends ItemView {
 
   async onOpen(): Promise<void> {
     const cockpit = new CockpitPanel(this.host);
-    const inbox = new InboxPanel(this.inboxHost);
+    // Der Posteingang liest live und unsynchronisiert aus der Mailbox — dieselbe Socket-Schicht
+    // wie Sync/Versand, die auf Mobile nicht laedt (Welle 7). Ohne sie bliebe der Tab da und
+    // jeder Versuch schiege als "Verbindungsfehler" fehl, was auf Mobile irrefuehrend waere.
+    const panels = Platform.isMobile ? [cockpit] : [cockpit, new InboxPanel(this.inboxHost)];
     // Zwei Tabs, also traegt die Leiste jetzt eine Wahl — der Grund, aus dem sie beim
     // einzelnen Panel bewusst fehlte.
-    this.hub = buildHubInto(this.contentEl, [cockpit, inbox], "cockpit");
+    this.hub = buildHubInto(this.contentEl, panels, "cockpit");
   }
 
   async onClose(): Promise<void> {

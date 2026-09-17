@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { App, Plugin } from "obsidian";
+import { Platform } from "../vendor/kit/obsidian-mock";
 import { MailstoneSettingTab, type SettingsHost } from "../../src/obsidian/settings-tab";
 import { loadSettings, newAccount, type Account, type MailstoneSettings } from "../../src/core/settings";
 import type { SecretStore } from "../../src/vendor/kit/secrets";
 import type { SocketTransport } from "../../src/core/net/types";
+import type { RunState } from "../../src/core/sync/run-state";
 import { initI18n } from "../../src/i18n/strings";
 import { t } from "../../src/vendor/code-kit/i18n";
 
@@ -34,13 +36,14 @@ function fakeSecrets(overrides?: Partial<SecretStore>): SecretStore {
  *  ist fuer Obsidian <1.13 gedacht, das Manifest hier fuehrt aber 1.13.0 als Untergrenze und der
  *  Tab hat kein eigenes `display()` — der gerenderte Pfad waere also nie der reale gewesen.
  */
-function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore> } = {}): MailstoneSettingTab {
+function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; runState?: RunState } = {}): MailstoneSettingTab {
   const settings: MailstoneSettings = { ...loadSettings(undefined), accounts: opts.accounts ?? [] };
   const host: SettingsHost = {
     settings,
     saveSettings: async () => {},
     secrets: fakeSecrets(opts.secrets),
     transport: () => ({}) as unknown as SocketTransport,
+    runState: () => opts.runState ?? {},
   };
   const manifest = { id: "mailstone", name: "Mailstone", version: "0.1.0", minAppVersion: "1.13.0", description: "", author: "" };
   const app = new App();
@@ -226,5 +229,46 @@ describe("MailstoneSettingTab — onCreateAllowedValues", () => {
     (tab as unknown as { update: () => void }).update = () => {};
     await (tab as unknown as { renameOnCreateAllowedValue: (i: number, v: string) => Promise<void> }).renameOnCreateAllowedValue(1, "  ");
     expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail"]);
+  });
+});
+
+describe("MailstoneSettingTab — Sync-Stand auf Mobile (Welle 7)", () => {
+  it("zeigt am Desktop keinen Sync-Stand-Eintrag — das Cockpit zeigt ihn schon live je Konto", () => {
+    const prev = Platform.isMobile;
+    Platform.isMobile = false;
+    try {
+      const defs = newTab().getSettingDefinitions() as { name?: string }[];
+      expect(defs.some((d) => d.name === t("settings.lastSync"))).toBe(false);
+    } finally {
+      Platform.isMobile = prev;
+    }
+  });
+
+  it("nennt auf Mobile 'noch kein Sync', solange kein Lauf erfolgreich war", () => {
+    const prev = Platform.isMobile;
+    Platform.isMobile = true;
+    try {
+      const defs = newTab().getSettingDefinitions() as { name?: string; desc?: string }[];
+      const zeile = defs.find((d) => d.name === t("settings.lastSync"));
+      expect(zeile?.desc).toContain(t("settings.lastSync.never"));
+    } finally {
+      Platform.isMobile = prev;
+    }
+  });
+
+  it("nennt auf Mobile den Zeitpunkt des juengsten ERFOLGREICHEN Laufs, nicht des letzten Versuchs", () => {
+    const prev = Platform.isMobile;
+    Platform.isMobile = true;
+    try {
+      const runState: RunState = {
+        a: { at: 1000, ok: true, counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
+        b: { at: 2000, ok: false, code: "auth", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
+      };
+      const defs = newTab({ runState }).getSettingDefinitions() as { name?: string; desc?: string }[];
+      const zeile = defs.find((d) => d.name === t("settings.lastSync"));
+      expect(zeile?.desc).toContain(t("settings.lastSync.value", new Date(1000).toLocaleString()));
+    } finally {
+      Platform.isMobile = prev;
+    }
   });
 });

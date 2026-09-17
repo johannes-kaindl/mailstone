@@ -20,6 +20,8 @@
 .mailstone-cockpit-counts { color: var(--text-muted); }
 .mailstone-cockpit-empty { color: var(--text-muted); font-size: var(--font-ui-small); display: flex; flex-direction: column; gap: var(--size-4-2); align-items: flex-start; }
 .mailstone-cockpit-empty p { margin: 0; }
+/* Mobile: ersetzt die Sync-Knoepfe, die dort keine Socket-Schicht haben (Welle 7). */
+.mailstone-cockpit-mobile-hint { color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: var(--size-4-3); }
 
 /* Status-Indikator: Form UND Farbe UND Klasse UND aria-label (WCAG 1.4.1) */
 .mailstone-cockpit-status { display: inline-flex; align-items: center; }

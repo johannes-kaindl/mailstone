@@ -1,6 +1,6 @@
 // tests/core/sync/run-state.test.ts
 import { describe, it, expect } from "vitest";
-import { recordRun, parseRunState, nextDueAt, type RunState } from "../../../src/core/sync/run-state";
+import { recordRun, parseRunState, nextDueAt, latestSuccessfulSyncAt, type RunState } from "../../../src/core/sync/run-state";
 import { dueAccounts } from "../../../src/core/sync/schedule";
 import { newAccount, type Account } from "../../../src/core/settings";
 import type { SyncCounts } from "../../../src/core/sync/events";
@@ -131,5 +131,25 @@ describe("nextDueAt", () => {
       expect(dueAccounts([a], { a: 10 * MIN }, t - 1), `intervalMin=${String(wert)} kurz davor`).toEqual([]);
       expect(dueAccounts([a], { a: 10 * MIN }, t), `intervalMin=${String(wert)} genau dann`).toEqual(["a"]);
     }
+  });
+});
+
+describe("latestSuccessfulSyncAt", () => {
+  it("liefert null ohne jeden Lauf", () => {
+    expect(latestSuccessfulSyncAt({})).toBeNull();
+  });
+
+  it("ignoriert gescheiterte Laeufe — sie haben nichts synchronisiert", () => {
+    const state: RunState = { a: { at: 100, ok: false, code: "auth", counts: NIX } };
+    expect(latestSuccessfulSyncAt(state)).toBeNull();
+  });
+
+  it("nimmt den juengsten erfolgreichen Lauf ueber mehrere Konten", () => {
+    const state: RunState = {
+      a: { at: 100, ok: true, counts: NIX },
+      b: { at: 300, ok: true, counts: NIX },
+      c: { at: 200, ok: false, code: "connect", counts: NIX },
+    };
+    expect(latestSuccessfulSyncAt(state)).toBe(300);
   });
 });

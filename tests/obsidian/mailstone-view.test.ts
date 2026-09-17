@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { WorkspaceLeaf } from "obsidian";
+import { Platform } from "../vendor/kit/obsidian-mock";
 import { MailstoneView, VIEW_TYPE_MAILSTONE, activateMailstoneView } from "../../src/obsidian/views/mailstone-view";
 import type { CockpitHost } from "../../src/obsidian/views/cockpit-panel";
 import type { InboxHost } from "../../src/obsidian/views/inbox-panel";
@@ -106,6 +107,20 @@ describe("MailstoneView", () => {
     expect(hostDestroy).not.toHaveBeenCalled();
     await v.onClose();
     expect(hostDestroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("auf Mobile: kein Posteingang-Tab — er liest live und braucht die Desktop-Sockets (Welle 7)", async () => {
+    const prev = Platform.isMobile;
+    Platform.isMobile = true;
+    try {
+      const v = new MailstoneView(new WorkspaceLeaf(), fakeHost(), fakeInboxHost());
+      await v.onOpen();
+      const ids = alleMit(v.contentEl, "okit-hub-tab").map((el) => el.getAttribute("data-tab"));
+      expect(ids).toContain("cockpit");
+      expect(ids).not.toContain("inbox");
+    } finally {
+      Platform.isMobile = prev;
+    }
   });
 });
 
