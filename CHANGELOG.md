@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-24
+
 ### Hinzugefügt
 - **Lesemodus auf Mobile.** `isDesktopOnly` steht jetzt auf `false`: bereits synchronisierte
   Mail-Notizen sind auf Mobile wie jede andere Markdown-Notiz lesbar, Übersicht (Cockpit) und

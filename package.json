@@ -1,6 +1,6 @@
 {
   "name": "mailstone",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Mail as vault notes: a server-side folder decides what becomes a note; sends iMIP invitations for calendar-notes.",
   "type": "module",
   "scripts": {
