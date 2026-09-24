@@ -21,6 +21,7 @@ All notable changes to this project are documented here. The format follows
   still verworfen, sondern auf den Default zurückgesetzt und per Hinweis gemeldet
 
 ### Geändert
+- **`authorUrl` im Manifest zeigt wieder auf das GitHub-Profil** (`https://github.com/johannes-kaindl`) — Rückkehr in den Community Store.
 - **Kit-Pin auf `obsidian-kit` 0.36.2 / `code-kit` 0.6.0.**
 - **Kit-Pin auf `obsidian-kit` 0.37.1.** Zusätzlich vendort: das Schlüsselbund-Modul
   (`src/vendor/kit/secrets.ts` + `src/vendor/kit-obsidian/secrets.ts`) ersetzt die
