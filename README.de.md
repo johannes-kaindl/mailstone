@@ -13,6 +13,8 @@
 
 Die Sichtung bleibt dort, wo die Mail ohnehin liegt: Verschiebe eine Nachricht in einen bestimmten IMAP-Ordner — vom Handy, aus dem Webmailer, per Mail-Regel —, und der nächste Sync schreibt sie als Markdown-Notiz in den Vault, mit der ursprünglichen `.eml` daneben. Der Versand läuft über dasselbe Konto per SMTP, und das Plugin verschickt iMIP-Kalendereinladungen im Auftrag des Schwester-Plugins [`calendar-notes`](https://github.com/johannes-kaindl/calendar-notes).
 
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/hero.png" width="820" alt="Das Mailstone-Seitenpanel neben einer importierten Mail-Notiz: zwei Konten mit letztem und nächstem Lauf und dem Zähler „3 new“, je ein Knopf „Synchronise now“, dazu der Ordnerbaum mit den Mail-Notizen im Datei-Explorer."></p>
+
 ## Funktionen
 
 - **Mail als Notiz.** Ein Ordner auf dem Server entscheidet, was zur Notiz wird. Die Message-ID ist die Identität, und die ursprüngliche `.eml` bleibt neben der Notiz liegen — alles Abgeleitete lässt sich daraus neu aufbauen.
@@ -68,11 +70,19 @@ cd mailstone && npm install && npm run build
 ## Verwendung
 
 1. **Konto einrichten.** Einstellungen → Mailstone → *Konto hinzufügen*: IMAP- und SMTP-Host, Port und TLS-Modus, Benutzername, ein App-spezifisches Passwort, mindestens eine Identität und die Ordnernamen, wie dein IMAP-Server sie anzeigt. *SMTP-Verbindung testen* prüft Host, TLS und Anmeldung, ohne etwas zu senden.
+
+<img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/account.png" width="600" alt="Der Konto-Dialog: IMAP- und SMTP-Host, Port und TLS-Modus, Benutzername und ein mit Obsidians Secret-Storage verknüpftes Passwort.">
 2. **Auf dem Server entscheiden, welche Mail wichtig ist.** In den Allowlist-Ordner verschieben. Der nächste Sync — alle paar Minuten oder *Jetzt synchronisieren* in der Seitenleiste — schreibt eine Notiz nach `Mail/<Jahr>/` und die `.eml` nach `Mail/<Jahr>/_eml/`.
+
+<img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="Eine Mail-Notiz: Frontmatter mit Absender, Empfängern, Datum und Message-ID, in_reply_to und references als Wikilinks auf die frühere Mail, darunter der Nachrichtentext.">
 3. **Oder im Posteingangs-Tab arbeiten.** Seitenleiste über das Ribbon-Symbol oder den Befehl *Mailstone: Seitenleiste öffnen* öffnen, zu **Posteingang** wechseln und bei allem Aufhebenswerten *Ins Vault übernehmen* nutzen. Die Nachricht wandert auf dem Server in den Allowlist-Ordner, und der folgende Sync schreibt die Notiz.
-4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus ihrer .eml neu aufbauen*, *Mail-Threads neu verknüpfen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen.
+4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus ihrer .eml neu aufbauen*, *Mail-Threads neu verknüpfen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen. Jedes zeigt vor dem Schreiben, was es ändern würde:
+
+<img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/relink-preview.png" width="820" alt="Der Dialog „Review before writing“ des Kommandos Mail-Threads neu verknüpfen: Eine Notiz bekommt einen Wikilink in in_reply_to, dargestellt als Vorher und Nachher, mit Cancel und Apply.">
 
 ### Konfiguration
+
+<a href="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/settings.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/thumbs/settings.png" width="380" alt="Der Mailstone-Einstellungs-Tab: Sprache, Notiz-Ordner, Unterordner je Jahr, Dateinamen-Vorlage und die Liste der Konten mit Edit-Knöpfen."></a><br><sub>Auf die Vorschau klicken für das Bild in voller Größe</sub>
 
 Einstellungen → Mailstone. Pro Konto (*Konto hinzufügen* / *Bearbeiten*):
 

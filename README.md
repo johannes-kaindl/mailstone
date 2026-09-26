@@ -11,6 +11,8 @@
 
 Triage stays where your mail already lives: move a message into one designated IMAP folder — from your phone, from webmail, from a mail rule — and the next sync writes it into the vault as a Markdown note, with the original `.eml` beside it. Sending uses the same account over SMTP, and the plugin delivers iMIP calendar invitations on behalf of the sister plugin [`calendar-notes`](https://github.com/johannes-kaindl/calendar-notes).
 
+<p align="center"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/hero.png" width="820" alt="The Mailstone sidebar panel next to an imported mail note: two accounts with last run, next run and a "3 new" counter, a Synchronise now button each, and the mail folder tree in the file explorer."></p>
+
 ## Features
 
 - **Mail as notes.** A server-side folder decides what becomes a note. The Message-ID is the identity, and the original `.eml` stays next to the note, so everything derived from it can be rebuilt.
@@ -66,11 +68,19 @@ cd mailstone && npm install && npm run build
 ## Usage
 
 1. **Set up an account.** Settings → Mailstone → *Add account*: IMAP and SMTP host, port and TLS mode, username, an app-specific password, at least one identity, and the folder names as your IMAP server shows them. *Test SMTP connection* checks host, TLS and login without sending anything.
+
+<img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/account.png" width="600" alt="The account dialog: IMAP and SMTP host, port and TLS mode, username and a password linked to Obsidian's secret storage.">
 2. **Decide on the server which mail matters.** Move it into your allowlist folder. The next sync — every few minutes, or *Synchronise now* in the sidebar — writes a note under `Mail/<year>/` and the `.eml` under `Mail/<year>/_eml/`.
+
+<img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="A mail note: front matter with sender, recipients, date and Message-ID, in_reply_to and references as wikilinks to the earlier mail, and the message text below.">
 3. **Or work from the inbox tab.** Open the sidebar with the ribbon icon or the command *Mailstone: Open the sidebar panel*, switch to **Inbox**, and use *Move to vault* on anything worth keeping. The message moves into the allowlist folder on the server, and the following sync writes the note.
-4. **On a mail note**, the command palette offers *Re-render mail note from its .eml*, *Relink mail threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear.
+4. **On a mail note**, the command palette offers *Re-render mail note from its .eml*, *Relink mail threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear. Each one shows what it would change before it writes:
+
+<img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/relink-preview.png" width="820" alt="The "Review before writing" dialog of the Relink mail threads command: one note gets a wikilink in in_reply_to, shown as Before and After, with Cancel and Apply.">
 
 ### Configuration
+
+<a href="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/settings.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/thumbs/settings.png" width="380" alt="The Mailstone settings tab: language, notes folder, subfolder per year, filename template and the list of accounts with Edit buttons."></a><br><sub>Click the preview for the full-size image</sub>
 
 Settings → Mailstone. Per account (*Add account* / *Edit*):
 

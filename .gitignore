@@ -51,3 +51,5 @@ data.json
 !tests/fixtures/eml/*.eml
 !tests/fixtures/golden/
 !tests/fixtures/golden/*.eml
+# Aufnahme-Fixture der README-Bilder: ebenfalls nur synthetische Mails (example.org/.net/.com)
+!docs/images/fixture/notes/Import/*.eml

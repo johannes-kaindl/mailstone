@@ -1,0 +1,14 @@
+From: Alex Sample <alex@example.net>
+To: Jane Doe <jane.doe@example.org>
+Subject: Re: Project kickoff: agenda for Thursday
+Date: Mon, 07 Sep 2026 11:40:00 +0200
+Message-ID: <kickoff-002@mail.example.net>
+In-Reply-To: <kickoff-001@mail.example.org>
+References: <kickoff-001@mail.example.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Hi Jane,
+
+the agenda looks good. Could we add a short item on how we handle
+mail from clients? I would like to file it as notes so nothing gets lost.

@@ -245,3 +245,9 @@ setzt dieses zweite Plugin voraus und ist deshalb **bewusst nicht Teil von `gate
 `smoke:gui`** — eine Pflichtstrecke darf nicht an einem Nachbarplugin scheitern, das nicht
 jeder Klon hat. Wer ihn ins Gate zieht, macht das Gate von einer Voraussetzung abhängig, die
 dort nicht hingehört.
+
+## Nutzer-Doku und README-Bilder
+
+`docs/README.md` ist der Doku-Index (Diátaxis, nur Quadranten mit Inhalt), `docs/getting-started.md` und `docs/how-to/troubleshooting.md` sind die zwei Pflichtteile. Alles andere unter `docs/` (`SMOKE.md`, datierte Notizen, `superpowers/`) ist Maintainer-Material und wird aus der README nicht verlinkt. Die Symptomtexte im Troubleshooting sind wörtliche Strings aus `src/i18n/strings.ts`: wer dort einen Text ändert, zieht die Doku mit (CORE-META-18).
+
+Die README-Bilder entstehen mit `npm run shots` in einer Zweitinstanz, der Vertrag steht in `docs/images/README.md`. Zwei Dinge daran sind gesetzt statt gemessen (Konto und Laufzustand im Seitenpanel), weil ein Sync ein echtes Postfach braucht — der Vertrag nennt sie.
