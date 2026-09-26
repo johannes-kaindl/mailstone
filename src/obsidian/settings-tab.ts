@@ -21,6 +21,7 @@ import type { TrustedSender } from "../core/api/types";
 import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
 import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
+import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
 
 /** Was der Tab vom Plugin braucht — als Interface, damit Tests eine Attrappe geben können
  *  (Muster aus calendar-notes/src/obsidian/settings-tab.ts, dortiges `SettingsHost`). */
@@ -65,6 +66,16 @@ export class MailstoneSettingTab extends PluginSettingTab {
   // ── Die eine Wahrheit ────────────────────────────────────────────────────
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
+      // UI-STANDARD §8: die Hilfe-Zeile steht vor jeder anderen Zeile.
+      helpSettingDefinition({
+        ...githubHelpUrls("mailstone"),
+        texts: {
+          name: t("settings.help.name"),
+          desc: t("settings.help.desc"),
+          openDocs: t("settings.help.openDocs"),
+          reportIssue: t("settings.help.reportIssue"),
+        },
+      }),
       {
         name: t("settings.language"),
         control: {

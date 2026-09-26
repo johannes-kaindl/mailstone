@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Hilfe-Zeile oben in den Einstellungen mit Links auf die Dokumentation und den Issue-Tracker (Englisch und Deutsch).
+
 ## [0.6.1] — 2026-09-26
 
 ### Dokumentation

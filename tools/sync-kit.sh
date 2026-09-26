@@ -18,6 +18,9 @@ KIT=${KIT_DIR:-../obsidian-kit}
 CODEKIT=${CODEKIT_DIR:-"$HOME/Projects/jkaindl/libs/code-kit"}
 KIT_REF=${KIT_REF:-0.37.1}
 CODEKIT_REF=${CODEKIT_REF:-0.6.0}
+# help-setting.ts (UI-STANDARD §8, Hilfe-Zeile) auf einem EIGENEN Pin: es zieht mit 0.43.0 ein,
+# die uebrigen Module behalten KIT_REF. Ein Pin, der nur fuer dieses eine Modul gilt.
+KIT_HELP_REF=${KIT_HELP_REF:-0.43.0}
 
 # Der Tag-Commit, nicht der Repo-HEAD: HEAD steht auf einem spaeteren Stand, und ein daraus
 # gelesener SHA widerspraeche der vendorierten Version. `^{commit}` peelt ein annotiertes Tag
@@ -49,6 +52,8 @@ for f in $K_PURE; do
   git -C "$KIT" cat-file -e "$KIT_REF:src/pure/$f.ts" 2>/dev/null \
     || fehlend="$fehlend src/pure/$f.ts@obsidian-kit:$KIT_REF"
 done
+git -C "$KIT" cat-file -e "$KIT_HELP_REF:src/obsidian/help-setting.ts" 2>/dev/null \
+  || fehlend="$fehlend src/obsidian/help-setting.ts@obsidian-kit:$KIT_HELP_REF"
 git -C "$KIT" cat-file -e "$KIT_REF:src/testing/obsidian-mock.ts" 2>/dev/null \
   || fehlend="$fehlend src/testing/obsidian-mock.ts@obsidian-kit:$KIT_REF"
 for f in $K_OBS; do
@@ -96,6 +101,9 @@ for f in $K_OBS; do
   rm -f "src/vendor/kit-obsidian/$f.ts.bak"
 done
 
+HELP_SHA=$(sha_von "$KIT" "$KIT_HELP_REF")
+vendor src/vendor/kit-obsidian/help-setting.ts "$KIT" "$KIT_HELP_REF" obsidian-kit "$KIT_HELP_REF" src/obsidian/help-setting.ts
+
 # stamp <verzeichnis> <source> <version> <sha> <modul-liste>
 #
 # Kein Datumsfeld: es machte die Determinismus-Probe (zweiter Lauf ohne Diff) unmoeglich,
@@ -107,6 +115,6 @@ stamp() {
 stamp src/vendor/code-kit code-kit "$CK_VER" "$CK_SHA" "$(printf '%s.ts, ' $CK_MODULES | sed 's/, $//')"
 stamp src/vendor/kit obsidian-kit "$K_VER" "$K_SHA" "$(printf '%s.ts, ' $K_PURE | sed 's/, $//')"
 stamp tests/vendor/kit obsidian-kit "$K_VER" "$K_SHA" obsidian-mock.ts
-stamp src/vendor/kit-obsidian obsidian-kit "$K_VER" "$K_SHA" "$(printf '%s.ts, ' $K_OBS | sed 's/, $//')"
+stamp src/vendor/kit-obsidian obsidian-kit "$K_VER" "$K_SHA" "$(printf '%s.ts, ' $K_OBS | sed 's/, $//'), help-setting.ts (Kit $KIT_HELP_REF, $HELP_SHA)"
 
 echo "vendored: code-kit@$CK_VER ($CK_SHA): $CK_MODULES | obsidian-kit@$K_VER ($K_SHA): $K_PURE obsidian-mock $K_OBS"

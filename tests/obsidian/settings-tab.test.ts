@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { App, Plugin } from "obsidian";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { App, Plugin, Setting } from "obsidian";
 import { Platform } from "../vendor/kit/obsidian-mock";
 import { MailstoneSettingTab, type SettingsHost } from "../../src/obsidian/settings-tab";
 import { loadSettings, newAccount, type Account, type MailstoneSettings } from "../../src/core/settings";
@@ -270,5 +270,42 @@ describe("MailstoneSettingTab — Sync-Stand auf Mobile (Welle 7)", () => {
     } finally {
       Platform.isMobile = prev;
     }
+  });
+});
+
+describe("Hilfe-Zeile (UI-STANDARD §8)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    initI18n("de");
+  });
+  type Hatch = { name?: string; desc?: string; render?: (s: Setting) => void };
+  const erste = (): Hatch => newTab().getSettingDefinitions()[0] as unknown as Hatch;
+
+  it("ist das ERSTE Element von getSettingDefinitions, vor jeder anderen Zeile", () => {
+    initI18n("de");
+    expect(erste().name).toBe("Hilfe");
+    expect(typeof erste().render).toBe("function");
+  });
+
+  it("spricht die Sprache der Settings (EN und DE)", () => {
+    initI18n("en");
+    expect(erste().name).toBe("Help");
+    expect(erste().desc).toBe("Getting started, how-tos and troubleshooting");
+    initI18n("de");
+    expect(erste().desc).toBe("Erste Schritte, Anleitungen und Fehlersuche");
+  });
+
+  it("die Knöpfe öffnen Doku-Index und Issues dieses Repos", () => {
+    const open = vi.fn();
+    vi.stubGlobal("window", { open });
+    const setting = new Setting(undefined as never);
+    erste().render?.(setting);
+    const knoepfe = (setting as unknown as { components: Array<{ clickCB: (() => void) | null }> }).components;
+    expect(knoepfe).toHaveLength(2);
+    knoepfe.forEach((k) => k.clickCB?.());
+    expect(open.mock.calls.map((c) => c[0])).toEqual([
+      "https://github.com/johannes-kaindl/mailstone/blob/main/docs/README.md",
+      "https://github.com/johannes-kaindl/mailstone/issues",
+    ]);
   });
 });

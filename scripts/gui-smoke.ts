@@ -749,6 +749,44 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
   await evaluieren(cdp, `app.setting.close(); return true;`).catch(() => undefined);
 }
 
+/** V9b · Hilfe-Zeile (UI-STANDARD §8): die ERSTE Zeile des Einstellungs-Tabs traegt einen Text-Knopf
+ *  und den Icon-Knopf (`bug`, Tooltip als Name). Gemessen wird Position und Bedienung, nicht der
+ *  Wortlaut — sprachfrei, damit der Punkt in einer EN- und einer DE-Instanz laeuft. */
+async function v9b_hilfeZeile(cdp: Cdp): Promise<void> {
+  const name = "V9b Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf";
+  await evaluieren(cdp, `app.setting.open(); app.setting.openTabById(${JSON.stringify(PLUGIN_ID)}); return true;`);
+  await warte(1800);
+  let fenster = null;
+  const frist = Date.now() + 12_000;
+  while (fenster === null && Date.now() < frist) {
+    fenster = await attachTo("settings", PORT, VAULT).catch(() => null);
+    if (fenster === null) await warte(700);
+  }
+  if (!fenster) {
+    pruefe(name, false, "kein Einstellungs-Fenster gefunden");
+    return;
+  }
+  try {
+    const hilfe = await fenster.evaluate<{ name: string; knoepfe: number; icon: string | null } | null>(
+      `const erste = document.querySelector(".setting-item");
+       if (!erste) return null;
+       return {
+         name: erste.querySelector(".setting-item-name")?.textContent?.trim() ?? "",
+         knoepfe: erste.querySelectorAll("button").length,
+         icon: erste.querySelector(".extra-setting-button")?.getAttribute("aria-label") ?? null,
+       };`,
+    );
+    pruefe(
+      name,
+      hilfe !== null && hilfe.name !== "" && hilfe.knoepfe === 1 && !!hilfe.icon,
+      hilfe ? `erste Zeile „${hilfe.name}“ · Text-Knöpfe ${hilfe.knoepfe} · Icon „${hilfe.icon ?? "keiner"}“` : "kein Settings-DOM",
+    );
+  } finally {
+    fenster.close();
+    await evaluieren(cdp, `app.setting.close(); return true;`).catch(() => undefined);
+  }
+}
+
 // ── Posteingang (Hub-Tabs: Cockpit / Inbox) ────────────────────────────────────────────
 //
 // Diese drei Punkte pruefen Verdrahtung wie die zehn davor — nicht Postfach-Logik (dafuer
@@ -1436,6 +1474,7 @@ async function main(): Promise<void> {
     console.log("── Defensive Pfade");
     await v7_kaputtesRegisterKipptDenStartNicht(cdp, datenDatei);
     await v9_einstellungenOeffnenTrifftDenEigenenTab(cdp);
+    await v9b_hilfeZeile(cdp);
     console.log("");
 
     console.log("── Posteingang (Hub-Tabs)");
