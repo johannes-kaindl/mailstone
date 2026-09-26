@@ -1,146 +1,129 @@
 # Mailstone
 
-Mailstone bringt Mail als Notizen in den Vault: ein **Ordner auf dem Mailserver** (ein
-IMAP-Postfach, das du auf dem Server wählst, nicht im Plugin) entscheidet, was zur Notiz wird —
-die Sichtung bleibt damit dort, wo die Mail ohnehin liegt, statt einen zweiten Posteingang in
-Obsidian nachzubauen. Antworten aus einer Notiz heraus gehen über dasselbe Konto per SMTP, und
-das Plugin verschickt iMIP-Kalendereinladungen im Auftrag des Schwester-Plugins
-[`calendar-notes`](https://git.jkaindl.de/jkaindl/calendar-notes), dem das eigentliche
-Termin-/Teilnehmer-Modell gehört.
+> [🇬🇧 English](https://github.com/johannes-kaindl/mailstone/blob/main/README.md) · 🇩🇪 Deutsch
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/gitea/v/release/jkaindl/mailstone?gitea_url=https%3A%2F%2Fgit.jkaindl.de&label=release)](https://git.jkaindl.de/jkaindl/mailstone/releases)
-[![Obsidian](https://img.shields.io/badge/obsidian-1.13.0%2B%20·%20nur%20Desktop-purple)](https://obsidian.md)
+**Mailstone macht aus einem Mail-Ordner auf deinem Server Notizen in deinem Vault — der Server entscheidet, was zur Notiz wird, und Lesen markiert nie eine Nachricht als gelesen.**
 
-> **Hinweis:** Diese Übersetzung folgt der englischen [`README.md`](README.md).
-> Bei Abweichungen gilt die englische Fassung.
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](https://github.com/johannes-kaindl/mailstone/blob/main/LICENSE)
+[![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](https://github.com/johannes-kaindl/mailstone/blob/main/LICENSE-DOCS)
+[![Release](https://img.shields.io/github/v/release/johannes-kaindl/mailstone?label=release)](https://github.com/johannes-kaindl/mailstone/releases)
+![Platform](https://img.shields.io/badge/platform-Obsidian%201.13%2B%20·%20Desktop%20%26%20Mobil%20(lesen)-7c3aed)
 
-## Was es tut
+> **Hinweis:** Diese Übersetzung folgt der englischen [`README.md`](https://github.com/johannes-kaindl/mailstone/blob/main/README.md). Bei Abweichungen gilt die englische Fassung.
 
-- **Mail als Notiz.** Ein Ordner auf dem Server entscheidet, was zur Notiz wird; die Message-ID
-  ist die Identität, und die ursprüngliche `.eml` bleibt als Treuefläche neben der Notiz liegen.
-- **Ein Panel in der rechten Seitenleiste.** Pro Konto: was der letzte Lauf getan hat, wann der
-  nächste fällig ist, die Zähler, die nicht null sind, der Fehler in Klartext — und ein Knopf zum
-  sofortigen Synchronisieren, für ein Konto oder alle. Der letzte Lauf überlebt einen Neustart.
-- **Ein Posteingangs-Tab.** Die letzten 100 Nachrichten aus deinem Posteingang, mit einem Häkchen
-  für alles, was schon als Notiz vorliegt. Drei Aktionen je Zeile: ins Vault übernehmen oder
-  archivieren — beides serverseitig, beides erst nach einer Rückfrage — oder, sobald
-  [TaskNotes](https://github.com/callumalpass/tasknotes) installiert ist, direkt eine Aufgabe
-  daraus anlegen.
-- **Kommandos auf einer Mail-Notiz** — neu rendern aus der `.eml`, Message-IDs in Wikilinks
-  verwandeln, einen Anhang extrahieren, im externen Mailprogramm antworten, eine TaskNotes-
-  Aufgabe daraus anlegen. Jedes zeigt eine Vorschau, bevor es schreibt.
-- **Versand.** SMTP über dasselbe Konto, einschließlich iMIP-Kalendereinladungen im Auftrag von
-  `calendar-notes`.
+Die Sichtung bleibt dort, wo die Mail ohnehin liegt: Verschiebe eine Nachricht in einen bestimmten IMAP-Ordner — vom Handy, aus dem Webmailer, per Mail-Regel —, und der nächste Sync schreibt sie als Markdown-Notiz in den Vault, mit der ursprünglichen `.eml` daneben. Der Versand läuft über dasselbe Konto per SMTP, und das Plugin verschickt iMIP-Kalendereinladungen im Auftrag des Schwester-Plugins [`calendar-notes`](https://github.com/johannes-kaindl/calendar-notes).
 
-**Stand: 0.3.0.** M1 (Gerüst und Formatschicht offline), M2 (SMTP-Transport, Konten,
-calendar-notes-Brücke), M3 (IMAP-Sync, am 2026-08-30 gegen ein echtes Postfach geprüft), M3b
-(Vault-Kommandos), das Sidebar-Panel und M4 (Posteingangs-Tab, serverseitiges Verschieben) sind
-fertig. Offen sind noch: eine Vorschau innerhalb der Liste, Anhangs-Marker und
-Tastaturnavigation.
+## Funktionen
+
+- **Mail als Notiz.** Ein Ordner auf dem Server entscheidet, was zur Notiz wird. Die Message-ID ist die Identität, und die ursprüngliche `.eml` bleibt neben der Notiz liegen — alles Abgeleitete lässt sich daraus neu aufbauen.
+- **Ein Panel in der rechten Seitenleiste.** Pro Konto: was der letzte Lauf getan hat, wann der nächste fällig ist, die Zähler, die nicht null sind, der Fehler in Klartext — und ein Knopf zum sofortigen Synchronisieren, für ein Konto oder alle. Der letzte Lauf überlebt einen Neustart.
+- **Ein Posteingangs-Tab.** Die letzten 100 Nachrichten deines Posteingangs, mit einem Häkchen für alles, was schon als Notiz vorliegt. Drei Aktionen je Zeile: *Ins Vault übernehmen* und *Archivieren* (beides serverseitig, beides erst nach einer Rückfrage) und — sobald [TaskNotes](https://github.com/callumalpass/tasknotes) installiert ist — *Aufgabe erstellen*.
+- **Kommandos auf einer Mail-Notiz.** Neu aufbauen aus der `.eml`, Threads neu verknüpfen, einen Anhang herausholen, im externen Mailprogramm antworten, eine TaskNotes-Aufgabe anlegen. Jedes zeigt eine Vorschau, bevor es schreibt.
+- **Import ohne Server.** *.eml-Dateien aus einem Vault-Ordner importieren* macht aus `.eml`-Dateien, die du schon hast, Notizen — ganz ohne Konto.
+- **Versand.** SMTP über dasselbe Konto, einschließlich iMIP-Einladungen für `calendar-notes`. Auch andere Plugins können über Mailstone senden, nachdem du jedes einmal bestätigt hast.
+- **Lesen markiert nie etwas als gelesen.** Auflisten, Vorschau und Sync nutzen `EXAMINE` und `BODY.PEEK`; beim Verschieben reisen die Flags mit. Ein anderes Werkzeug, das auf „ungelesen“ reagiert, wird nicht gestört.
+- **Mobil: lesen, was schon synchronisiert ist.** Synchronisierte Notizen sind auf Mobilgeräten gewöhnliche Markdown-Notizen. Sync, Versand und Posteingangs-Tab brauchen eine Netzwerkschicht, die mobiles Obsidian nicht bietet, und bleiben dort aus.
 
 ## Voraussetzungen
 
-- **Obsidian 1.13.0 oder neuer**, und zwar **nur am Desktop**. Das Plugin spricht IMAP und SMTP
-  über `node:tls`, das es im mobilen Obsidian nicht gibt.
-- **Ein IMAP-/SMTP-Konto**, das du mit einem App-Passwort erreichst. Anbieter, die OAuth verlangen
-  (Gmail mit 2FA, Microsoft 365), werden nicht unterstützt — es gibt keinen OAuth-Ablauf.
-- **Einen Ordner auf dem Mailserver**, der als Allowlist dient. Alles, was du dort ablegst, wird
-  zur Notiz; nichts anderes wird angefasst. Dazu einen zweiten Ordner für das Archiv.
-- **TLS ist nicht optional.** Die Zertifikatsprüfung lässt sich nicht abschalten, und
-  Klartext-Anmeldung ohne TLS wird verweigert.
+- **Obsidian 1.13.0 oder neuer.** Alles am Desktop; mobil nur das Lesen von Notizen, die ein Desktop schon synchronisiert hat.
+- **Ein IMAP/SMTP-Konto**, das du mit einem App-Passwort erreichst. Anbieter, die OAuth verlangen (Gmail mit 2FA, Microsoft 365), werden nicht unterstützt — es gibt keinen OAuth-Ablauf.
+- **Ein Ordner auf dem Mailserver**, der als Allowlist dient (Standardname `Vault`), und ein zweiter für das Archiv. Was du in den Allowlist-Ordner legst, wird zur Notiz; sonst wird nichts angefasst.
+- **TLS ist nicht optional.** Die Zertifikatsprüfung lässt sich nicht abschalten, und Klartext-Anmeldung ohne TLS wird verweigert.
 
 ## Installation
 
-Dieses Plugin wird **nicht über den Community-Store verteilt**. Es liegt auf einer eigenen Forge,
-und es gibt drei Wege dorthin.
+### Community Plugins
 
-**Empfohlen — über den [AnySource Sideloader](https://git.jkaindl.de/jkaindl/anysource-sideloader)**,
-der Plugins von beliebigen Git-Forges installiert und aktualisiert. Diesen Katalog einmal
-abonnieren:
+Die Aufnahme ins Community-Plugin-Verzeichnis steht noch im Review aus. Danach: Einstellungen → Community-Plugins → Durchsuchen → „Mailstone“. Bis dahin einen der folgenden Wege nutzen.
+
+### AnySource Sideloader
+
+Der [AnySource Sideloader](https://github.com/johannes-kaindl/anysource-sideloader) installiert und aktualisiert Plugins von jeder Git-Forge. Diesen Katalog einmal abonnieren:
 
 ```
 https://git.jkaindl.de/jkaindl/obsidian-catalog/raw/branch/main/catalog.json
 ```
 
-Mailstone erscheint danach in der Plugin-Liste des Sideloaders und aktualisiert sich wie jedes
-andere Plugin — kein Kopieren von Hand, und jeder Download wird per Prüfsumme verifiziert. Wer
-nur dieses eine Plugin ohne den Katalog will, trägt stattdessen dessen Repository-URL als Quelle
-ein: `https://git.jkaindl.de/jkaindl/mailstone`.
+Mailstone erscheint dann in der Plugin-Liste des Sideloaders und wird wie jedes andere Plugin aktualisiert, jeder Download mit Prüfsumme verifiziert.
 
-**Von Hand**, wenn du kein weiteres Plugin hinzufügen möchtest: `main.js`, `manifest.json` und
-`styles.css` aus dem [letzten Release](https://git.jkaindl.de/jkaindl/mailstone/releases/latest)
-nach `<vault>/.obsidian/plugins/mailstone/` legen und das Plugin unter Einstellungen →
-Community-Plugins aktivieren. Aktualisieren muss man dann jedes Mal von Hand.
+### Manuell
 
-**Aus dem Quelltext** — `npm install && npm run build`, dann dieselben drei Dateien in denselben
-Ordner kopieren. `npm run gate` fährt die vollständige Prüfkette (Lint, Typprüfungen, Unit- und
-Integrationstests, Reinheitsprüfung, Build). `npm run smoke:e2e` ist eine separate, nur für den
-Maintainer gedachte Prüfung: sie fährt ein echtes, laufendes Obsidian-Fenster mit tatsächlich
-installiertem [TaskNotes](https://github.com/callumalpass/tasknotes), um zu belegen, dass eine
-aus einer Mail-Notiz angelegte Aufgabe wirklich als Datei im Vault landet — bewusst nicht Teil
-von `gate`, weil sie dieses zweite Plugin voraussetzt.
+`main.js`, `manifest.json` und `styles.css` aus dem [letzten Release](https://github.com/johannes-kaindl/mailstone/releases/latest) nach `<vault>/.obsidian/plugins/mailstone/` legen, dann das Plugin unter Einstellungen → Community-Plugins aktivieren. Updates müssen dann von Hand wiederholt werden.
 
-## Konfiguration
+### BRAT (Beta)
 
-Einstellungen → Mailstone. Pro Konto stellst du ein:
+`johannes-kaindl/mailstone` in [BRAT](https://github.com/TfTHacker/obsidian42-brat) eintragen.
 
-| Einstellung | Was sie bedeutet |
-|---|---|
-| IMAP-/SMTP-Host, Port, TLS | `implicit` (meist Port 993/465) oder `starttls` (143/587) |
-| Benutzername und App-Passwort | Das Passwort liegt in Obsidians `secretStorage`, nie in `data.json` |
-| Identitäten | Eine oder mehrere Absenderadressen; eine davon ist die Voreinstellung |
-| `folders.inbox` | Der Ordner, den der Posteingangs-Tab auflistet. Vorgabe `INBOX` |
-| `folders.allowlist` | Der Ordner, der entscheidet, was zur Notiz wird |
-| `folders.archive` | Wohin „Archivieren" eine Nachricht verschiebt |
-| `folders.sent` | Wohin eine Kopie des Versands abgelegt wird. Vorgabe `Sent`; leer schaltet die Kopie ab |
-| Sync-Intervall | Minuten zwischen zwei Läufen, je Konto |
+### Aus dem Quelltext
 
-„Verbindung testen" im Einstellungs-Tab prüft Host, TLS und Zugangsdaten, ohne eine einzige Mail
-anzufassen.
+```bash
+git clone https://git.jkaindl.de/jkaindl/mailstone
+cd mailstone && npm install && npm run build
+# main.js manifest.json styles.css → <vault>/.obsidian/plugins/mailstone/
+```
 
-## Benutzung
+`npm run gate` fährt die komplette Prüfstrecke (Lint, Typprüfungen, Unit- und Integrationstests, Reinheitsprüfung, Build). `npm run smoke:e2e` ist eine reine Maintainer-Prüfung gegen ein laufendes Obsidian mit installiertem TaskNotes und bewusst nicht Teil von `gate`.
 
-**Konto einrichten**, dann auf dem Server entscheiden, welche Mail zählt: ins Allowlist-Verzeichnis
-verschieben — vom Telefon, aus dem Webmail, per Serverregel. Der nächste Sync macht daraus eine
-Notiz mit der ursprünglichen `.eml` daneben.
+## Verwendung
 
-**Oder vom Posteingangs-Tab aus arbeiten.** Seitenleiste öffnen (Ribbon-Symbol oder das Kommando
-*Mailstone: Seitenleiste öffnen*), auf **Posteingang** wechseln und bei allem, was bleiben soll,
-*Ins Vault übernehmen* wählen. Die Nachricht wandert auf dem Server in den Allowlist-Ordner, und
-der folgende Sync schreibt die Notiz.
+1. **Konto einrichten.** Einstellungen → Mailstone → *Konto hinzufügen*: IMAP- und SMTP-Host, Port und TLS-Modus, Benutzername, ein App-spezifisches Passwort, mindestens eine Identität und die Ordnernamen, wie dein IMAP-Server sie anzeigt. *SMTP-Verbindung testen* prüft Host, TLS und Anmeldung, ohne etwas zu senden.
+2. **Auf dem Server entscheiden, welche Mail wichtig ist.** In den Allowlist-Ordner verschieben. Der nächste Sync — alle paar Minuten oder *Jetzt synchronisieren* in der Seitenleiste — schreibt eine Notiz nach `Mail/<Jahr>/` und die `.eml` nach `Mail/<Jahr>/_eml/`.
+3. **Oder im Posteingangs-Tab arbeiten.** Seitenleiste über das Ribbon-Symbol oder den Befehl *Mailstone: Seitenleiste öffnen* öffnen, zu **Posteingang** wechseln und bei allem Aufhebenswerten *Ins Vault übernehmen* nutzen. Die Nachricht wandert auf dem Server in den Allowlist-Ordner, und der folgende Sync schreibt die Notiz.
+4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus ihrer .eml neu aufbauen*, *Mail-Threads neu verknüpfen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen.
 
-**Auf einer Mail-Notiz** bietet die Kommandopalette *neu rendern*, *Threads verlinken*, *Anhang
-extrahieren*, *extern antworten* und — sobald TaskNotes installiert ist — *Aufgabe anlegen*.
-Jedes zeigt vor dem Schreiben, was es ändern würde.
+### Konfiguration
 
-**Lesen markiert nie etwas als gelesen.** Auflisten, Vorschau und Sync nutzen durchweg `EXAMINE`
-und `BODY.PEEK`; ein Verschieben nimmt die Flags der Nachricht mit. Wenn ein anderes Werkzeug in
-deinem Aufbau über „ungelesen" gesteuert wird, kommt Mailstone ihm nicht in die Quere.
+Einstellungen → Mailstone. Pro Konto (*Konto hinzufügen* / *Bearbeiten*):
 
-## Wie es funktioniert
+| Einstellung | Wirkung | Standard |
+|---|---|---|
+| IMAP / SMTP: Host, Port, TLS | `Implizit` (meist 993/465) oder `STARTTLS` (143/587) | — |
+| Benutzername, Passwort | Das Passwort liegt in Obsidians Secret-Storage, nie in `data.json` oder im Vault | — |
+| Identitäten | Adressen, von denen du senden darfst; eine ist der Standard | — |
+| Ordner: Posteingang | Der Ordner, den der Posteingangs-Tab auflistet | `INBOX` |
+| Ordner: Allowlist | Der Ordner, der entscheidet, was zur Notiz wird | `Vault` |
+| Ordner: Archiv | Wohin *Archivieren* eine Nachricht verschiebt | `Archive` |
+| Ordner: Gesendet | Wo eine Kopie des Gesendeten abgelegt wird; leer schaltet die Kopie ab | `Sent` |
+| Synchronisation aktiv / Sync-Intervall (Minuten) | Automatischer Sync pro Konto | an / 5 |
 
-**Der Server entscheidet, nicht das Plugin.** Ein Ordner auf dem Mailserver ist die Allowlist. Der
-Sync liest ihn, und jede Nachricht darin wird zur Notiz — keine Regel-Maschine, keine Filter im
-Plugin. Die Sichtung bleibt in dem Werkzeug, das du für Mail ohnehin benutzt.
+Globale Einstellungen:
 
-**Die Message-ID ist die Identität.** Sie übersteht erneutes Herunterladen, Ordnerwechsel und
-umbenannte Dateien. Die `.eml` neben jeder Notiz ist die Treuefläche: alles Abgeleitete —
-Frontmatter, gerenderter Text, Anhänge — lässt sich daraus neu erzeugen, eine Formatänderung
-kostet dich also nie Daten.
+| Einstellung | Wirkung | Standard |
+|---|---|---|
+| Notiz-Ordner | Wo Mail-Notizen entstehen, je Jahr ein Unterordner | `Mail` |
+| Unterordner je Jahr | Schaltet die Jahres-Unterordner ab | an |
+| Dateinamen-Vorlage | Platzhalter `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
+| Zusatzfelder für neue Mail-Notizen | Felder, die beim ersten Anlegen einmalig ins Frontmatter geschrieben werden, etwa `status: open` | keine |
+| Erlaubte Werte bei Neuanlage | Werte, die für die beim Anlegen geschriebenen Felder zulässig sind | `mail` |
+| Plugins mit Sendeerlaubnis | Plugins, die ohne Rückfrage über Mailstone senden; Widerruf fragt wieder | keine |
+| Beim Start öffnen | Öffnet das Seitenleisten-Panel beim Start von Obsidian | aus |
+| Debug-Protokoll | Schreibt den IMAP-/SMTP-Dialog in die Entwicklerkonsole, Passwörter maskiert | aus |
+| Sprache | Oberflächensprache | Automatisch |
 
-**Notizen werden zusammengeführt, nicht überschrieben.** Dein eigener Text steht außerhalb einer
-markierten Zone und wird vor jedem Schreibvorgang per Hash verglichen. Hast du die verwaltete Zone
-bearbeitet, wird der Schreibvorgang verweigert statt still ausgeführt. Mailstone löscht nie eine
-Notiz — eine Nachricht, die den Ordner verlässt, wird als `detached` markiert, und wer sie
-zurücklegt, hängt sie wieder an.
+## Dokumentation
 
-**Zwei Verbindungstypen, vom Compiler bewacht.** Der lesende Weg (`imapConnect`) hat gar keine
-Möglichkeit, `SELECT` oder `UID MOVE` aufzurufen — die liegen auf einer eigenen, schreibfähigen
-Sitzung, die genau ein Codepfad benutzt: die beiden Posteingangs-Aktionen. Deshalb ist „Lesen
-markiert nie als gelesen" hier eine Eigenschaft des Typsystems und keine Regel, an die sich jemand
-erinnern muss.
+- [Dokumentations-Index](https://github.com/johannes-kaindl/mailstone/blob/main/docs/README.md) (englisch)
+- [Erste Schritte](https://github.com/johannes-kaindl/mailstone/blob/main/docs/getting-started.md) (englisch) — von der Installation bis zur ersten Mail-Notiz
+- [Fehlerbehebung](https://github.com/johannes-kaindl/mailstone/blob/main/docs/how-to/troubleshooting.md) (englisch) — die Fehlermeldungen, ihre Ursachen und was zu tun ist
+
+## Funktionsweise
+
+**Der Server entscheidet, nicht das Plugin.** Ein Ordner auf dem Mailserver ist die Allowlist. Der Sync liest ihn, und jede Nachricht darin wird zur Notiz — keine Regel-Engine, keine Filter im Plugin.
+
+**Die Message-ID ist die Identität.** Sie überlebt erneutes Herunterladen, Ordnerwechsel und umbenannte Dateien. Die `.eml` neben jeder Notiz ist die Treuefläche: Frontmatter, gerenderter Text und Anhänge lassen sich daraus neu aufbauen, eine Formatänderung kostet also nie Daten.
+
+**Notizen werden zusammengeführt, nicht überschrieben.** Dein eigener Text steht außerhalb einer markierten Zone (`%% mailstone:begin %%` … `%% mailstone:end %%`) und wird vor jedem Schreiben per Hash verglichen. Hast du den verwalteten Abschnitt von Hand bearbeitet, wird das Schreiben verweigert, statt es still anzuwenden. Mailstone löscht nie eine Notiz: Eine Nachricht, die den Ordner verlässt, wird als `detached` markiert, und beim Zurücklegen wird sie wieder verbunden.
+
+**Zwei Arten von IMAP-Sitzung, vom Compiler erzwungen.** Der Lesepfad kann weder `SELECT` noch `UID MOVE` aufrufen; beides liegt auf einer getrennten Sitzung, die nur die Posteingangs-Aktionen nutzen. Deshalb ist „Lesen markiert nie als gelesen“ eine Eigenschaft des Typsystems und keine Regel, an die jemand denken muss. Architektur und Konventionen stehen in [`AGENTS.md`](https://github.com/johannes-kaindl/mailstone/blob/main/AGENTS.md).
+
+## Mitwirken
+
+Issues und Pull Requests auf [GitHub](https://github.com/johannes-kaindl/mailstone/issues); das kanonische Repository liegt auf [git.jkaindl.de](https://git.jkaindl.de/jkaindl/mailstone). Testgetrieben (`npm test`, volle Prüfung mit `npm run gate`); größere Features laufen über Brainstorm → Spec → Plan → TDD. Siehe [`AGENTS.md`](https://github.com/johannes-kaindl/mailstone/blob/main/AGENTS.md).
 
 ## Lizenz
 
-AGPL-3.0-or-later, siehe [`LICENSE`](LICENSE) und [`LICENSING.md`](LICENSING.md).
+- **Code:** AGPL-3.0-or-later ([`LICENSE`](https://github.com/johannes-kaindl/mailstone/blob/main/LICENSE); Dual-License-Option in [`LICENSING.md`](https://github.com/johannes-kaindl/mailstone/blob/main/LICENSING.md)).
+- **Doku/Text:** CC BY-SA 4.0 ([`LICENSE-DOCS`](https://github.com/johannes-kaindl/mailstone/blob/main/LICENSE-DOCS)).
+
+Copyright © 2026 Johannes Kaindl.
