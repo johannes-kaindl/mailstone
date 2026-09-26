@@ -24,18 +24,7 @@ Handproben-Protokoll `docs/SMOKE.md`.
   sieht die Integrationstests nicht — durch genau diese Lücke lag ein Bruch tagelang auf `main`.
 - Desktop-only (`node:tls`/`node:net` via dynamischem Import in `src/obsidian/tls-transport.ts`,
   `isDesktopOnly: true`). `src/obsidian/node-sockets.d.ts` ist bewusst kein Modul.
-- **GitHub ist aufgegeben (2026-09-06), `origin` auf Forgejo ist die einzige Quelle.** Das
-  `github`-Remote ist entfernt und `npm run release` fährt fest mit `--no-github`; verteilt wird
-  über den Forgejo-Release und den Katalog, den `anysource-sideloader` abonniert (mailstone ist
-  dort gelistet). **Die Reihenfolge ist nicht beliebig:** ohne das Flag ist ein fehlendes
-  `github`-Remote ein harter Abbruch von `release.mjs` (`preflight.mjs`: „Remote 'github' fehlt")
-  — wer nur das Remote löscht, zerstört die Releases. Der Vorzustand war ein Mirror, der
-  ohnehin nicht trug (gemessen 2026-09-01: 42 min nach dem Push stand GitHub unverändert), also
-  ein Weg, der Handarbeit kostete und niemanden erreichte. Nebeneffekt, der eine Fußangel
-  strukturell schließt: der Schlusstext „jetzt Rescan anstoßen" war für dieses Repo immer falsch
-  (kein Store-Release, ein Scan gälte als durchgefallen) — unter `--no-github` gibt ihn das
-  Skript gar nicht mehr aus. `.github/workflows/release.yml` bleibt als byte-identische
-  Template-Kopie liegen (`tools/template_drift_check.py` bewacht sie); sie läuft nur nirgends.
+- **GitHub ist wieder der Verteilweg (Rückkehr 2026-09-24), `origin` auf Forgejo bleibt die Quelle.** Das `github`-Remote steht, `npm run release` fährt ohne `--no-github`: `release.mjs` pusht Branch und Tag per Dual-Push zusätzlich nach GitHub, der Tag löst `release.yml` aus, und das GitHub-Release ist der Weg zum Community Store (Erst-Einreichung und Rescan macht Johannes im Developer Dashboard). Ein Push auf `origin` erreicht GitHub **nicht** von selbst — der Forgejo-Push-Mirror ist gelöscht, GitHub bekommt Branch und Tag nur über `release.mjs`; ein manuelles `git push github main` gehört nicht dazu. Daneben bleibt der AnySource-Katalog ein Weg (mailstone ist dort gelistet). *Chronik: vom 2026-09-06 bis 2026-09-24 war GitHub aufgegeben (Remote entfernt, `--no-github` fest im Script, Eintrag in `mirror_drift_check.AUSNAHMEN`); der Mirror trug damals ohnehin nicht (gemessen 2026-09-01: 42 min nach dem Push stand GitHub unverändert).* `.github/workflows/release.yml` ist eine byte-identische Template-Kopie (`tools/template_drift_check.py` bewacht sie).
 - Dach-Regeln gelten: `../AGENTS.md` (Kit-first, Release über `../tools/release/`, Store-Flow,
   CDP-Lock vor jedem Zugriff auf ein laufendes Obsidian).
 
