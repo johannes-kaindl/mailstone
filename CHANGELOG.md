@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-09-26
+
 ### Geändert
 - Intern: Das Kit-Vendoring läuft über das zentrale Dach-Werkzeug (`tools/kit-sync.json`, `tools/sync-kit.sh` ist nur noch ein Aufruf). Alle vendorten Dateien sind byte-gleich, für Nutzer ändert sich nichts.
 
