@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-09-26
+
 ### Dokumentation
 - **README (EN/DE) nach dem Workspace-Standard neu geschrieben.** Der Stand „0.3.0“ und die Aussagen „nur Desktop“ und „nicht im Community Store“ waren überholt; Installationswege (Community Plugins, Sideloader, manuell, BRAT, Quelltext), Mobile-Lesemodus und die Konfigurationstabellen (Konto und global, mit Standardwerten) stehen jetzt drin, alle Links absolut auf GitHub.
 - **Nutzer-Doku unter `docs/`:** Index nach Diátaxis, „Getting started“ (von der Installation bis zur ersten Mail-Notiz, mit `.eml`-Import ohne Konto) und „Troubleshooting“ (die Meldungen im Wortlaut, Ursache, Abhilfe; Offline-Verhalten und Mobile-Grenzen).
