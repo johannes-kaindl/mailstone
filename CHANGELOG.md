@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Das GitHub-Release trägt jetzt zusätzlich ein entpackfertiges `mailstone.zip` (der Plugin-Ordner mit `main.js`, `manifest.json` und `styles.css`) sowie eine `checksums.sha256`. Für eine manuelle Installation reicht das Zip herunterladen und in `.obsidian/plugins/` entpacken, statt den Ordner selbst anzulegen und drei Dateien einzeln zu speichern.
+
 ## [0.7.1] — 2026-09-26
 
 ### Geändert
