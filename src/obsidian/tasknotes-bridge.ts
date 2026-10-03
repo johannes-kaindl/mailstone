@@ -21,7 +21,7 @@ function isTaskNotesApi(v: unknown): v is TaskNotesApiSubset {
   // hasCapability("tasks.create") === false, waehrend api.tasks.create funktioniert
   // (tasks.write sagt true). Die Capability-Strings sind nicht systematisch — jeder aus
   // einem Methodennamen abgeleitete String ist unzuverlaessig. typeof ist die haltbare
-  // Pruefung. Details: docs/superpowers/specs/2026-09-05-m5-tasknotes-design.md Paragraph 2.2
+  // Pruefung. Details: Vault-Cockpit _SDD/2026-09-05-m5-tasknotes-design.md Paragraph 2.2
   return (
     o.apiVersion === TASKNOTES_API_VERSION &&
     typeof tasks?.create === "function" &&

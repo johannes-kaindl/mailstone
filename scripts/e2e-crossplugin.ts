@@ -1,7 +1,7 @@
 /**
  * Naht-Lauf: die TaskNotes-Kopplung gegen ein ECHT installiertes TaskNotes, nicht gegen den
  * Stub aus `scripts/gui-smoke.ts`. M5 Task 9 (`.superpowers/sdd/2026-09-05-m5-tasknotes/
- * task-9-brief.md`), Design: `docs/superpowers/specs/2026-09-05-m5-tasknotes-design.md` § 8.1/§ 9.
+ * task-9-brief.md`), Design: Vault-Cockpit `_SDD/2026-09-05-m5-tasknotes-design.md` § 8.1/§ 9.
  *
  * ## Warum es diesen Lauf gibt
  *
