@@ -9,6 +9,11 @@ All notable changes to this project are documented here. The format follows
 ### Added
 - The GitHub release now also carries a ready-to-unpack `mailstone.zip` (the plugin folder with `main.js`, `manifest.json` and `styles.css`) and a `checksums.sha256`. For a manual installation, download the zip and unpack it into `.obsidian/plugins/` instead of creating the folder yourself and saving three files one by one.
 
+### Changed
+
+- The changelog is now written entirely in English.
+- Internal design notes moved out of the repository; the user documentation is unchanged.
+
 ## [0.7.1] — 2026-09-26
 
 ### Changed
