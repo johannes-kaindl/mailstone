@@ -2,9 +2,7 @@
 
 Mail als Vault-Notiz: ein **Server-Ordner** entscheidet als Allowlist, was Notiz wird; die
 Message-ID ist die Identität, das `.eml` liegt als Treuefläche daneben. Dazu SMTP-Versand, den
-`calendar-notes` als iMIP-Transport registriert. Spec:
-`docs/superpowers/specs/2026-08-23-mailstone-design.md`, Pläne unter `docs/superpowers/plans/`,
-Handproben-Protokoll `docs/SMOKE.md`.
+`calendar-notes` als iMIP-Transport registriert. Specs und Pläne liegen im Vault-Cockpit unter `_SDD/` (CORE-META-14), z. B. `_SDD/2026-08-23-mailstone-design.md`; Handproben-Protokoll `docs/SMOKE.md`.
 
 > **Workspace-Standards (maintainer-lokal):** Die verbindliche Leitkonvention steht in
 > `_docs/CONVENTIONS.md` im Multi-Projekt-Workspace des Maintainers, `../../_docs` relativ zu
@@ -141,7 +139,7 @@ das verlangt die Dach-Regel. **Die Erlaubnis hängt an zwei Bedingungen, nicht a
 auf ausdrücklichen Nutzerbefehl. Ein Automatismus, der ohne Zutun des Nutzers anlegt, wäre auch
 dann Verwaltung, wenn er danach loslässt — deshalb legt der Sync **nie** eine Aufgabe an, nur
 das Kommando und der Knopf im Posteingang tun das. Details, inkl. der mit `calendar-notes` abgestimmten
-REGISTRY-Präzisierung: Spec `docs/superpowers/specs/2026-09-05-m5-tasknotes-design.md` § 7.
+REGISTRY-Präzisierung: Spec Vault-Cockpit `_SDD/2026-09-05-m5-tasknotes-design.md` § 7.
 
 **Zwei Vorab-Prüfungen der fremden API bleiben bewusst ungenutzt, beide durch einen echten
 Aufruf widerlegt** (TaskNotes 4.12.5, gemessen 2026-09-05, Spec § 8/§ 2.2):
@@ -237,6 +235,6 @@ dort nicht hingehört.
 
 ## Nutzer-Doku und README-Bilder
 
-`docs/README.md` ist der Doku-Index (Diátaxis, nur Quadranten mit Inhalt), `docs/getting-started.md` und `docs/how-to/troubleshooting.md` sind die zwei Pflichtteile. Alles andere unter `docs/` (`SMOKE.md`, datierte Notizen, `superpowers/`) ist Maintainer-Material und wird aus der README nicht verlinkt. Die Symptomtexte im Troubleshooting sind wörtliche Strings aus `src/i18n/strings.ts`: wer dort einen Text ändert, zieht die Doku mit (CORE-META-18).
+`docs/README.md` ist der Doku-Index (Diátaxis, nur Quadranten mit Inhalt), `docs/getting-started.md` und `docs/how-to/troubleshooting.md` sind die zwei Pflichtteile. Alles andere unter `docs/` (`SMOKE.md`) ist Maintainer-Material und wird aus der README nicht verlinkt. Die Symptomtexte im Troubleshooting sind wörtliche Strings aus `src/i18n/strings.ts`: wer dort einen Text ändert, zieht die Doku mit (CORE-META-18).
 
 Die README-Bilder entstehen mit `npm run shots` in einer Zweitinstanz, der Vertrag steht in `docs/images/README.md`. Zwei Dinge daran sind gesetzt statt gemessen (Konto und Laufzustand im Seitenpanel), weil ein Sync ein echtes Postfach braucht — der Vertrag nennt sie.

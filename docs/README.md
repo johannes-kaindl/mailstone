@@ -11,4 +11,4 @@ Organised after [Diátaxis](https://diataxis.fr/): learning, doing, looking up a
 | **[Getting started](getting-started.md)** | Learning-oriented. One guided run-through: install, import a mail without any account, connect your mailbox, sync. |
 | **[Troubleshooting](how-to/troubleshooting.md)** | Task-oriented. "The server rejected the login" — now what? Also: what happens offline, and what mobile can and cannot do. |
 
-Everything else in this folder (`SMOKE.md`, the dated notes, `superpowers/`) is maintainer material, not user documentation.
+Everything else in this folder (`SMOKE.md`) is maintainer material, not user documentation.
