@@ -6,315 +6,313 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Hinzugefügt
-- Das GitHub-Release trägt jetzt zusätzlich ein entpackfertiges `mailstone.zip` (der Plugin-Ordner mit `main.js`, `manifest.json` und `styles.css`) sowie eine `checksums.sha256`. Für eine manuelle Installation reicht das Zip herunterladen und in `.obsidian/plugins/` entpacken, statt den Ordner selbst anzulegen und drei Dateien einzeln zu speichern.
+### Added
+- The GitHub release now also carries a ready-to-unpack `mailstone.zip` (the plugin folder with `main.js`, `manifest.json` and `styles.css`) and a `checksums.sha256`. For a manual installation, download the zip and unpack it into `.obsidian/plugins/` instead of creating the folder yourself and saving three files one by one.
 
 ## [0.7.1] — 2026-09-26
 
-### Geändert
-- Intern: Das Kit-Vendoring läuft über das zentrale Dach-Werkzeug (`tools/kit-sync.json`, `tools/sync-kit.sh` ist nur noch ein Aufruf). Alle vendorten Dateien sind byte-gleich, für Nutzer ändert sich nichts.
+### Changed
+- Internal: kit vendoring now runs through the central workspace tool (`tools/kit-sync.json`; `tools/sync-kit.sh` is just a call). All vendored files are byte-identical, nothing changes for users.
 
 ## [0.7.0] — 2026-09-26
 
-### Hinzugefügt
-- Hilfe-Zeile oben in den Einstellungen mit Links auf die Dokumentation und den Issue-Tracker (Englisch und Deutsch).
+### Added
+- Help row at the top of the settings with links to the documentation and the issue tracker (English and German).
 
 ## [0.6.1] — 2026-09-26
 
-### Dokumentation
-- **README (EN/DE) nach dem Workspace-Standard neu geschrieben.** Der Stand „0.3.0“ und die Aussagen „nur Desktop“ und „nicht im Community Store“ waren überholt; Installationswege (Community Plugins, Sideloader, manuell, BRAT, Quelltext), Mobile-Lesemodus und die Konfigurationstabellen (Konto und global, mit Standardwerten) stehen jetzt drin, alle Links absolut auf GitHub.
-- **Nutzer-Doku unter `docs/`:** Index nach Diátaxis, „Getting started“ (von der Installation bis zur ersten Mail-Notiz, mit `.eml`-Import ohne Konto) und „Troubleshooting“ (die Meldungen im Wortlaut, Ursache, Abhilfe; Offline-Verhalten und Mobile-Grenzen).
-- **Fünf README-Bilder** samt Aufnahme-Vertrag (`docs/images/README.md`), Fixture und Rezept (`npm run shots`); `LICENSE-DOCS` ergänzt.
+### Documentation
+- **README (EN/DE) rewritten to the workspace standard.** The "0.3.0" status and the statements "desktop only" and "not in the Community Store" were outdated; installation paths (Community Plugins, Sideloader, manual, BRAT, source), the mobile read mode and the configuration tables (account and global, with defaults) are now included, all links absolute on GitHub.
+- **User documentation under `docs/`:** index organised by Diátaxis, "Getting started" (from installation to the first mail note, with `.eml` import without an account) and "Troubleshooting" (the messages verbatim, cause, remedy; offline behaviour and mobile limits).
+- **Five README images** together with a recording contract (`docs/images/README.md`), fixture and recipe (`npm run shots`); `LICENSE-DOCS` added.
 
 ## [0.6.0] — 2026-09-24
 
-### Hinzugefügt
-- **Lesemodus auf Mobile.** `isDesktopOnly` steht jetzt auf `false`: bereits synchronisierte
-  Mail-Notizen sind auf Mobile wie jede andere Markdown-Notiz lesbar, Übersicht (Cockpit) und
-  die TaskNotes-Verknüpfung bleiben aktiv. Sync, Versand (Test-Mail) und der Posteingang-Tab
-  (live-lesendes IMAP-Browsing) brauchen die Socket-Schicht, die auf Mobile nicht lädt — ihre
-  Befehle/Tabs/Knöpfe bleiben deshalb aus, ein Hinweistext ersetzt sie. Die Einstellungen
-  nennen auf Mobile den Zeitpunkt des letzten erfolgreichen Desktop-Syncs. Kein Bearbeiten,
-  kein Merge-Pfad — beides bleibt eine spätere Etappe, sobald ein konkreter Mobile-Fall es
-  verlangt (Entscheidung Johannes 2026-09-16/17).
-- **Neue Einstellung „Erlaubte Werte bei Neuanlage".** Beim Laden werden die Werte im
-  `onCreate`-Frontmatter (z. B. `type: mail`) gegen eine plugin-eigene, in den Einstellungen
-  konfigurierbare Liste geprüft (Default: `mail`). Ein Wert außerhalb der Liste wird nicht
-  still verworfen, sondern auf den Default zurückgesetzt und per Hinweis gemeldet
+### Added
+- **Read mode on mobile.** `isDesktopOnly` is now `false`: mail notes that have already been
+  synced are readable on mobile like any other Markdown note, and the overview (cockpit) and
+  the TaskNotes link stay active. Sync, sending (test mail) and the inbox tab
+  (live-reading IMAP browsing) need the socket layer, which does not load on mobile — their
+  commands/tabs/buttons therefore stay off, and a hint text replaces them. On mobile, the settings
+  show the time of the last successful desktop sync. No editing,
+  no merge path — both remain a later stage, once a concrete mobile case
+  calls for it (decision by Johannes, 2026-09-16/17).
+- **New setting "Allowed values on creation".** On load, the values in the
+  `onCreate` frontmatter (e.g. `type: mail`) are checked against a plugin-specific list that is
+  configurable in the settings (default: `mail`). A value outside the list is not
+  silently discarded but reset to the default and reported with a notice
 
-### Geändert
-- **`authorUrl` im Manifest zeigt wieder auf das GitHub-Profil** (`https://github.com/johannes-kaindl`) — Rückkehr in den Community Store.
-- **Kit-Pin auf `obsidian-kit` 0.36.2 / `code-kit` 0.6.0.**
-- **Kit-Pin auf `obsidian-kit` 0.37.1.** Zusätzlich vendort: das Schlüsselbund-Modul
-  (`src/vendor/kit/secrets.ts` + `src/vendor/kit-obsidian/secrets.ts`) ersetzt die
-  eigene Kopie. Sichtbare Verhaltensänderungen (CORE-META-21): ein Passwort mit
-  abschließendem Zeilenumbruch (typischer `pbcopy < datei`-Rest) wird jetzt vor dem
-  Speichern bereinigt; ein leeres Schlüsselbund-Secret liefert jetzt `null` statt eines
-  leeren Strings — Sync und Versand melden dafür korrekt „kein Secret" statt einen
-  Login-Versuch mit leerem Passwort zu unternehmen; Konto-Entfernen ruft jetzt `delete()`
-  statt `set(id, "")` (technisch identische Wirkung beim Obsidian-Schlüsselbund, da die
-  API kein echtes Löschen kennt).
-- **C0-Wächter nachgerüstet** (`scripts/check-no-nul-bytes.mjs`, verdrahtet in `check:pure`).
+### Changed
+- **`authorUrl` in the manifest points to the GitHub profile again** (`https://github.com/johannes-kaindl`) — return to the Community Store.
+- **Kit pin on `obsidian-kit` 0.36.2 / `code-kit` 0.6.0.**
+- **Kit pin on `obsidian-kit` 0.37.1.** Additionally vendored: the keychain module
+  (`src/vendor/kit/secrets.ts` + `src/vendor/kit-obsidian/secrets.ts`) replaces the
+  own copy. Visible behaviour changes (CORE-META-21): a password with a
+  trailing line break (the typical `pbcopy < file` leftover) is now cleaned before
+  saving; an empty keychain secret now returns `null` instead of an
+  empty string — sync and sending correctly report "no secret" instead of
+  attempting a login with an empty password; removing an account now calls `delete()`
+  instead of `set(id, "")` (technically the same effect with the Obsidian keychain, since the
+  API has no real delete).
+- **C0 guard retrofitted** (`scripts/check-no-nul-bytes.mjs`, wired into `check:pure`).
 
 ## [0.5.0] — 2026-09-07
 
-### Hinzugefügt
-- **Andere Plugins können Mail über mailstone verschicken.** Beim ersten Mal fragt ein Dialog
-  mit Absender, Empfänger, Betreff und dem vollständigen Text; wer *Senden und immer erlauben*
-  wählt, wird für dieses Plugin nicht wieder gefragt. Die Erlaubnisse stehen in den
-  Einstellungen und lassen sich einzeln widerrufen. Ohne Antwort schließt der Dialog nach einer
-  Minute, **ohne** zu senden
-- **Der Absender wird bei der Freigabe festgelegt, nicht vom aufrufenden Plugin.** Ein Plugin
-  kann eine Adresse vorschlagen; entschieden wird sie im Dialog, und ab dann gilt die gemerkte —
-  ein späterer Vorschlag ändert daran nichts
-- **Der bisherige Weg bleibt unverändert:** Termineinladungen aus `calendar-notes` laufen weiter
-  wie bisher und lösen keinen Dialog aus
+### Added
+- **Other plugins can send mail through mailstone.** The first time, a dialog asks
+  and shows sender, recipient, subject and the full text; anyone who chooses *Send and always allow*
+  is not asked again for that plugin. The permissions are listed in the
+  settings and can be revoked individually. Without an answer, the dialog closes after one
+  minute **without** sending
+- **The sender is fixed at approval, not by the calling plugin.** A plugin
+  can suggest an address; it is decided in the dialog, and from then on the remembered one applies —
+  a later suggestion does not change that
+- **The previous path stays unchanged:** calendar invitations from `calendar-notes` keep working
+  as before and do not trigger a dialog
 
-### Geändert
-- **GitHub ist aufgegeben — verteilt wird über Forgejo und den Plugin-Katalog.** Das
-  `github`-Remote ist entfernt und `npm run release` fährt fest mit `--no-github`. Für Nutzer
-  ändert sich nichts: der empfohlene Weg (AnySource Sideloader mit dem abonnierten Katalog) und
-  der Download von `git.jkaindl.de` waren schon vorher die einzigen, die trugen. Der
-  GitHub-Spiegel antwortete anonym mit 404 und wurde ohnehin nicht mehr beliefert
-- **Der Herkunftslink auf `obsidian-kit` in `THIRD-PARTY.md` zeigte ins Leere** (auf ein
-  GitHub-Profil, das mit 404 antwortet, und dort ohnehin auf das Profil statt auf das Repo). Er
-  zeigt jetzt auf `git.jkaindl.de/jkaindl/obsidian-kit`
+### Changed
+- **GitHub is abandoned — distribution goes through Forgejo and the plugin catalog.** The
+  `github` remote is removed and `npm run release` runs with `--no-github` fixed. Nothing
+  changes for users: the recommended path (AnySource Sideloader with the subscribed catalog) and
+  the download from `git.jkaindl.de` were already the only ones that worked. The
+  GitHub mirror answered anonymously with 404 and was no longer being updated anyway
+- **The provenance link to `obsidian-kit` in `THIRD-PARTY.md` pointed nowhere** (to a
+  GitHub profile that answers with 404, and even there to the profile instead of the repo). It
+  now points to `git.jkaindl.de/jkaindl/obsidian-kit`
 
 ## [0.4.1] — 2026-09-05
 
-### Behoben
-- **Denselben Anhang zweimal zu extrahieren legt keine zweite Datei mehr an.** Liegt am
-  Zielnamen bereits eine **byte-gleiche** Datei, wird sie verlinkt statt kopiert. Verglichen
-  werden die Bytes, nicht der Dateiname — zwei gleichnamige, aber verschiedene Anhänge
-  derselben Mail bleiben weiterhin beide extrahierbar
-- **Ein Formular ohne wählbare Option geht gar nicht mehr auf.** Führte das Frontmatter
-  Anhänge, die die `.eml` nicht mehr enthält, erschien ein Dropdown ohne Eintrag, und jeder
-  Absendeversuch scheiterte mit einer technischen Meldung; Abbrechen war der einzige Ausgang.
-  Jetzt erklärt eine Meldung den Grund, bevor das Formular erscheint
-- **Wikilinks werden nicht mehr gebaut, wenn sie nicht tragen.** Ein Notizname mit `#`, `|`,
-  `[`, `]` oder `^` ergab einen Link, der auf etwas anderes zeigte. Solche Ziele bleiben jetzt
-  als reine Message-ID stehen — betrifft `mail.relink` und das Neu-Ableiten beim Re-Render
-- **`mail.relink` zeigt übersprungene Notizen an, statt sie stillschweigend auszulassen.** Eine
-  Notiz mit unlesbarem Frontmatter oder ohne verwaltete Zone erscheint jetzt in der
-  Abschlussmeldung als übersprungen
-- **Eine unbalancierte öffnende `[` in einer Server-Antwort verliert nicht mehr den Rest der
-  Antwort.** Betraf Server, die ein Schlüsselwort-Flag mit eckiger Klammer senden — nach
-  RFC 3501 erlaubt. Bisher gingen alle folgenden Felder derselben Antwort verloren
+### Fixed
+- **Extracting the same attachment twice no longer creates a second file.** If a
+  **byte-identical** file already exists at the target name, it is linked instead of copied. The bytes are compared,
+  not the file name — two attachments of the same mail with the same name but different content
+  both remain extractable
+- **A form without a selectable option no longer opens at all.** If the frontmatter listed
+  attachments that the `.eml` no longer contains, a dropdown without an entry appeared, and every
+  attempt to submit failed with a technical message; cancelling was the only way out.
+  Now a message explains the reason before the form appears
+- **Wikilinks are no longer built when they do not hold up.** A note name containing `#`, `|`,
+  `[`, `]` or `^` produced a link that pointed to something else. Such targets now
+  stay as a plain message ID — affects `mail.relink` and the re-derivation on re-render
+- **`mail.relink` shows skipped notes instead of silently leaving them out.** A
+  note with unreadable frontmatter or without a managed zone now appears in the
+  final message as skipped
+- **An unbalanced opening `[` in a server response no longer loses the rest of the
+  response.** Affected servers that send a keyword flag with a square bracket — allowed
+  under RFC 3501. Previously all following fields of the same response were lost
 
-### Geändert
-- **Ein Formular ohne echte Auswahl erscheint nicht mehr.** Hat eine Mail genau einen Anhang,
-  fragt `mail.extractAttachment` nicht mehr nach — es gab nichts zu wählen. Die Vorschau
-  bestätigt weiterhin wie bisher, es entfällt nur ein Klick ohne Inhalt
+### Changed
+- **A form without a real choice no longer appears.** If a mail has exactly one attachment,
+  `mail.extractAttachment` no longer asks — there was nothing to choose. The preview
+  still confirms as before; only a click without content is gone
 
-### Intern
-- `mail.rerender` löst keine Anhangpfade mehr auf, die es nie benutzt (ein Vault-Zugriff je
-  Anhang und Lauf gespart)
-- Der GUI-Smoke-Treiber beendet sich nach einem Abbruch, statt am offenen Debug-Socket
-  hängenzubleiben
-- 685 → 715 Unit-Tests
+### Internal
+- `mail.rerender` no longer resolves attachment paths it never uses (one vault access per
+  attachment and run saved)
+- The GUI smoke driver exits after an abort instead of hanging on the open debug socket
+- 685 → 715 unit tests
 
 ## [0.4.0] — 2026-09-05
 
-### Neu
-- **Aufgabe aus einer Mail anlegen (M5).** Aus einer Mail-Notiz oder direkt aus dem Posteingang
-  lässt sich jetzt eine Aufgabe im Nachbarplugin TaskNotes anlegen (`mail.createTask`), mit
-  einem Wikilink zurück zur Mail. Nur mit installiertem und aktiviertem TaskNotes verfügbar;
-  ohne TaskNotes bleibt `taskPreset` (s. u.) der Weg für auswertbare Zusatzfelder
-- **`taskPreset` belebt — der Weg ohne TaskNotes (M5 § 5).** In den Settings lassen sich
-  jetzt Zusatzfelder eintragen (z. B. `status: open`), die beim ERSTEN Anlegen einer
-  Mail-Notiz einmalig ins Frontmatter geschrieben werden — auswertbar in Obsidian Bases.
-  Bestehende Notizen bleiben unberührt, ein einmal vom Nutzer geänderter Wert wird nie
-  wieder überschrieben. Kein Aufgaben-System, keine Logik darauf
+### Added
+- **Create a task from a mail (M5).** From a mail note or directly from the inbox,
+  a task can now be created in the neighbouring plugin TaskNotes (`mail.createTask`), with
+  a wikilink back to the mail. Only available with TaskNotes installed and enabled;
+  without TaskNotes, `taskPreset` (see below) remains the way to get queryable extra fields
+- **`taskPreset` revived — the path without TaskNotes (M5 § 5).** In the settings you can now
+  enter extra fields (e.g. `status: open`) that are written into the frontmatter once, when a
+  mail note is FIRST created — queryable in Obsidian Bases.
+  Existing notes stay untouched, and a value once changed by the user is never
+  overwritten again. No task system, no logic on top of it
 
-### Dokumentation
-- **Deutsche README** (`README.de.md`), Badge-Zeile in beiden Fassungen
-- **Der Installationsweg zeigte ins Leere.** Er nannte den Community-Store, aus dem dieses Plugin
-  nicht bezogen werden kann, und verlinkte den GitHub-Spiegel, der anonym mit 404 antwortet.
-  Beides ersetzt: empfohlen wird der AnySource Sideloader mit dem Plugin-Katalog, daneben der
-  Download von `git.jkaindl.de` und der Bau aus dem Quelltext
+### Documentation
+- **German README** (`README.de.md`), badge row in both versions
+- **The installation path pointed nowhere.** It named the Community Store, from which this plugin
+  cannot be obtained, and linked the GitHub mirror, which answers anonymously with 404.
+  Both replaced: the AnySource Sideloader with the plugin catalog is recommended, alongside the
+  download from `git.jkaindl.de` and building from source
 
-### Behoben
-- **Eine Notiz mit Windows-Zeilenenden behält sie.** Der Sync schrieb die verwaltete Zone immer
-  mit `LF`, während der Frontmatter das Zeilenende der Notiz übernahm — in einer CRLF-Notiz
-  mischte ein Lauf also beides. Der Zonen-Vergleich ignoriert Zeilenenden jetzt ausdrücklich,
-  sonst hätte dieselbe Änderung jede solche Notiz beim nächsten Lauf als „von Hand geändert"
-  gemeldet
-- **Ein Ordner, den ein paralleler Vorgang gerade anlegt, lässt den Sync nicht mehr scheitern.**
-  Zwischen „gibt es den Ordner?" und „lege ihn an" passt ein zweiter Schreibvorgang; sein Erfolg
-  ist jetzt kein Fehler mehr, ein echter Ordner-Fehler bleibt einer
-- **Der Zustandswechsel einer Notiz schreibt nur noch die eine Zeile, die er meint.** Bisher lief
-  er über Obsidians `processFrontMatter`, und das liest den Frontmatter als YAML und schreibt ihn
-  komplett neu: eigene Felder verlieren ihre Formatierung (aus `to: [adresse]` wird eine
-  Block-Liste) und **YAML-Kommentare verschwinden ganz**. Wer im Frontmatter einer Mail-Notiz
-  eigene Felder pflegt, behält sie jetzt unverändert
+### Fixed
+- **A note with Windows line endings keeps them.** The sync always wrote the managed zone
+  with `LF`, while the frontmatter took over the note's line ending — in a CRLF note
+  a run therefore mixed both. The zone comparison now explicitly ignores line endings,
+  otherwise the same change would have reported every such note as "changed by hand" on the next
+  run
+- **A folder that a parallel operation is just creating no longer makes the sync fail.**
+  A second write fits between "does the folder exist?" and "create it"; its success
+  is no longer an error, a real folder error remains one
+- **A note's state change now writes only the one line it means.** Previously it went
+  through Obsidian's `processFrontMatter`, which reads the frontmatter as YAML and rewrites it
+  completely: custom fields lose their formatting (`to: [address]` becomes a
+  block list) and **YAML comments disappear entirely**. Anyone who maintains
+  custom fields in the frontmatter of a mail note now keeps them unchanged
 
-### Intern
-- Der Nur-Lese-Vertrag des Sync-Laufs (`EXAMINE` + `BODY.PEEK`, nie `SELECT` oder `BODY[]`) wird
-  jetzt über einen echten Socket belegt: der Fake-IMAP-Server protokolliert jede empfangene
-  Kommandozeile, und der Integrationstest prüft den ganzen Dialog eines Laufs auf **Abwesenheit**
-  der verbotenen Formen — nicht nur die Aufrufe, für die es heute einen Unit-Test gibt
-- Der schreibende Pfad (`Übernehmen` → `SELECT` + `UID MOVE`) hat seinen ersten Integrationstest.
-  Der Fake kündigt `MOVE`/`UIDPLUS` dabei erst **nach** der Anmeldung an und fährt damit genau die
-  Server-Bauart, wegen der die Capabilities ein zweites Mal gelesen werden
+### Internal
+- The read-only contract of the sync run (`EXAMINE` + `BODY.PEEK`, never `SELECT` or `BODY[]`) is
+  now verified over a real socket: the fake IMAP server logs every received
+  command line, and the integration test checks the whole dialog of a run for the **absence**
+  of the forbidden forms — not just the calls for which a unit test exists today
+- The writing path (`Adopt` → `SELECT` + `UID MOVE`) has its first integration test.
+  The fake announces `MOVE`/`UIDPLUS` only **after** login and thus drives exactly the
+  server design because of which the capabilities are read a second time
 
 ## [0.3.0] — 2026-09-03
 
-### Posteingang — Mail sichten und übernehmen, ohne den Vault zu verlassen (2026-09-03)
-- Neuer Tab **Posteingang** neben dem Cockpit, in derselben Ansicht: die letzten 100 Nachrichten
-  aus `folders.inbox` mit Absender, Betreff, Datum und einem Häkchen für alles, was schon als
-  Notiz im Vault liegt. Ungelesenes steht halbfett
-- **„Ins Vault übernehmen"** verschiebt die Mail serverseitig in den Allowlist-Ordner; die Notiz
-  entsteht anschließend durch den regulären Sync-Lauf, nicht durch die Aktion selbst. **„Archivieren"**
-  räumt sie in den Archivordner. Beides erst nach Rückfrage — auf dem Server ist nichts davon
-  rückgängig zu machen
-- Der Badge „liegt im Vault" ist ein **exakter** Treffer, keine Heuristik: die Message-ID aus der
-  Liste läuft durch dieselbe Normalisierung wie die im Sync-Pfad, und beide Seiten des Vergleichs
-  werden normalisiert
-- Die Liste aktualisiert sich beim Öffnen des Tabs, per Knopf und nach jedem Sync-Lauf. Ein
-  Tabwechsel behält Scrollposition und Zustand — die Panels bleiben gemountet und werden nur
-  umgeblendet
-- Ohne Konto oder ohne Nachrichten steht dort eine Aussage samt Handlungsangebot statt einer
-  leeren Fläche. Kann ein Server nicht sicher verschieben, bleiben die Knöpfe sichtbar, aber
-  gesperrt, und nennen den Grund — statt wortlos zu verschwinden
+### Inbox — review and adopt mail without leaving the vault (2026-09-03)
+- New **Inbox** tab next to the cockpit, in the same view: the latest 100 messages
+  from `folders.inbox` with sender, subject, date and a checkmark for everything that is already
+  a note in the vault. Unread messages are shown in semi-bold
+- **"Adopt into vault"** moves the mail server-side into the allowlist folder; the note
+  is then created by the regular sync run, not by the action itself. **"Archive"**
+  moves it to the archive folder. Both only after confirmation — none of this can be
+  undone on the server
+- The "is in the vault" badge is an **exact** match, not a heuristic: the message ID from the
+  list goes through the same normalisation as the one in the sync path, and both sides of the comparison
+  are normalised
+- The list refreshes when the tab is opened, via a button and after every sync run. Switching
+  tabs keeps scroll position and state — the panels stay mounted and are only
+  hidden
+- Without an account or without messages, a statement with an offered action appears instead of an
+  empty area. If a server cannot move safely, the buttons stay visible but
+  disabled and state the reason — instead of disappearing without a word
 
-### Der Nur-Lese-Vertrag geht auf — an genau einer Stelle, bewacht vom Compiler
-- Bis hierher war der IMAP-Client rein lesend, und das ist eine Zusage an das Postfach: eine
-  gespiegelte Mail muss im Mailprogramm ungelesen aussehen, weil im Ordner `Belege` ein anderer
-  Abholer über genau dieses „ungelesen" gesteuert wird. „Übernehmen" braucht `SELECT` und
-  `UID MOVE` — der Vertrag musste sich öffnen
-- Gelöst über **zwei Typen statt einer Konvention**: `imapConnect` liefert weiterhin eine
-  `ImapReadSession` ohne `select`/`uidMove`, schreibfähig wird die Verbindung nur über
-  `imapConnectWritable`, und den nimmt genau ein Pfad. Ein versehentliches `SELECT` im Sync ist
-  damit ein **Typfehler**, kein Review-Befund. Auch der schreibende Weg setzt kein `\Seen`:
-  `UID MOVE` nimmt die Flags mit
-- **`UID MOVE` misst den Erfolg an einem Beleg, nicht an der Statuszeile.** Nach RFC 6851 § 3.3
-  antwortet ein Server auf eine UID, die nichts trifft, mit `OK` — ein Erfolg, bei dem nichts
-  bewegt wurde. Ohne `COPYUID`-Code oder untagged `EXPUNGE` gilt die Aktion deshalb als
-  fehlgeschlagen („erneut synchronisieren"), statt einen Sync anzustoßen, der nichts findet
-- Kein `COPY`+`EXPUNGE`-Ersatzweg: ein UID-loses `EXPUNGE` entfernt auch Nachrichten, die ein
-  anderes Programm als gelöscht markiert hat. Kann ein Server kein `MOVE`, wird gar nichts gesendet
+### The read-only contract opens — in exactly one place, guarded by the compiler
+- Up to here the IMAP client was purely reading, and that is a promise to the mailbox: a
+  mirrored mail must look unread in the mail program, because in the `Belege` folder another
+  fetcher is controlled by exactly this "unread". "Adopt" needs `SELECT` and
+  `UID MOVE` — the contract had to open
+- Solved with **two types instead of a convention**: `imapConnect` still returns an
+  `ImapReadSession` without `select`/`uidMove`, the connection becomes writable only via
+  `imapConnectWritable`, and exactly one path takes that. An accidental `SELECT` in the sync is
+  thus a **type error**, not a review finding. The writing path does not set `\Seen` either:
+  `UID MOVE` carries the flags along
+- **`UID MOVE` measures success by evidence, not by the status line.** Per RFC 6851 § 3.3
+  a server answers a UID that matches nothing with `OK` — a success in which nothing
+  was moved. Without a `COPYUID` code or an untagged `EXPUNGE`, the action is therefore treated as
+  failed ("sync again") instead of triggering a sync that finds nothing
+- No `COPY`+`EXPUNGE` fallback: a UID-less `EXPUNGE` also removes messages that another
+  program has marked as deleted. If a server cannot do `MOVE`, nothing at all is sent
 
-### Behoben
-- **Capabilities werden jetzt auch nach der Anmeldung gelesen.** Viele Server kündigen `MOVE` und
-  `UIDPLUS` erst danach an, oft nur im Response-Code der `OK`-Zeile — ein fähiger Server sah damit
-  unfähig aus
-- Fehlermeldungen des Posteingangs sind vollständig übersetzt. Vorher erschienen neun von dreizehn
-  Fällen als roher Schlüsseltext oder, schlimmer, als plausible Unwahrheit
-- `tools/sync-kit.sh` liest Kit-Module aus einer **festen Ref** statt aus dem Arbeitsstand der
-  Nachbar-Repos, prüft alle Quellen vor dem ersten Schreibvorgang und schreibt über `.tmp` + `mv`.
-  Vorher war das Vendoring an fremde HEADs gekoppelt und hätte bei einer fehlenden Quelle eine
-  Zieldatei als Stummel hinterlassen (intern, keine Nutzerwirkung)
+### Fixed
+- **Capabilities are now also read after login.** Many servers announce `MOVE` and
+  `UIDPLUS` only afterwards, often only in the response code of the `OK` line — a capable server thus looked
+  incapable
+- Inbox error messages are fully translated. Previously nine of thirteen
+  cases appeared as raw key text or, worse, as a plausible untruth
+- `tools/sync-kit.sh` reads kit modules from a **fixed ref** instead of from the working state of the
+  neighbouring repos, checks all sources before the first write
+  and writes via `.tmp` + `mv`. Previously vendoring was coupled to foreign HEADs and, with a missing source,
+  would have left a target file as a stub (internal, no user impact)
 
 ## [0.2.0] — 2026-09-01
 
-### Sidebar-Cockpit — Betriebsansicht je Konto (2026-09-01)
-- Neue Ansicht in der rechten Seitenleiste: pro Konto ein Status-Indikator, der letzte Lauf mit
-  Uhrzeit, der nächste Lauf, die Zähler des letzten Laufs und der Fehler im Klartext, dazu
-  „Jetzt synchronisieren" je Konto und für alle. Bisher blitzte all das nur in der Statusleiste
-  auf und war beim nächsten Takt weg
-- **Der letzte Lauf überlebt jetzt den Neustart.** Neues `runState` in `data.json` — neben
-  `settings`, `zoneHashes` und `uidCache`, nicht in den Einstellungen: es ist Laufzeitzustand,
-  keine Konfiguration. Ein unbrauchbarer Eintrag fällt einzeln weg, statt das Register zu kippen
-- Zähler verdichtet: nur was von null verschieden ist („3 neu · 1 wieder verknüpft"). Sechs
-  Nullen nebeneinander verstecken die eine Zahl, auf die es ankommt
-- Status-Indikator nach dem verbindlichen Baustein-Katalog: Form **und** Farbe **und**
-  Klasse **und** `aria-label`. `is-warning` für den Lauf, der durchlief und trotzdem etwas
-  ausgelassen hat — weder ok noch Fehler. „Noch nie gelaufen" bekommt bewusst keinen Indikator,
-  weil es dafür keinen Zustand gibt
-- **Das Ribbon-Symbol öffnet jetzt die Ansicht statt zu synchronisieren.** Der Sync bleibt über
-  die Befehlspalette (`sync-mailbox`) und den Knopf im Cockpit erreichbar — also besser
-  erreichbar als vorher
-- Auto-Öffnen beim Start ist Opt-in, Standard aus
-- **„Jetzt synchronisieren" ignoriert den Auto-Schalter.** Wer den automatischen Abgleich
-  abgeschaltet hat, kann trotzdem von Hand synchronisieren — vorher war der Knopf in genau
-  dieser Konfiguration wirkungslos, und zwar abhängig davon, ob ein *anderes* Konto aktiv war
-- Die Ansicht folgt Änderungen an den Konten: Anlegen, Umbenennen, Löschen und das Umlegen des
-  Sync-Schalters zeichnen sie neu, während sie offen steht
-- Fehlermeldungen ziehen dieselben Textschlüssel wie die Benachrichtigungen; ein unbekannter
-  Code aus einer handgeschriebenen `data.json` zeigt keinen rohen Schlüssel mehr
+### Sidebar cockpit — operations view per account (2026-09-01)
+- New view in the right sidebar: per account a status indicator, the last run with
+  time, the next run, the counters of the last run and the error in plain text, plus
+  "Sync now" per account and for all. Previously all of this only flashed up in the status bar
+  and was gone at the next tick
+- **The last run now survives a restart.** New `runState` in `data.json` — next to
+  `settings`, `zoneHashes` and `uidCache`, not in the settings: it is runtime state,
+  not configuration. An unusable entry drops out individually instead of toppling the register
+- Counters condensed: only what is non-zero ("3 new · 1 relinked"). Six
+  zeros side by side hide the one number that matters
+- Status indicator per the binding component catalog: shape **and** colour **and**
+  class **and** `aria-label`. `is-warning` for the run that completed and still skipped something —
+  neither ok nor error. "Never run" deliberately gets no indicator,
+  because there is no state for it
+- **The ribbon icon now opens the view instead of syncing.** The sync stays reachable via
+  the command palette (`sync-mailbox`) and the button in the cockpit — thus easier to
+  reach than before
+- Auto-open on startup is opt-in, default off
+- **"Sync now" ignores the auto switch.** Anyone who has switched off automatic
+  sync can still sync by hand — previously the button was ineffective in exactly
+  this configuration, depending on whether *another* account was active
+- The view follows changes to the accounts: creating, renaming, deleting and toggling the
+  sync switch redraw it while it is open
+- Error messages use the same text keys as the notifications; an unknown
+  code from a hand-written `data.json` no longer shows a raw key
 
 ## [0.1.0] — 2026-09-01
 
-### M3b — Vault-Kommandos (2026-09-01)
-- Vier Kommandos auf einer Mail-Notiz, jedes mit Vorschau vor dem Schreiben:
-  - `mail.rerender` — Nachrichtenabschnitt und abgeleitete Frontmatter-Felder aus der lokalen
-    `.eml` neu bauen. Der einzige Weg zu `allowUpdate: true` außerhalb des Imports; `mail_source`
-    und `mail_state` werden dabei aus der Notiz übernommen, nie neu bestimmt, und die `.eml` muss
-    dieselbe `mail_id` tragen wie die Notiz (`eml-mismatch`, sonst überschriebe eine falsch
-    benannte Datei die Notiz mit fremdem Inhalt)
-- `mail.relink` — Message-IDs in `in_reply_to`/`references` zu Wikilinks, wo die Zielnotiz
-    existiert; nur vorwärts, ein bestehender Wikilink wird nie zurückverwandelt. Ändert
-    ausschließlich Frontmatter-Zeilen in-place (`mergeFrontmatterOnly`), Kommentare und
-    Block-Skalare bleiben byte-identisch
-- `mail.extractAttachment` — eine Anlage aus der `.eml` in den Anhangordner, Link in den
-    freien Bereich der Notiz (nicht in die verwaltete Zone, dort überlebte er kein Re-Render)
-- `mail.replyExternal` — `mailto:` mit `Re:`-Betreff und `In-Reply-To`; eine Ersatz-ID
-    (`noid-…`) wird weggelassen statt erfunden
-- Deskriptor-Rahmen (`core/commands/`): Mini-JSON-Schema mit Validator, Registry mit
-  idempotenter Default-Befüllung, `executeCommandPlan` als einziger Schreibweg, geteilter
-  Busy-Guard mit dem Sync. `CommandProbe`/`CommandContext` getrennt, damit `checkCallback`
-  synchron bleibt; optionales `schemaFor(ctx)` macht die Anhangliste zum Dropdown
-- Schutz gegen verlorene Schreibvorgänge: der Plan merkt sich den Stand, aus dem er gebaut
-  wurde (`NotePlan.expectedContent`); ändert sich die Notiz, während die Vorschau offen steht,
-  wird übersprungen statt überschrieben — mit einer Meldung, die den Ausweg nennt
-- Fehlertexte für alle Kommando-Codes in EN und DE, abgesichert durch einen Paritätstest über
-  den echten Kommando-Satz mit compilerdurchgesetzter Vollständigkeit über `CommandErrorCode`
+### M3b — vault commands (2026-09-01)
+- Four commands on a mail note, each with a preview before writing:
+  - `mail.rerender` — rebuild the message section and derived frontmatter fields from the local
+    `.eml`. The only way to `allowUpdate: true` outside the import; `mail_source`
+    and `mail_state` are taken over from the note, never re-determined, and the `.eml` must carry
+    the same `mail_id` as the note (`eml-mismatch`, otherwise a wrongly named file would overwrite the note with foreign content)
+- `mail.relink` — message IDs in `in_reply_to`/`references` to wikilinks where the target note
+    exists; forward only, an existing wikilink is never turned back. Changes
+    only frontmatter lines in place (`mergeFrontmatterOnly`), comments and
+    block scalars stay byte-identical
+- `mail.extractAttachment` — an attachment from the `.eml` into the attachment folder, link into the
+    free area of the note (not into the managed zone, where it would not survive a re-render)
+- `mail.replyExternal` — `mailto:` with `Re:` subject and `In-Reply-To`; a substitute ID
+    (`noid-…`) is omitted instead of invented
+- Descriptor framework (`core/commands/`): mini JSON schema with validator, registry with
+  idempotent default population, `executeCommandPlan` as the only write path, shared
+  busy guard with the sync. `CommandProbe`/`CommandContext` separated so that `checkCallback`
+  stays synchronous; optional `schemaFor(ctx)` turns the attachment list into a dropdown
+- Protection against lost writes: the plan remembers the state it was built
+  from (`NotePlan.expectedContent`); if the note changes while the preview is open,
+  it is skipped instead of overwritten — with a message that names the way out
+- Error texts for all command codes in EN and DE, secured by a parity test over
+  the real command set with compiler-enforced completeness over `CommandErrorCode`
 
-### Behoben
-- **Zwei Anhänge mit gleichem Dateinamen teilten sich einen Schlüssel** im Byte-Speicher des
-  MIME-Parsers (`contentId ?? name`): die extrahierte Datei hätte den Namen des einen und den
-  Inhalt des anderen getragen, und der erste wäre unerreichbar gewesen. Jede Anlage hat jetzt
-  einen eindeutigen Schlüssel. Der Defekt lag seit M1 im Parser und war harmlos, bis M3b sein
-  erster Konsument wurde
-- Ein leeres Pflichtfeld kam durch die Schema-Validierung (`required` prüfte nur auf
+### Fixed
+- **Two attachments with the same file name shared one key** in the byte store of the
+  MIME parser (`contentId ?? name`): the extracted file would have carried the name of one and the
+  content of the other, and the first would have been unreachable. Every attachment now has
+  a unique key. The defect had been in the parser since M1 and was harmless until M3b became its
+  first consumer
+- An empty required field got through the schema validation (`required` only checked for
   `undefined`)
-- Ein Wurf zwischen Kommandopalette und Lesezugriff (gelöschte Notiz) wurde zur unbehandelten
-  Rejection — das Kommando tat sichtbar nichts; jetzt eine übersetzte Meldung
-- `unregister()` der calendar-notes-Brücke ruft die Instanz, die die Registrierung angenommen
-  hat, und fängt einen Wurf des Nachbarn ab, statt ihn aus `onunload()` entkommen zu lassen
-- Mehrzeiliges SMTP-Greeting (`220-`) ist jetzt getestet (Carry-over aus der M1-Nachlese)
+- A throw between command palette and read access (deleted note) became an unhandled
+  rejection — the command visibly did nothing; now a translated message
+- `unregister()` of the calendar-notes bridge calls the instance that accepted the registration
+  and catches a throw from the neighbour instead of letting it escape from `onunload()`
+- Multi-line SMTP greeting (`220-`) is now tested (carry-over from the M1 follow-up)
 
-### M3 — IMAP-Sync (2026-08-30)
-- IMAP-Client (`core/imap/client.ts`): Zustandsautomat CAPABILITY -> AUTHENTICATE PLAIN
-  (Fallback LOGIN) -> EXAMINE (read-only) -> UID SEARCH ALL -> UID FETCH -> LOGOUT, nur
-  lesende Kommandos (`BODY.PEEK` statt `BODY`), jeder Netzwerkschritt unter `withTimeout`
-- Message-ID-Abgleich statt ENVELOPE (`BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`), bewusste
-  Abweichung von der Spec (Begründung siehe Task-Brief), UID→Message-ID-Cache pro
-  `<konto>/<ordner>/<UIDVALIDITY>` (`core/sync/uid-cache.ts`)
-- `planSync` (`core/mirror/apply.ts`): `create`/`reattach`/`detach` aus Server- gegen
-  Vault-Stand, `SyncService` (`core/sync/service.ts`) fährt einen Lauf pro Konto über
-  Busy-Guard, Emitter (`synced`/`changed`) und `PlanExecutor`
-- Verdrahtung ins Plugin: Kommando, Ribbon, Intervall-Trigger und Statusleiste; Passwort-
-  fehlt-Hinweis in der Konten-Zeile, Debug-Schalter für den IMAP-Dialog
-- Fake-IMAP-Server + Integrationstest (`scripts/fake-imap.mjs`,
-  `tests/integration/fake-imap.test.ts`) gegen den echten Node-Socket-Transport — spricht nur
-  das vom Client benutzte Kommando-Subset, kein TLS, ausschließlich `127.0.0.1`
-- `IDLE` bleibt V1.1, nicht Teil dieses Meilensteins
-- **Live-Probe gegen ein echtes Postfach steht noch aus** — Sync ist gegen den Fake-IMAP-
-  Server über einen echten Socket getestet (Kindprozess, echtes TCP), aber noch nicht gegen
-  einen echten mailbox.org-Server gefahren; folgt separat
+### M3 — IMAP sync (2026-08-30)
+- IMAP client (`core/imap/client.ts`): state machine CAPABILITY -> AUTHENTICATE PLAIN
+  (fallback LOGIN) -> EXAMINE (read-only) -> UID SEARCH ALL -> UID FETCH -> LOGOUT, reading
+  commands only (`BODY.PEEK` instead of `BODY`), every network step under `withTimeout`
+- Message-ID comparison instead of ENVELOPE (`BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`), deliberate
+  deviation from the spec (rationale see task brief), UID→message-ID cache per
+  `<account>/<folder>/<UIDVALIDITY>` (`core/sync/uid-cache.ts`)
+- `planSync` (`core/mirror/apply.ts`): `create`/`reattach`/`detach` from server versus
+  vault state, `SyncService` (`core/sync/service.ts`) runs one run per account via
+  busy guard, emitter (`synced`/`changed`) and `PlanExecutor`
+- Wiring into the plugin: command, ribbon, interval trigger and status bar; hint for a missing
+  password in the account row, debug switch for the IMAP dialog
+- Fake IMAP server + integration test (`scripts/fake-imap.mjs`,
+  `tests/integration/fake-imap.test.ts`) against the real Node socket transport — speaks only
+  the command subset used by the client, no TLS, exclusively `127.0.0.1`
+- `IDLE` stays V1.1, not part of this milestone
+- **A live probe against a real mailbox is still outstanding** — the sync is tested against the fake IMAP
+  server over a real socket (child process, real TCP), but has not yet been run against
+  a real mailbox.org server; follows separately
 
-### M2 — Transport (2026-08-23)
-- SMTP-Client (`core/smtp/client.ts`): EHLO/AUTH/MAIL/RCPT/DATA, `smtpProbe` für den Verbindungstest
-- `tls-transport.ts`: echter Node-TCP/TLS-Socket hinter `Platform.isDesktop`, STARTTLS-Upgrade mit
-  aktiver Zertifikatsprüfung, Connect-Timeout, `close()` mit Fallback auf `destroy()`, Schutz vor
-  STARTTLS-Buffer-Injection (CVE-2011-0411-Klasse)
-- `SendService` + iMIP-Anbindung (`core/send/service.ts`, `core/send/imip.ts`): Konto-/Identitäts-
-  Auflösung, MIME-Bau, Versand über den Socket-Transport, `tls-required`-Guard vor jedem Connect
-- Konten-UI (`AccountModal`, deklarativer Settings-Tab): IMAP/SMTP/Identitäten/Ordner/Sync, Secrets
-  über `SecretComponent` (nie in `data.json`), Verbindungstest
-- calendar-notes-Brücke (`calendar-notes-bridge.ts`): registriert mailstone als `MailTransport` an
-  der öffentlichen API des Nachbar-Plugins, robust gegen Ablehnung/Exceptions/Nachbar-Reload
-- Fake-SMTP-Server + Integrationstest (`tests/integration`) gegen den echten Transport
-- Sicherheits-Härtungen: STARTTLS-Buffer-Injection-Schutz, Connect-Timeout, symmetrischer
-  `tls-required`-Guard vor jedem Verbindungsversuch (Service UND Konto-Test), strengere
-  `repairAccount`-Validierung (tls/port)
+### M2 — transport (2026-08-23)
+- SMTP client (`core/smtp/client.ts`): EHLO/AUTH/MAIL/RCPT/DATA, `smtpProbe` for the connection test
+- `tls-transport.ts`: real Node TCP/TLS socket behind `Platform.isDesktop`, STARTTLS upgrade with
+  active certificate verification, connect timeout, `close()` with fallback to `destroy()`, protection against
+  STARTTLS buffer injection (CVE-2011-0411 class)
+- `SendService` + iMIP integration (`core/send/service.ts`, `core/send/imip.ts`): account/identity
+  resolution, MIME construction, sending over the socket transport, `tls-required` guard before every connect
+- Accounts UI (`AccountModal`, declarative settings tab): IMAP/SMTP/identities/folders/sync, secrets
+  via `SecretComponent` (never in `data.json`), connection test
+- calendar-notes bridge (`calendar-notes-bridge.ts`): registers mailstone as `MailTransport` on
+  the neighbouring plugin's public API, robust against rejection/exceptions/neighbour reload
+- Fake SMTP server + integration test (`tests/integration`) against the real transport
+- Security hardening: STARTTLS buffer-injection protection, connect timeout, symmetric
+  `tls-required` guard before every connection attempt (service AND account test), stricter
+  `repairAccount` validation (tls/port)
 
-### M1 — Gerüst + Formate (2026-08-23)
-- Repo-Gerüst aus calendar-notes (Gate, Vendor-Kit, esbuild-Builtin-Plugin, Lint 0 Warnings, check:pure)
-- `.eml` → `ParsedMail` (postal-mime), synthetischer Fixture-Korpus
-- Rendering Mail → Markdown/Frontmatter/Dateiname (turndown, Mapping-Profil)
-- Merge-Regeln für Re-Render: Fences, Zone-Hash, abgeleitete Keys zeilenweise in-place, melden statt überschreiben
-- MIME-Builder für Versand (QP, RFC 2047, multipart/alternative + text/calendar), Header-Injection-Härtung
-- Settings (Konten/Identitäten/Profil), NotePlan + Vault-Executor, Kommando „Import .eml files from a vault folder", deklarativer Settings-Tab, i18n EN/DE
+### M1 — scaffold + formats (2026-08-23)
+- Repo scaffold from calendar-notes (gate, vendored kit, esbuild builtin plugin, lint 0 warnings, check:pure)
+- `.eml` → `ParsedMail` (postal-mime), synthetic fixture corpus
+- Rendering mail → Markdown/frontmatter/file name (turndown, mapping profile)
+- Merge rules for re-render: fences, zone hash, derived keys line by line in place, report instead of overwrite
+- MIME builder for sending (QP, RFC 2047, multipart/alternative + text/calendar), header-injection hardening
+- Settings (accounts/identities/profile), NotePlan + vault executor, command "Import .eml files from a vault folder", declarative settings tab, i18n EN/DE
 - minAppVersion 1.13.0
