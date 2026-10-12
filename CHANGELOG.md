@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The calendar-notes link now accepts either `apiVersion` or `version` from calendar-notes' plugin API (same number), so newer and older calendar-notes versions both keep working for invitations.
+
 ## [0.7.2] — 2026-10-03
 
 ### Added

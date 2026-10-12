@@ -65,6 +65,26 @@ describe("readCalendarNotesApi", () => {
     const api = { version: 1, registerMailTransport: vi.fn(), unregisterMailTransport: vi.fn() };
     expect(readCalendarNotesApi(makeApp(api))).toBe(api);
   });
+
+  it("liefert die API auch mit apiVersion statt version (Welle 19)", () => {
+    const api = { apiVersion: 1, registerMailTransport: vi.fn(), unregisterMailTransport: vi.fn() };
+    expect(readCalendarNotesApi(makeApp(api))).toBe(api);
+  });
+
+  it("liefert die API mit beiden Feldern (calendar-notes ab Welle 19)", () => {
+    const api = { version: 1, apiVersion: 1, registerMailTransport: vi.fn(), unregisterMailTransport: vi.fn() };
+    expect(readCalendarNotesApi(makeApp(api))).toBe(api);
+  });
+
+  it("liefert null bei falscher apiVersion, auch wenn version stimmt", () => {
+    const api = { version: 1, apiVersion: 2, registerMailTransport: vi.fn(), unregisterMailTransport: vi.fn() };
+    expect(readCalendarNotesApi(makeApp(api))).toBeNull();
+  });
+
+  it("liefert null, wenn weder version noch apiVersion da ist", () => {
+    const api = { registerMailTransport: vi.fn(), unregisterMailTransport: vi.fn() };
+    expect(readCalendarNotesApi(makeApp(api))).toBeNull();
+  });
 });
 
 describe("buildMailTransport", () => {

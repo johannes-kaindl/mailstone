@@ -22,7 +22,10 @@ export interface MailTransport {
 }
 
 export interface CalendarNotesApiSubset {
-  version: number;
+  /** Kit-Vertrag; aeltere calendar-notes-Staende tragen nur dieses Feld. */
+  version?: number;
+  /** Plugin-eigene Zaehlung (calendar-notes ab Welle 19), dieselbe Zahl wie `version`. */
+  apiVersion?: number;
   registerMailTransport(t: MailTransport): { ok: true } | { error: string };
   unregisterMailTransport(id: string): unknown;
 }

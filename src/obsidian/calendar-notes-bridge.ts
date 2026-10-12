@@ -25,8 +25,11 @@ interface AppWithPlugins {
 function isCalendarNotesApi(v: unknown): v is CalendarNotesApiSubset {
   if (v === null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
+  // calendar-notes traegt seit Welle 19 `apiVersion` (plugin-eigene Zaehlung) neben `version` (Kit-Vertrag),
+  // dieselbe Zahl; aeltere Staende kennen nur `version`. `apiVersion` gewinnt, wo es da ist.
+  const gemeldet = o.apiVersion ?? o.version;
   return (
-    o.version === CALENDAR_NOTES_API_VERSION &&
+    gemeldet === CALENDAR_NOTES_API_VERSION &&
     typeof o.registerMailTransport === "function" &&
     typeof o.unregisterMailTransport === "function"
   );
