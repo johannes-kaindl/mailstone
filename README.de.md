@@ -65,7 +65,7 @@ cd mailstone && npm install && npm run build
 # main.js manifest.json styles.css → <vault>/.obsidian/plugins/mailstone/
 ```
 
-`npm run gate` fährt die komplette Prüfstrecke (Lint, Typprüfungen, Unit- und Integrationstests, Reinheitsprüfung, Build). `npm run smoke:e2e` ist eine reine Maintainer-Prüfung gegen ein laufendes Obsidian mit installiertem TaskNotes und bewusst nicht Teil von `gate`.
+`npm run gate` fährt die komplette Prüfstrecke (Lint, Typprüfungen, Unit- und Integrationstests, Reinheitsprüfung, Build). `npm run smoke:e2e -- --port <n>` ist eine reine Maintainer-Prüfung gegen ein laufendes Obsidian mit installiertem TaskNotes und bewusst nicht Teil von `gate`.
 
 ## Verwendung
 

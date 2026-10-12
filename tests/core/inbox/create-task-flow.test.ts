@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createTaskFromInbox, type CreateTaskFlowDeps } from "../../../src/core/inbox/create-task-flow";
-import { createBusyGuard } from "../../../src/core/sync/busy";
+import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import type { ImapWriteSession } from "../../../src/core/imap/client";
 
 function fakeSession(over: Partial<ImapWriteSession> = {}): ImapWriteSession {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { fetchInbox, INBOX_LIMIT, type InboxFetchDeps } from "../../../src/core/inbox/fetch";
-import { createBusyGuard } from "../../../src/core/sync/busy";
+import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import type { ImapReadSession } from "../../../src/core/imap/client";
 import { NetError } from "../../../src/core/net/types";
 

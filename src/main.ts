@@ -19,7 +19,7 @@ import { pollUntil } from "./obsidian/poll";
 import { buildMailTransport, createCalendarNotesBridge, type CalendarNotesBridge } from "./obsidian/calendar-notes-bridge";
 import { createSyncService, type SyncService, type SyncRunResult } from "./core/sync/service";
 import { dueAccounts, TICK_MS } from "./core/sync/schedule";
-import { createBusyGuard } from "./core/sync/busy";
+import { createBusyGuard } from "./vendor/code-kit/busy-guard";
 import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";

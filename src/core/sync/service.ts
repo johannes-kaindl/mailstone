@@ -13,7 +13,7 @@ import type { ParsedMail } from "../mime/types";
 import { imapConnect, type ImapReadSession } from "../imap/client";
 import { isLoopback } from "../send/service";
 import type { UidCacheStore } from "./uid-cache";
-import type { BusyGuard } from "./busy";
+import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
 import type { SyncCounts, SyncEmitter } from "./events";
 import type { SyncErrorCode } from "./errors";
 import type { TimeoutTimers } from "../../vendor/code-kit/timeout";

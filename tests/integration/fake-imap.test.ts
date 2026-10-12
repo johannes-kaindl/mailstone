@@ -14,7 +14,7 @@ type FakeImapChild = ChildProcessByStdio<null, Readable, Readable>;
 import { imapConnect, imapConnectWritable } from "../../src/core/imap/client";
 import { adoptMessage } from "../../src/core/inbox/actions";
 import { createSyncService } from "../../src/core/sync/service";
-import { createBusyGuard } from "../../src/core/sync/busy";
+import { createBusyGuard } from "../../src/vendor/code-kit/busy-guard";
 import { createEmitter } from "../../src/core/sync/events";
 import { createUidCache } from "../../src/core/sync/uid-cache";
 import { defaultMailProfile } from "../../src/core/mirror/profile";

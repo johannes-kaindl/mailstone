@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { adoptMessage, archiveMessage, type InboxActionDeps } from "../../../src/core/inbox/actions";
-import { createBusyGuard } from "../../../src/core/sync/busy";
+import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import type { ImapWriteSession } from "../../../src/core/imap/client";
 import { NetError } from "../../../src/core/net/types";
 

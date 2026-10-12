@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Internal housekeeping only, nothing changes for you: the shared kit libraries were updated (obsidian-kit 0.57.0, code-kit 0.24.0), the sync busy-guard, the Node-builtin build helper and the test timer shim now come from the shared library. The built plugin file is byte-identical to the one before this change.
 - The calendar-notes link now accepts either `apiVersion` or `version` from calendar-notes' plugin API (same number), so newer and older calendar-notes versions both keep working for invitations.
 
 ## [0.7.2] — 2026-10-03

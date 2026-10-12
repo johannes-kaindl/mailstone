@@ -1,5 +1,5 @@
 import type { ImapConnectResult } from "../imap/client";
-import type { BusyGuard } from "../sync/busy";
+import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
 import { NetError } from "../net/types";
 import { normalizeKnownIds, toInboxRow, type InboxRow } from "../view/inbox-vm";
 import type { InboxActionCode } from "./actions";

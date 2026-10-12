@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
 import { createSyncService, MAX_FETCH_PER_RUN, MAX_HEADER_FETCH_PER_RUN } from "../../../src/core/sync/service";
-import { createBusyGuard } from "../../../src/core/sync/busy";
+import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import { createEmitter, type SyncEvents } from "../../../src/core/sync/events";
 import { createUidCache } from "../../../src/core/sync/uid-cache";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";

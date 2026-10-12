@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { executeCommandPlan, type CommandExecuteDeps } from "../../../src/core/commands/execute";
-import { createBusyGuard } from "../../../src/core/sync/busy";
+import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import type { MailCommandPlan } from "../../../src/core/commands/types";
 import type { NotePlan } from "../../../src/core/mirror/plan";
 

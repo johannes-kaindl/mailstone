@@ -1,4 +1,4 @@
-import type { BusyGuard } from "../sync/busy";
+import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
 import type { PlanExecutor } from "../mirror/execute";
 import type { NotePlan } from "../mirror/plan";
 import type { CommandErrorCode, MailCommandPlan } from "./types";

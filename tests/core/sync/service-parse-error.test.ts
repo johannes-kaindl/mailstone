@@ -16,7 +16,7 @@ vi.mock("../../../src/core/mime/parse", () => ({
 import { FakeSocketTransport, type DialogStep } from "../../helpers/fake-socket";
 import { testTimers } from "../../helpers/timers";
 import { createSyncService } from "../../../src/core/sync/service";
-import { createBusyGuard } from "../../../src/core/sync/busy";
+import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import { createEmitter } from "../../../src/core/sync/events";
 import { createUidCache } from "../../../src/core/sync/uid-cache";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
