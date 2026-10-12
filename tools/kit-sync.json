@@ -1,16 +1,72 @@
 {
   "sources": {
-    "obsidian-kit": { "ref": "0.37.1" },
-    "code-kit": { "ref": "0.6.0" }
+    "obsidian-kit": {
+      "ref": "0.57.0"
+    },
+    "code-kit": {
+      "ref": "0.24.0"
+    }
   },
   "targets": [
-    { "dir": "src/vendor/code-kit", "source": "code-kit", "from": "src/ts/pure", "modules": ["timeout", "sha256", "filename-template", "settings", "i18n"] },
-    { "dir": "src/vendor/kit", "source": "obsidian-kit", "from": "src/pure", "modules": ["frontmatter", "vault-path", "secrets"] },
-    { "dir": "tests/vendor/kit", "source": "obsidian-kit", "from": "src/testing", "modules": ["obsidian-mock"] },
     {
-      "dir": "src/vendor/kit-obsidian", "source": "obsidian-kit", "from": "src/obsidian",
-      "modules": ["settings_walker", "folder-suggest", "confirm", "hub", "secrets", { "name": "help-setting", "ref": "0.43.0" }],
-      "rewrite": [["../pure/", "../kit/"]]
+      "dir": "src/vendor/code-kit",
+      "source": "code-kit",
+      "from": "src/ts/pure",
+      "modules": [
+        "timeout",
+        "sha256",
+        "filename-template",
+        "settings",
+        "i18n"
+      ]
+    },
+    {
+      "dir": "src/vendor/kit",
+      "source": "obsidian-kit",
+      "from": "src/pure",
+      "modules": [
+        "frontmatter",
+        "vault-path"
+      ]
+    },
+    {
+      "dir": "src/vendor/kit",
+      "source": "code-kit",
+      "from": "src/ts/pure",
+      "modules": [
+        "secrets"
+      ],
+      "vendorJson": "src/vendor/code-kit"
+    },
+    {
+      "dir": "tests/vendor/kit",
+      "source": "obsidian-kit",
+      "from": "src/testing",
+      "modules": [
+        "obsidian-mock"
+      ]
+    },
+    {
+      "dir": "src/vendor/kit-obsidian",
+      "source": "obsidian-kit",
+      "from": "src/obsidian",
+      "modules": [
+        "settings_walker",
+        "folder-suggest",
+        "confirm",
+        "hub",
+        "secrets",
+        {
+          "name": "help-setting",
+          "ref": "0.43.0"
+        }
+      ],
+      "rewrite": [
+        [
+          "../vendor/code-kit/pure/",
+          "../kit/"
+        ]
+      ]
     }
   ]
 }
