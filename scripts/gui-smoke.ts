@@ -16,40 +16,29 @@
  *
  * ## Voraussetzung
  *
- * ⚠️ **Zuerst prüfen, wer sonst an Obsidian hängt.** Obsidian ist Single-Instance — ein
- * `quit` trifft die Instanz, an der möglicherweise eine andere Session arbeitet, und
- * zerstört deren Zustand. Der eigene Lauf ist danach sauber grün; der Schaden entsteht
- * woanders und fällt nicht auf.
+ * Der Port ist PFLICHT (`--port <n>`, dokumentierter Wert dieses Rezepts: 9385); der Treiber hat
+ * keinen Default und fasst die regulaere Instanz nie an. Gemessen wird in einer **Zweitinstanz**
+ * (eigenes Profil, eigener Port) — nie in der Instanz, an der eine andere Session haengt, und nie
+ * mit `quit`:
  *
  * ```bash
- * lsof -nP -iTCP:9222 -sTCP:LISTEN >/dev/null && echo "läuft bereits — NICHT beenden"
- * curl -s http://127.0.0.1:9222/json/list   # zeigt, WEN ein Quit träfe (Vault je Fenster)
- * ```
- *
- * Hört der Port schon, dann **mitnutzen statt neu starten** — fehlt nur der Ziel-Vault:
- *
- * ```bash
- * open "obsidian://open?vault=mailstone"    # zusätzliches Fenster derselben Instanz
- * ```
- *
- * Erst wenn gar nichts läuft:
- *
- * ```bash
- * osascript -e 'quit app "Obsidian"'
- * open -a Obsidian --args --remote-debugging-port=9222
- * ```
- *
- * Dann, mit deployter Plugin-Version:
- *
- * ```bash
+ * UD=/tmp/obs-test-mailstone; mkdir -p "$UD"
+ * lsof -nP -iTCP:9385 -sTCP:LISTEN; pgrep -f "user-data-dir=$UD"      # beides leer, sonst ausweichen
+ * # (a) aktuelle Version statt gebuendelter (nachsehen: ls ~/Library/Application\ Support/obsidian/*.asar)
+ * cp ~/Library/Application\ Support/obsidian/obsidian-<version>.asar "$UD"/
+ * # Vault "$STAGING_VAULTS_DIR/mailstone" und "language":"en" in "$UD/obsidian.json" eintragen
  * OBSIDIAN_PLUGIN_DIR="$STAGING_VAULTS_DIR/mailstone/.obsidian/plugins/mailstone" npm run deploy
- * npm run smoke:gui
- * npm run smoke:gui -- --vault mailstone --keep
+ * /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=9385 &
+ * python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "GUI-Smoke :9385" --exclusive focus --port 9385 --ttl 300
+ * npm run smoke:gui -- --port 9385
+ * npm run smoke:gui -- --port 9385 --vault mailstone --keep
  * ```
  *
- * ⚠️ Der CDP-Zugriff ist gelockt (globaler PreToolUse-Hook). Vor dem Lauf:
- * `python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "…"
- * --exclusive focus`, danach `release`.
+ * Vertrauensdialog und Restricted Mode erledigt der Treiber selbst (`bereiteInstanzVor`); je
+ * Messlauf ein frischer Prozess (eine Zweitinstanz altert). Bilanz in vier Zustaenden (CORE-TEST-19,
+ * `createBilanz`): die Soll-Liste `NAMEN` ist der Nenner, ein nie erreichter Punkt zaehlt als
+ * „nichts gemessen“ (Exit 1), ein Abbruch ist Exit 2. Der Staging-Vault `mailstone` ist von Hand
+ * eingerichtet (kein Fixture) und traegt `calendar-notes`, `mailstone`, `tasknotes`.
  *
  * ## Warum dieser Smoke kein echtes Postfach anfasst
  *
@@ -76,7 +65,8 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachTo, clickReal, pollUntil, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, bereiteInstanzVor, clickReal, pollUntil, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { requireEigenerBuild } from "../../tools/obsidian-cdp/vault.js";
 
 // `import.meta.url` zeigt nach dem esbuild-Buendeln auf `.gui-smoke.mjs` im Repo-Root
@@ -97,29 +87,55 @@ const TASKNOTES_PLUGIN_ID = "tasknotes";
  *  Kommando gilt fuer jede Notiz mit gesetztem `mail_id`-Feld). */
 const TASKNOTES_NOTIZ_PFAD = "gui-smoke-tasknotes-notiz.md";
 
-interface Pruefpunkt {
-  readonly name: string;
-  readonly ok: boolean;
-  readonly detail: string;
+// Soll-Liste (Nenner) in Laufreihenfolge; die ID ist Teil des Namens, damit die Rot-Zeile der Bilanz sie nennt.
+const NAMEN = {
+  V4: "V4 genau ein View-Type",
+  V8: "V8 Kommandoname nennt die Handlung",
+  V10: "V10 Lauf-Anzeige dreht in der Kopfzeile, nicht in der Kontozeile",
+  V3a: "V3a Ribbon öffnet, ohne einen Lauf zu starten",
+  V3b: "V3b Befehlspalette startet weiterhin einen Lauf",
+  V2: "V2 „Alle synchronisieren“ hat Pixel und sitzt im Inhalt",
+  V6: "V6 Register überlebt den Neustart und liegt neben den übrigen Feldern",
+  V1: "V1 Erstöffnen zeigt ein sichtbares Cockpit (kein 0×0)",
+  V5a: "V5a Startup-Gate aus: Ansicht bleibt zu",
+  V5b: "V5b Startup-Gate an: Ansicht öffnet sich von selbst",
+  V7: "V7 kaputtes Register kippt den Start nicht",
+  V9: "V9 Empty-State-CTA öffnet den eigenen Einstellungs-Tab",
+  V9b: "V9b Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf",
+  V11: "V11 Inbox-Tab existiert, ist klickbar und zeigt seinen Inhalt",
+  V12: "V12 leerer Ordner zeigt Empty-State mit Handlungsangebot",
+  V13: "V13 Tab-Wahl übersteht Wechsel hin und zurück (mount-once)",
+  "T-A": "T-A mail.createTask fehlt ohne TaskNotes",
+  "T-B": "T-B mail.createTask erscheint mit TaskNotes-Stub",
+  "T-C": "T-C Modal zeigt Titel-Feld und Faelligkeit als Datumsfeld",
+  "T-D": "T-D Bestaetigung ruft tasks.create am Stub",
+  "T-E": "T-E dritter Posteingangs-Knopf nur mit TaskNotes",
+  V21: "V21 API haengt am Plugin, Flaeche genau apiVersion+send+status",
+  V22: "V22 status() antwortet synchron und meldet not-configured ohne Identitaet",
+  V23: "V23 send() ohne Identitaet liefert not-configured und oeffnet kein Modal",
+  V24: "V24 Erstkontakt oeffnet das Modal, Abbrechen liefert declined",
+} as const;
+type PunktId = keyof typeof NAMEN;
+const bilanz = createBilanz({ punkte: Object.values(NAMEN) });
+
+function pruefe(id: PunktId, ok: boolean, detail: string): void {
+  bilanz.record(NAMEN[id], ok, detail);
 }
 
-const ergebnisse: Pruefpunkt[] = [];
-
-function pruefe(name: string, ok: boolean, detail: string): void {
-  ergebnisse.push({ name, ok, detail });
-  console.log(`  ${ok ? "✅" : "❌"} ${name} — ${detail}`);
+/** Der Gegenstand des Punkts wurde nicht erreicht (Vorbedingung/Zugang fehlt) — „nichts gemessen“, nicht rot. */
+function nichtErreicht(id: PunktId, grund: string): void {
+  bilanz.unmeasured(NAMEN[id], grund);
 }
 
 // ── Argumente ───────────────────────────────────────────────────────────────────────────
 
-function argWert(flag: string, fallback: string): string {
-  const i = process.argv.indexOf(flag);
-  return i >= 0 && process.argv[i + 1] !== undefined ? String(process.argv[i + 1]) : fallback;
-}
+const ARGS = parseArgs(process.argv.slice(2));
 
-const PORT = Number(argWert("--port", "9222"));
-const VAULT = argWert("--vault", "mailstone");
-const KEEP = process.argv.includes("--keep");
+// Der Port ist PFLICHT: ein Default 9222 traefe die reguelaere Instanz (Dach-AGENTS § Staging-Vaults).
+const PORT_ARG = ARGS.value("--port");
+const PORT = Number(PORT_ARG);
+const VAULT = ARGS.value("--vault") ?? "mailstone";
+const KEEP = ARGS.has("--keep");
 
 // ── Renderer-Helfer ─────────────────────────────────────────────────────────────────────
 
@@ -297,8 +313,7 @@ async function v4_genauEinViewType(cdp: Cdp): Promise<void> {
     cdp,
     `return Object.keys(app.viewRegistry.viewByType).filter(t => /mail/i.test(t));`,
   );
-  pruefe(
-    "V4 genau ein View-Type",
+  pruefe("V4",
     typen.length === 1 && typen[0] === VIEW_TYPE,
     typen.length === 0 ? "kein View-Type registriert — registerView lief nicht" : typen.join(", "),
   );
@@ -313,8 +328,7 @@ async function v8_kommandoname(cdp: Cdp): Promise<void> {
   // nur den Plugin-Namen wiederholt. Geprüft wird deshalb, dass hinter dem Präfix etwas
   // anderes steht — nicht der genaue Wortlaut, der übersetzbar bleibt.
   const rumpf = (name ?? "").replace(/^Mailstone:\s*/i, "").trim();
-  pruefe(
-    "V8 Kommandoname nennt die Handlung",
+  pruefe("V8",
     name !== null && rumpf.length > 0 && !/^mailstone$/i.test(rumpf),
     name === null ? "Kommando open-cockpit nicht registriert" : `„${name}“`,
   );
@@ -326,7 +340,7 @@ async function v3_ribbonOeffnetNurUndPaletteLaeuft(cdp: Cdp): Promise<void> {
 
   const geklickt = await ribbonKlicken(cdp);
   if (!geklickt) {
-    pruefe("V3 Ribbon öffnet, ohne einen Lauf zu starten", false, "Ribbon-Symbol nicht im DOM gefunden");
+    for (const id of ["V3a", "V3b"] as const) nichtErreicht(id, "Ribbon-Symbol nicht im DOM gefunden");
     return;
   }
   await warte(2500);
@@ -335,8 +349,7 @@ async function v3_ribbonOeffnetNurUndPaletteLaeuft(cdp: Cdp): Promise<void> {
     cdp,
     `return app.workspace.getLeavesOfType(${JSON.stringify(VIEW_TYPE)}).length;`,
   );
-  pruefe(
-    "V3a Ribbon öffnet, ohne einen Lauf zu starten",
+  pruefe("V3a",
     leaves === 1 && nachRibbon === vorher,
     leaves !== 1
       ? `Ansicht nicht geöffnet (${String(leaves)} Leaves) — ${await klartext(cdp)}`
@@ -349,8 +362,7 @@ async function v3_ribbonOeffnetNurUndPaletteLaeuft(cdp: Cdp): Promise<void> {
   // dann grün, wenn Läufe generell nicht mehr anlaufen.
   await evaluieren(cdp, `app.commands.executeCommandById("${PLUGIN_ID}:sync-mailbox"); return true;`);
   const nachPalette = await warteAufNeuenLauf(cdp, nachRibbon, 20_000);
-  pruefe(
-    "V3b Befehlspalette startet weiterhin einen Lauf",
+  pruefe("V3b",
     nachPalette !== null,
     nachPalette === null
       ? `kein neuer Lauf binnen 20 s — ${await klartext(cdp)}`
@@ -419,8 +431,7 @@ async function v2_knopfPosition(cdp: Cdp): Promise<void> {
      return { da: true, w: Math.round(r.width), h: Math.round(r.height),
               imInhalt: r.top >= i.top - 1 && r.bottom <= i.bottom + 1 && r.width > 0 && r.height > 0 };`,
   );
-  pruefe(
-    "V2 „Alle synchronisieren“ hat Pixel und sitzt im Inhalt",
+  pruefe("V2",
     messung !== null && messung.da && messung.imInhalt,
     messung === null
       ? "keine Ansicht offen"
@@ -437,7 +448,7 @@ async function v1_sichtbarBeimErstoeffnen(cdp: Cdp): Promise<void> {
   await cockpitSchliessen(cdp);
   await evaluieren(cdp, `app.workspace.rightSplit.collapse(); await app.workspace.saveLayout(); return true;`);
   if (!(await layoutOhneAnsichtGespeichert(cdp))) {
-    pruefe("V5a Startup-Gate aus: Ansicht bleibt zu", false, "Vorbedingung nicht herstellbar: workspace.json führt die Ansicht weiter");
+    nichtErreicht("V5a", "Vorbedingung nicht herstellbar: workspace.json führt die Ansicht weiter");
     return;
   }
   await neuLaden(cdp, "v1");
@@ -448,14 +459,13 @@ async function v1_sichtbarBeimErstoeffnen(cdp: Cdp): Promise<void> {
               eingeklappt: !!app.workspace.rightSplit.collapsed };`,
   );
   // Zugleich die erste Hälfte des Startup-Gates: mit `openViewOnStartup: false` bleibt zu.
-  pruefe(
-    "V5a Startup-Gate aus: Ansicht bleibt zu",
+  pruefe("V5a",
     vorher.leaves === 0 && vorher.eingeklappt,
     `Leaves ${String(vorher.leaves)}, rechte Leiste eingeklappt: ${String(vorher.eingeklappt)}`,
   );
 
   if (!(await ribbonKlicken(cdp))) {
-    pruefe("V1 Erstöffnen zeigt ein sichtbares Cockpit", false, "Ribbon-Symbol nicht im DOM gefunden");
+    nichtErreicht("V1", "Ribbon-Symbol nicht im DOM gefunden");
     return;
   }
   await breiteStabil(cdp);
@@ -474,8 +484,7 @@ async function v1_sichtbarBeimErstoeffnen(cdp: Cdp): Promise<void> {
   // Nicht „mehr als null Pixel“, sondern „füllt die Seitenleiste“: ein Blatt von 24 px in
   // einer 300 px breiten Leiste besteht jede Schwelle über null und ist trotzdem unsichtbar.
   const fuelltLeiste = messung.leiste > 0 && messung.w >= messung.leiste - 40;
-  pruefe(
-    "V1 Erstöffnen zeigt ein sichtbares Cockpit (kein 0×0)",
+  pruefe("V1",
     messung.da && messung.offen && messung.h > 0 && fuelltLeiste,
     messung.da
       ? `${String(messung.w)}×${String(messung.h)} px in einer ${String(messung.leiste)} px breiten Leiste, offen: ${String(messung.offen)}` +
@@ -512,7 +521,7 @@ async function v5b_startupGateAn(cdp: Cdp): Promise<void> {
   await cockpitSchliessen(cdp);
   await evaluieren(cdp, `app.workspace.rightSplit.collapse(); await app.workspace.saveLayout(); return true;`);
   if (!(await layoutOhneAnsichtGespeichert(cdp))) {
-    pruefe("V5b Startup-Gate an: Ansicht öffnet sich von selbst", false, "Vorbedingung nicht herstellbar: workspace.json führt die Ansicht weiter");
+    nichtErreicht("V5b", "Vorbedingung nicht herstellbar: workspace.json führt die Ansicht weiter");
     return;
   }
   await neuLaden(cdp, "v5b");
@@ -525,8 +534,7 @@ async function v5b_startupGateAn(cdp: Cdp): Promise<void> {
      return { leaves: app.workspace.getLeavesOfType(${JSON.stringify(VIEW_TYPE)}).length,
               w: r ? Math.round(r.width) : 0, h: r ? Math.round(r.height) : 0 };`,
   );
-  pruefe(
-    "V5b Startup-Gate an: Ansicht öffnet sich von selbst",
+  pruefe("V5b",
     messung.leaves === 1 && messung.w > 0 && messung.h > 0,
     messung.leaves === 1
       ? `${String(messung.w)}×${String(messung.h)} px`
@@ -548,7 +556,7 @@ async function startupGateSetzen(cdp: Cdp, an: boolean): Promise<void> {
 async function v6_registerUeberlebtNeustart(cdp: Cdp, datenDatei: string): Promise<void> {
   const vorher = await laufStand(cdp);
   if (vorher === null) {
-    pruefe("V6 Register überlebt den Neustart", false, "vor dem Neustart gab es keinen Lauf zu merken");
+    nichtErreicht("V6", "vor dem Neustart gab es keinen Lauf zu merken");
     return;
   }
   // Erst gegen die Datei prüfen, dann gegen den Speicher: `persist()` kann im Objekt wirken,
@@ -559,8 +567,7 @@ async function v6_registerUeberlebtNeustart(cdp: Cdp, datenDatei: string): Promi
 
   await neuLaden(cdp, "v6");
   const nachher = await laufStand(cdp);
-  pruefe(
-    "V6 Register überlebt den Neustart und liegt neben den übrigen Feldern",
+  pruefe("V6",
     nachher === vorher && nebeneinander,
     nachher !== vorher
       ? `Zeitstempel ${String(vorher)} → ${String(nachher)} — Register nicht wiederhergestellt`
@@ -589,8 +596,7 @@ async function v7_kaputtesRegisterKipptDenStartNicht(cdp: Cdp, datenDatei: strin
   // Zulässig ist mehr als ein Ausgang: das Register wird leer, ODER es fällt auf einen
   // brauchbaren Ersatz zurück. Falsch ist allein, dass der Start kippt oder laut scheitert.
   const registerRepariert = zustand.register === "{}" || zustand.register === "null";
-  pruefe(
-    "V7 kaputtes Register kippt den Start nicht",
+  pruefe("V7",
     zustand.geladen && registerRepariert && eigene.length === 0,
     !zustand.geladen
       ? "Plugin lud nach dem Neustart nicht"
@@ -656,8 +662,7 @@ async function v10_laufAnzeige(cdp: Cdp, schweigePort: number, schliessen: () =>
   const sichtbar = messung.mitSymbol > 0;
   const nurImKopf = messung.imKopf === messung.mitSymbol && messung.inZeile === 0;
   const bewegtSich = messung.animationen.some((a) => a !== "none" && a !== "");
-  pruefe(
-    "V10 Lauf-Anzeige dreht in der Kopfzeile, nicht in der Kontozeile",
+  pruefe("V10",
     messung.proben >= GENUG_PROBEN && sichtbar && nurImKopf && messung.hoechstensEines && bewegtSich,
     messung.proben < GENUG_PROBEN
       ? `nur ${String(messung.proben)} Proben in 2,5 s (erwartet >${String(GENUG_PROBEN)}) — das Fenster hatte keinen Fokus, ` +
@@ -718,7 +723,7 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
   const ctaAusdruck = `document.querySelector(".mailstone-cockpit-empty button")`;
   const ctaDa = await evaluieren<boolean>(cdp, `return !!${ctaAusdruck};`);
   if (!ctaDa) {
-    pruefe("V9 Empty-State-CTA öffnet den eigenen Einstellungs-Tab", false, `kein CTA im leeren Cockpit — ${await klartext(cdp)}`);
+    pruefe("V9", false, `kein CTA im leeren Cockpit — ${await klartext(cdp)}`);
     return;
   }
 
@@ -739,8 +744,7 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
   // Verglichen wird der Anzeigename des Tabs (das Fenster-DOM führt keine Id). Er ist
   // lokalisiert, der Plugin-Name aber nicht — „Mailstone" steht in jeder Sprache dort.
   const eigener = aktiv !== null && /mailstone/i.test(aktiv);
-  pruefe(
-    "V9 Empty-State-CTA öffnet den eigenen Einstellungs-Tab",
+  pruefe("V9",
     eigener,
     aktiv === null
       ? "kein Einstellungs-Fenster gefunden — öffnete der CTA die Einstellungen überhaupt?"
@@ -753,7 +757,6 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
  *  und den Icon-Knopf (`bug`, Tooltip als Name). Gemessen wird Position und Bedienung, nicht der
  *  Wortlaut — sprachfrei, damit der Punkt in einer EN- und einer DE-Instanz laeuft. */
 async function v9b_hilfeZeile(cdp: Cdp): Promise<void> {
-  const name = "V9b Die Hilfe-Zeile steht als erste Zeile im Tab, mit Text-Knopf und Icon-Knopf";
   await evaluieren(cdp, `app.setting.open(); app.setting.openTabById(${JSON.stringify(PLUGIN_ID)}); return true;`);
   await warte(1800);
   let fenster = null;
@@ -763,7 +766,7 @@ async function v9b_hilfeZeile(cdp: Cdp): Promise<void> {
     if (fenster === null) await warte(700);
   }
   if (!fenster) {
-    pruefe(name, false, "kein Einstellungs-Fenster gefunden");
+    nichtErreicht("V9b", "kein Einstellungs-Fenster gefunden");
     return;
   }
   try {
@@ -777,7 +780,7 @@ async function v9b_hilfeZeile(cdp: Cdp): Promise<void> {
        };`,
     );
     pruefe(
-      name,
+      "V9b",
       hilfe !== null && hilfe.name !== "" && hilfe.knoepfe === 1 && !!hilfe.icon,
       hilfe ? `erste Zeile „${hilfe.name}“ · Text-Knöpfe ${hilfe.knoepfe} · Icon „${hilfe.icon ?? "keiner"}“` : "kein Settings-DOM",
     );
@@ -814,7 +817,7 @@ async function tabKlicken(cdp: Cdp, tabId: string): Promise<boolean> {
 async function v11_inboxTabOeffnetInhalt(cdp: Cdp): Promise<void> {
   await cockpitOeffnen(cdp);
   if (!(await tabKlicken(cdp, "inbox"))) {
-    pruefe("V11 Inbox-Tab existiert, ist klickbar und zeigt seinen Inhalt", false, "Inbox-Tab nicht im DOM");
+    pruefe("V11", false, "Inbox-Tab nicht im DOM");
     return;
   }
   await warte(600);
@@ -837,8 +840,7 @@ async function v11_inboxTabOeffnetInhalt(cdp: Cdp): Promise<void> {
        cockpitVersteckt: !!cockpit && cockpit.classList.contains("is-hidden"),
      };`,
   );
-  pruefe(
-    "V11 Inbox-Tab existiert, ist klickbar und zeigt seinen Inhalt",
+  pruefe("V11",
     messung.inboxDa && !messung.inboxVersteckt && messung.inboxSichtbar && messung.cockpitDa && messung.cockpitVersteckt,
     `Inbox da: ${String(messung.inboxDa)}, versteckt: ${String(messung.inboxVersteckt)}, sichtbar: ${String(messung.inboxSichtbar)} — ` +
       `Cockpit da: ${String(messung.cockpitDa)}, versteckt: ${String(messung.cockpitVersteckt)}`,
@@ -855,7 +857,7 @@ async function v12_leererOrdnerZeigtEmptyState(cdp: Cdp): Promise<void> {
   );
   await warte(400);
   if (!(await tabKlicken(cdp, "inbox"))) {
-    pruefe("V12 leerer Ordner zeigt Empty-State mit Handlungsangebot", false, "Inbox-Tab nicht im DOM");
+    nichtErreicht("V12", "Inbox-Tab nicht im DOM");
     return;
   }
   // Seit dem Nachlade-Fix (I2) laedt der Tab sich selbst beim ERSTEN Sichtbarwerden — hier
@@ -873,8 +875,7 @@ async function v12_leererOrdnerZeigtEmptyState(cdp: Cdp): Promise<void> {
      const r = cta ? cta.getBoundingClientRect() : null;
      return { emptyDa: !!leer, ctaDa: !!cta, ctaSichtbar: !!r && r.width > 0 && r.height > 0 };`,
   );
-  pruefe(
-    "V12 leerer Ordner zeigt Empty-State mit Handlungsangebot",
+  pruefe("V12",
     messung.emptyDa && messung.ctaDa && messung.ctaSichtbar,
     `Empty-State da: ${String(messung.emptyDa)}, CTA da: ${String(messung.ctaDa)}, CTA sichtbar: ${String(messung.ctaSichtbar)} — ${await klartext(cdp)}`,
   );
@@ -888,9 +889,8 @@ async function v12_leererOrdnerZeigtEmptyState(cdp: Cdp): Promise<void> {
  * Scrollposition, laufende Aktionen, alles).
  */
 async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
-  const NAME = "V13 Tab-Wahl übersteht Wechsel hin und zurück (mount-once)";
   if (!(await tabKlicken(cdp, "inbox"))) {
-    pruefe(NAME, false, "Inbox-Tab nicht im DOM");
+    nichtErreicht("V13", "Inbox-Tab nicht im DOM");
     return;
   }
   await warte(400);
@@ -903,16 +903,16 @@ async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
      return true;`,
   );
   if (!gesetzt) {
-    pruefe(NAME, false, "Inbox-Panel-Div nicht im DOM, Marke nicht gesetzt");
+    nichtErreicht("V13", "Inbox-Panel-Div nicht im DOM, Marke nicht gesetzt");
     return;
   }
   if (!(await tabKlicken(cdp, "cockpit"))) {
-    pruefe(NAME, false, "Cockpit-Tab nicht im DOM (Ruecksprung nicht moeglich)");
+    nichtErreicht("V13", "Cockpit-Tab nicht im DOM (Ruecksprung nicht moeglich)");
     return;
   }
   await warte(400);
   if (!(await tabKlicken(cdp, "inbox"))) {
-    pruefe(NAME, false, "Inbox-Tab beim Rueckwechsel nicht im DOM");
+    nichtErreicht("V13", "Inbox-Tab beim Rueckwechsel nicht im DOM");
     return;
   }
   await warte(400);
@@ -927,7 +927,7 @@ async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
      };`,
   );
   pruefe(
-    NAME,
+    "V13",
     messung.markeDa && !messung.versteckt && messung.sichtbar,
     `Marke nach Hin-und-zurueck noch da: ${String(messung.markeDa)} (dasselbe DOM-Element = kein Neubau), ` +
       `versteckt: ${String(messung.versteckt)}, sichtbar: ${String(messung.sichtbar)}`,
@@ -1068,8 +1068,7 @@ async function createTaskCheckCallback(cdp: Cdp): Promise<boolean | null> {
 async function ta_kommandoFehltOhneTaskNotes(cdp: Cdp): Promise<void> {
   await taskNotesStubSetzen(cdp, false);
   const sichtbar = await createTaskCheckCallback(cdp);
-  pruefe(
-    "T-A mail.createTask fehlt ohne TaskNotes",
+  pruefe("T-A",
     sichtbar === false,
     sichtbar === null ? "Kommando nicht registriert" : `checkCallback(true) lieferte ${String(sichtbar)}`,
   );
@@ -1078,8 +1077,7 @@ async function ta_kommandoFehltOhneTaskNotes(cdp: Cdp): Promise<void> {
 async function tb_kommandoErscheintMitStub(cdp: Cdp): Promise<void> {
   await taskNotesStubSetzen(cdp, true);
   const sichtbar = await createTaskCheckCallback(cdp);
-  pruefe(
-    "T-B mail.createTask erscheint mit TaskNotes-Stub",
+  pruefe("T-B",
     sichtbar === true,
     sichtbar === null ? "Kommando nicht registriert" : `checkCallback(true) lieferte ${String(sichtbar)}`,
   );
@@ -1109,8 +1107,7 @@ async function tc_modalZeigtTitelUndFaelligkeit(cdp: Cdp): Promise<void> {
        typDatum: !!dateInput,
      };`,
   );
-  pruefe(
-    "T-C Modal zeigt Titel-Feld und Faelligkeit als Datumsfeld",
+  pruefe("T-C",
     messung.modalDa && messung.titelDa && messung.faelligkeitDa && messung.typDatum,
     !messung.modalDa
       ? `kein Modal offen — ${await klartext(cdp)}`
@@ -1139,14 +1136,14 @@ async function td_bestaetigungRuftTasksCreate(cdp: Cdp): Promise<void> {
      return true;`,
   );
   if (!gefuellt) {
-    pruefe("T-D Bestaetigung ruft tasks.create am Stub", false, "Formularfelder nicht gefunden — T-C muss davor gelaufen sein");
+    nichtErreicht("T-D", "Formularfelder nicht gefunden — T-C muss davor gelaufen sein");
     return;
   }
   await clickReal(cdp, `document.querySelector(".modal .modal-button-container .mod-cta")`, 150);
   await warte(800);
   const planModalDa = await evaluieren<boolean>(cdp, `return !!document.querySelector(".modal");`);
   if (!planModalDa) {
-    pruefe("T-D Bestaetigung ruft tasks.create am Stub", false, `kein Vorschau-Modal nach dem Absenden — ${await klartext(cdp)}`);
+    pruefe("T-D", false, `kein Vorschau-Modal nach dem Absenden — ${await klartext(cdp)}`);
     return;
   }
   await clickReal(cdp, `document.querySelector(".modal .modal-button-container .mod-cta")`, 150);
@@ -1160,8 +1157,7 @@ async function td_bestaetigungRuftTasksCreate(cdp: Cdp): Promise<void> {
   // kein eigenes Link-Feld) — ohne diese Zusicherung koennte der Rueckverweis verschwinden,
   // waehrend Titel und Faelligkeit unveraendert blieben, und T-D bliebe trotzdem gruen.
   const NOTIZ_NAME = TASKNOTES_NOTIZ_PFAD.replace(/\.md$/, "");
-  pruefe(
-    "T-D Bestaetigung ruft tasks.create am Stub",
+  pruefe("T-D",
     aufrufe.length === 1 && treffer !== undefined && treffer.due === FAELLIGKEIT && treffer.details === `[[${NOTIZ_NAME}]]`,
     aufrufe.length === 0
       ? `tasks.create wurde nicht gerufen — ${await klartext(cdp)}`
@@ -1218,7 +1214,7 @@ async function inboxHostWiederherstellen(cdp: Cdp): Promise<void> {
 async function te_postfachKnopfNurMitTaskNotes(cdp: Cdp): Promise<void> {
   await cockpitOeffnen(cdp);
   if (!(await inboxFesteZeileEinsetzen(cdp))) {
-    pruefe("T-E dritter Posteingangs-Knopf nur mit TaskNotes", false, "kein Inbox-Host im offenen Cockpit gefunden");
+    nichtErreicht("T-E", "kein Inbox-Host im offenen Cockpit gefunden");
     return;
   }
   try {
@@ -1226,8 +1222,7 @@ async function te_postfachKnopfNurMitTaskNotes(cdp: Cdp): Promise<void> {
     const ohne = await inboxAktionsKnoepfeMessen(cdp);
     await taskNotesStubSetzen(cdp, true);
     const mit = await inboxAktionsKnoepfeMessen(cdp);
-    pruefe(
-      "T-E dritter Posteingangs-Knopf nur mit TaskNotes",
+    pruefe("T-E",
       ohne === 2 && mit === 3,
       ohne === -1 || mit === -1
         ? "Inbox-Tab nicht im DOM"
@@ -1278,7 +1273,7 @@ async function versandApiPruefen(cdp: Cdp): Promise<void> {
   );
   // Flaechen-Waechter: faellt jemand auf die Idee, das interne Objekt durchzureichen
   // (`this.api = this.facade`), faellt es genau hier auf.
-  pruefe("V21 API haengt am Plugin, Flaeche genau apiVersion+send+status",
+  pruefe("V21",
     flaeche === "apiVersion,send,status", `Flaeche: ${flaeche}`);
 
   // ── Vorzustand sichern ──────────────────────────────────────────────────────────────
@@ -1320,7 +1315,7 @@ async function versandApiPruefen(cdp: Cdp): Promise<void> {
 
     const status = await evaluieren<string>(
       cdp, `return JSON.stringify(app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}].api.status());`);
-    pruefe("V22 status() antwortet synchron und meldet not-configured ohne Identitaet",
+    pruefe("V22",
       status.includes('"ready":false') && status.includes("not-configured"), status);
 
     // Den Nutzer zu fragen, was er nicht entscheiden kann, waere Klickweg ohne Ertrag.
@@ -1331,7 +1326,7 @@ async function versandApiPruefen(cdp: Cdp): Promise<void> {
          callerId: "gui-smoke-fremd", to: ["probe@example.invalid"], subject: "Smoke", body: "Text" }));`,
     );
     const modalsNach = await evaluieren<number>(cdp, `return document.querySelectorAll(".modal-container").length;`);
-    pruefe("V23 send() ohne Identitaet liefert not-configured und oeffnet kein Modal",
+    pruefe("V23",
       ohneKonto.includes("not-configured") && modalsVor === modalsNach,
       `${ohneKonto}, Modals ${String(modalsVor)} -> ${String(modalsNach)}`);
 
@@ -1358,7 +1353,7 @@ async function versandApiPruefen(cdp: Cdp): Promise<void> {
     const modalDa = await pollUntil<boolean>(
       cdp, `return !!document.querySelector(".mailstone-consent-body");`, 8000, 200);
     if (modalDa !== true) {
-      pruefe("V24 Erstkontakt oeffnet das Bestaetigungs-Modal", false, "kein Modal binnen 8 s");
+      pruefe("V24", false, "kein Modal binnen 8 s");
       await evaluieren(cdp, `delete window.__ms_probe; return true;`).catch(() => undefined);
     } else {
       await clickReal(
@@ -1367,7 +1362,7 @@ async function versandApiPruefen(cdp: Cdp): Promise<void> {
         150,
       );
       const ausgang = await evaluieren<string>(cdp, `const r = await window.__ms_probe; delete window.__ms_probe; return JSON.stringify(r);`);
-      pruefe("V24 Erstkontakt oeffnet das Modal, Abbrechen liefert declined",
+      pruefe("V24",
         ausgang.includes("declined"), ausgang);
     }
   } finally {
@@ -1391,6 +1386,9 @@ async function versandApiPruefen(cdp: Cdp): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (PORT_ARG === undefined || !Number.isInteger(PORT)) {
+    throw new Error("--port <n> fehlt. Dieser Treiber hat keinen Standardport; die Zweitinstanz-Anleitung steht im Dateikopf.");
+  }
   const cdp = await attachTo("workspace", PORT, VAULT);
   offeneVerbindung = cdp;
   if (!cdp) {
@@ -1399,6 +1397,12 @@ async function main(): Promise<void> {
         `Läuft Obsidian mit --remote-debugging-port? Fehlt nur der Vault: open "obsidian://open?vault=${VAULT}"`,
     );
   }
+
+  // Frisches Profil: Vertrauensdialog bestaetigen, Restricted Mode aufheben, Plugin laden — nur im eigenen
+  // Staging-Vault (heisst wie das Repo); ein fremdes Fenster bleibt unberuehrt.
+  const instanz = await bereiteInstanzVor(cdp, { pluginIds: [PLUGIN_ID], nurVault: VAULT, sprache: "en" });
+  console.log(`Instanz vorbereitet: ${instanz.hinweis}`);
+  if (instanz.plugins[PLUGIN_ID] === "fehlt") throw new Error(`Plugin „${PLUGIN_ID}“ ist nicht geladen — ${instanz.hinweis}`);
 
   const konfigVerzeichnis = await evaluieren<string>(cdp, `return app.vault.configDir;`);
   const vaultPfad = await evaluieren<string>(cdp, `return app.vault.adapter.basePath;`);
@@ -1548,13 +1552,7 @@ async function main(): Promise<void> {
     cdp.close();
   }
 
-  const rot = ergebnisse.filter((e) => !e.ok);
-  console.log(`${String(ergebnisse.length - rot.length)}/${String(ergebnisse.length)} grün`);
-  if (rot.length > 0) {
-    console.log("Rot:");
-    for (const e of rot) console.log(`  - ${e.name}: ${e.detail}`);
-    process.exitCode = 1;
-  }
+  bilanz.abschluss();
 }
 
 /**
@@ -1574,9 +1572,11 @@ async function deployteVersion(cdp: Cdp, _vaultPfad: string, konfigVerzeichnis: 
   );
 }
 
-main().catch((error: unknown) => {
-  console.error(`\nAbbruch: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 1;
-  // Ohne das haengt der Prozess am offenen Socket, statt sich zu beenden (s. offeneVerbindung).
-  offeneVerbindung?.close();
+runDriver(async () => {
+  try {
+    await main();
+  } finally {
+    // Ohne das haengt der Prozess am offenen Socket, statt sich zu beenden (s. offeneVerbindung).
+    offeneVerbindung?.close();
+  }
 });

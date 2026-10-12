@@ -76,7 +76,9 @@ function argWert(flag: string, fallback: string): string {
   return i >= 0 && process.argv[i + 1] !== undefined ? String(process.argv[i + 1]) : fallback;
 }
 
-const PORT = Number(argWert("--port", "9222"));
+// Der Port ist PFLICHT: ein Default 9222 traefe die reguelaere Instanz (Dach-AGENTS § Staging-Vaults).
+const PORT_ARG = argWert("--port", "");
+const PORT = Number(PORT_ARG);
 const VAULT = argWert("--vault", "mailstone");
 
 function warte(ms: number): Promise<void> {
@@ -353,6 +355,11 @@ async function pruefeE(cdp: Cdp): Promise<void> {
 // ── Lauf ────────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  if (PORT_ARG === "" || !Number.isInteger(PORT)) {
+    console.error("--port <n> fehlt. Dieser Lauf hat keinen Standardport (Zweitinstanz-Rezept: Dach-AGENTS § Staging-Vaults).");
+    process.exitCode = 2;
+    return;
+  }
   const cdp = await attachTo("workspace", PORT, VAULT);
   if (!cdp) {
     throw new Error(
