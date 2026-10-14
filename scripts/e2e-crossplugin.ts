@@ -46,7 +46,7 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachTo, beimAbbruch, clearNotices, clickReal, installiereAbbruch, istAbgebrochen, notices, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, beimAbbruch, bereiteInstanzVor, clearNotices, clickReal, installiereAbbruch, istAbgebrochen, notices, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
 import { requireEigenerBuild } from "../../tools/obsidian-cdp/vault.js";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)));
@@ -372,6 +372,12 @@ async function main(): Promise<void> {
         `Läuft Obsidian mit --remote-debugging-port? Fehlt nur der Vault: open "obsidian://open?vault=${VAULT}"`,
     );
   }
+
+  // Frisches Profil: Vertrauensdialog bestaetigen, Restricted Mode aufheben, beide Plugins laden. Ohne diesen
+  // Schritt steht `app.plugins.plugins.tasknotes` im frischen Profil leer — die Ursache fuer 2 von 5 gruen
+  // (Befund mle-w21): kein Fehler, nur ein nie geladenes TaskNotes.
+  const instanz = await bereiteInstanzVor(cdp, { pluginIds: [PLUGIN_ID, TASKNOTES_ID], nurVault: VAULT, sprache: "en" });
+  console.log(`Instanz vorbereitet: ${instanz.hinweis}`);
 
   const konfigVerzeichnis = await evaluieren<string>(cdp, `return app.vault.configDir;`);
   const vaultPfad = await evaluieren<string>(cdp, `return app.vault.adapter.basePath;`);
