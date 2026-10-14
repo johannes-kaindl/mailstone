@@ -10,7 +10,8 @@
  * ```bash
  * npm run build
  * npm run shots -- --setup                 # Vault aus dem Fixture bauen
- * # Vault in $UD/obsidian.json eintragen, Zweitinstanz mit eigenem Profil und Port starten,
+ * # Vault in $UD/obsidian.json eintragen, Zweitinstanz mit eigenem Profil und Port starten
+ * # (Rezept: Dach-AGENTS § Staging-Vaults)
  * # Oberflaechensprache Englisch (obsidian.json language UND localStorage language)
  * python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "shots.ts" --exclusive focus --port <port>
  * npm run shots -- --port <port>           # alles aufnehmen
@@ -35,7 +36,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { argv, cwd, exit } from "node:process";
 
-import { attachTo, Cdp, closeExtraLeaves, openExisting, pollUntil, requireVisible } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, Cdp, closeExtraLeaves, openExisting, pollUntil, requireUntil, requireVisible } from "../../tools/obsidian-cdp/cdp.js";
 import { boxOf, capture, setWindowSize, writeShot, type Rect, type ShotOptions } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -51,7 +52,9 @@ function arg(flag: string, fallback: string): string {
   const i = argv.indexOf(flag);
   return i >= 0 && argv[i + 1] !== undefined ? String(argv[i + 1]) : fallback;
 }
-const PORT = Number(arg("--port", "9327"));
+// Der Port ist PFLICHT: ein Default 9222 oder ein geratener Port traefe eine fremde Instanz.
+const PORT_ARG = arg("--port", "");
+const PORT = Number(PORT_ARG);
 const ONLY = arg("--only", "");
 
 const wollen = (name: string): boolean => ONLY === "" || ONLY === name;
@@ -200,8 +203,8 @@ async function mailNote(cdp: Cdp): Promise<void> {
   await pause(800);
   // Ausschnitt auf den Inhalt der Notiz (Eigenschaften bis erster Absatz), ohne die leeren Raender
   // und ohne die Statusleiste des Fensters.
-  // Die Lesevorschau rendert Abschnitte nacheinander; erst messen, wenn der Schluss ("Alex") steht.
-  await pollUntil(cdp, `return /Alex\\s*$/.test(document.querySelector(".workspace-leaf.mod-active .markdown-preview-view")?.textContent ?? "") ? true : null;`, 8000, 200);
+  // Die Lesevorschau rendert Abschnitte nacheinander; erst messen, wenn der Schluss ("… nothing gets lost.") steht.
+  await requireUntil(cdp, `/gets lost\\.\\s*$/.test(document.querySelector(".workspace-leaf.mod-active .markdown-preview-view")?.textContent ?? "")`, "Lesevorschau der Mail-Notiz rendert ihren Schluss nicht", 8000, 200);
   const raw = await cdp.evaluate<string | null>(`
     const wurzel = document.querySelector(".workspace-leaf.mod-active");
     const kopf = wurzel?.querySelector(".metadata-container")?.getBoundingClientRect();
@@ -220,7 +223,7 @@ async function einstellungen(cdp: Cdp, port: number): Promise<Cdp> {
   const fenster = await attachTo("settings", port, VAULT_NAME);
   if (!fenster) throw new Error("Einstellungen-Fenster nicht gefunden");
   await setWindowSize(fenster, 1100, 940);
-  await pollUntil(fenster, `return document.querySelector(".vertical-tab-content .setting-item") ? true : null;`, 8000, 200);
+  await requireUntil(fenster, `document.querySelector(".vertical-tab-content .setting-item")`, "Einstellungen-Tab zeigt keine Zeile", 8000, 200);
   await pause(600);
   return fenster;
 }
@@ -265,6 +268,9 @@ async function konto(cdp: Cdp, port: number): Promise<void> {
 async function main(): Promise<void> {
   if (argv.includes("--list")) { console.log(VERTRAG.join("\n")); return; }
   if (argv.includes("--setup")) { setup(); return; }
+  if (PORT_ARG === "" || !Number.isInteger(PORT)) {
+    throw new Error("--port <n> fehlt. Dieses Rezept hat keinen Standardport; die Zweitinstanz-Anleitung steht im Dateikopf.");
+  }
   if (!existsSync(join(cwd(), OUT_DIR, "fixture"))) throw new Error("Fixture fehlt (docs/images/fixture)");
   void readFileSync;
 
