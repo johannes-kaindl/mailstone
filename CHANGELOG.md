@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-14
+
 ### Fixed
 
 - A mail without a subject can now be sent; before, the plugin asked for confirmation and then failed (an empty subject is allowed by the mail standard).
