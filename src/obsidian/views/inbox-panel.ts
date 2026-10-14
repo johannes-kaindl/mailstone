@@ -138,7 +138,8 @@ export class InboxPanel {
 
     if (vm.state === "leer") {
       const leer = root.createDiv({ cls: "mailstone-inbox-empty" });
-      leer.createEl("p", { text: t("inbox.empty") });
+      // Ohne Konto ist „keine Nachrichten“ eine Falschaussage ueber ein Postfach, das es nicht gibt.
+      leer.createEl("p", { text: t(konten.length === 0 ? "inbox.empty.noAccount" : "inbox.empty") });
       const cta = leer.createEl("button", { cls: "mod-cta", text: t("inbox.empty.cta") });
       cta.addEventListener("click", () => this.host.openSettings());
       return;

@@ -67,6 +67,19 @@ describe("mail.rerender", () => {
     expect(r.plan.diff).toContainEqual({ field: "subject", before: "Quartalsreview", after: "Quartalsreview (verschoben)" });
   });
 
+  it("Bestand: eine Notiz mit englischen Ueberschriften behaelt sie beim Re-Render, auch bei deutschem Profil", () => {
+    const alt = mail();
+    const derived = buildDerivedFrontmatter(profile, { mail: alt, source: "acc/Vault", state: "live", syncedAt: NOW, linkFor: () => null });
+    const note = newNote(derived, profile.onCreate, renderMessageBlock(alt, { heading: "Message" }), "## Notes\n\n");
+    const r = RERENDER_COMMAND.plan({}, ctxFor(mail({ subject: "Quartalsreview (verschoben)" }), note));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const content = (r.plan.notes[0] as { content: string }).content;
+    expect(content).toContain("## Notes");
+    expect(content).toContain("## Message");
+    expect(content).not.toContain("## Nachricht");
+  });
+
   it("laesst mail_state unveraendert — eine abgeloeste Notiz wird nicht wieder live", () => {
     const m = mail();
     const note = noteFor(m, "detached");

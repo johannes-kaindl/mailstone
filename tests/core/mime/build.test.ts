@@ -116,10 +116,20 @@ describe("buildMime", () => {
     expect(back.subject).toBe(subject);
   });
 });
+describe("buildMime — leerer Betreff", () => {
+  it("baut eine gueltige Mail mit leerem Subject-Header; parseEml liefert wieder einen leeren Betreff", async () => {
+    const { bytes } = buildMime({ ...base, subject: "" }, opts);
+    const s = new TextDecoder().decode(bytes);
+    expect(s).toMatch(/^Subject:[ ]?\r?$/m);
+    const back = await parseEml(bytes);
+    expect(back.subject ?? "").toBe("");
+  });
+});
 describe("validateOutgoing", () => {
-  it("ohne Empfaenger / leerer Betreff / ungueltige Adresse", () => {
+  it("ohne Empfaenger / ungueltige Adresse; ein leerer Betreff ist gueltig", () => {
     expect(validateOutgoing({ ...base, to: [] })).toEqual({ ok: false, code: "no-recipients" });
-    expect(validateOutgoing({ ...base, subject: " " })).toEqual({ ok: false, code: "empty-subject" });
+    expect(validateOutgoing({ ...base, subject: " " })).toEqual({ ok: true });
+    expect(validateOutgoing({ ...base, subject: "" })).toEqual({ ok: true });
     expect(validateOutgoing({ ...base, to: ["kein-at"] })).toEqual({ ok: false, code: "invalid-address" });
     expect(validateOutgoing(base)).toEqual({ ok: true });
   });

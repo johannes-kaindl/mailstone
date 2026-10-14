@@ -71,6 +71,47 @@ describe("planMailNote", () => {
   });
 });
 
+// Notiz-Ueberschriften in der Sprache der Oberflaeche (Entscheidung 2026-10-13): NEUE Notizen tragen sie in
+// `profile.noteHeadings`, BESTEHENDE behalten die Ueberschrift, die in ihrer Zone steht — der Merge schreibt
+// Bestand nie um (Hash der Zone aendert sich sonst bei jedem Sprachwechsel).
+describe("planMailNote — Notiz-Ueberschriften nach Oberflaechensprache", () => {
+  const en = { notes: "Notes", message: "Message" };
+  it("create mit englischen Ueberschriften", async () => {
+    const c = await common();
+    const p = planMailNote({ ...c, profile: { ...c.profile, noteHeadings: en }, existing: null });
+    if (p.kind !== "create") throw new Error("expected create");
+    expect(p.content).toContain("\n## Notes\n\n%% mailstone:begin %%\n## Message\n");
+    expect(p.content).not.toContain("## Nachricht");
+  });
+  it("ohne noteHeadings bleibt es bei Notizen/Nachricht (bisheriges Verhalten)", async () => {
+    const c = await common();
+    const p = planMailNote({ ...c, existing: null });
+    if (p.kind !== "create") throw new Error("expected create");
+    expect(p.content).toContain("## Notizen\n\n%% mailstone:begin %%\n## Nachricht\n");
+  });
+  it("Bestand: eine deutsche Notiz bleibt deutsch und wird bei englischer Oberflaeche nicht umgeschrieben", async () => {
+    const c = await common();
+    const first = planMailNote({ ...c, existing: null });
+    if (first.kind !== "create") throw new Error("expected create");
+    const enProfile = { ...c.profile, noteHeadings: en };
+    const same = planMailNote({ ...c, profile: enProfile, syncedAt: new Date("2026-08-23T13:00:00Z"), existing: { path: first.path, content: first.content, zoneHash: first.zoneHash } });
+    expect(same.kind === "skip" && same.reason).toBe("unchanged");
+    const veraendert = first.content.replace("title: ", "title: Alt ");
+    const upd = planMailNote({ ...c, profile: enProfile, existing: { path: first.path, content: veraendert, zoneHash: first.zoneHash } });
+    if (upd.kind !== "update") throw new Error(upd.kind);
+    expect(upd.content).toContain("## Nachricht");
+    expect(upd.content).toContain("## Notizen");
+    expect(upd.content).not.toContain("## Message");
+  });
+  it("Bestand: eine englische Notiz bleibt bei deutscher Oberflaeche englisch", async () => {
+    const c = await common();
+    const first = planMailNote({ ...c, profile: { ...c.profile, noteHeadings: en }, existing: null });
+    if (first.kind !== "create") throw new Error("expected create");
+    const same = planMailNote({ ...c, syncedAt: new Date("2026-08-23T13:00:00Z"), existing: { path: first.path, content: first.content, zoneHash: first.zoneHash } });
+    expect(same.kind === "skip" && same.reason).toBe("unchanged");
+  });
+});
+
 // M5 Task 7: taskPreset ist eine Anschlussstelle fuer den Weg OHNE TaskNotes (Design § 5) —
 // beleben ueber withTaskPreset() (profile.ts), das das Preset additiv in profile.onCreate
 // mischt. onCreate wirkt laut plan.ts NUR im create-Zweig (newNote()), nie im Merge-Zweig

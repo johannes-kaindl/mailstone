@@ -17,7 +17,7 @@ export interface Sender {
   name: string;
 }
 
-export type OutgoingValidation = { ok: true } | { ok: false; code: "no-recipients" | "empty-subject" | "invalid-address" };
+export type OutgoingValidation = { ok: true } | { ok: false; code: "no-recipients" | "invalid-address" };
 
 const ADDR = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
@@ -31,7 +31,8 @@ export function isAddress(s: string): boolean {
 export function validateOutgoing(msg: OutgoingMessage): OutgoingValidation {
   const all = [...msg.to, ...(msg.cc ?? []), ...(msg.bcc ?? [])];
   if (all.length === 0) return { ok: false, code: "no-recipients" };
-  if (!msg.subject.trim()) return { ok: false, code: "empty-subject" };
+  // Ein leerer Betreff ist zulaessig (RFC 5322 verlangt keinen; jedes Mailprogramm sendet ohne) —
+  // Entscheidung Johannes 2026-10-13. Unzustellbar macht eine Mail nur eine kaputte Adresse.
   if (all.some((a) => !ADDR.test(a))) return { ok: false, code: "invalid-address" };
   return { ok: true };
 }

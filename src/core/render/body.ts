@@ -1,7 +1,7 @@
 import TurndownService from "turndown";
 import type { ParsedMail } from "../mime/types";
 
-export interface RenderBodyOptions { plainMinRatio?: number }
+export interface RenderBodyOptions { plainMinRatio?: number; /** Ueberschrift des Blocks, Default "Nachricht" */ heading?: string }
 
 // Reale Mails: HTML traegt oft tausende Zeichen Text, ein Plain-Stub ("Diese Nachricht
 // enthaelt HTML.") nur 30-80. 0.1 trennt das zuverlaessig; kalibrierbar ueber RenderBodyOptions.plainMinRatio.
@@ -75,5 +75,5 @@ export function renderMessageBlock(m: Pick<ParsedMail, "text" | "html">, opts: R
   if (src === "text") body = (m.text ?? "").replace(/\r\n/g, "\n").trim();
   else if (src === "html") body = htmlToMarkdown(m.html ?? "");
   else body = "*(no text content)*";
-  return `## Nachricht\n\n${body.replace(FENCE_MARKER_RE, FENCE_MARKER_REPLACEMENT)}`;
+  return `## ${opts.heading ?? "Nachricht"}\n\n${body.replace(FENCE_MARKER_RE, FENCE_MARKER_REPLACEMENT)}`;
 }

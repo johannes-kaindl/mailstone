@@ -1,7 +1,7 @@
-import { mergeNote } from "../merge/merge";
+import { blockHeadingOf, mergeNote } from "../merge/merge";
 import { renderMessageBlock } from "../render/body";
 import { buildDerivedFrontmatter } from "../render/frontmatter";
-import { managedKeys } from "../mirror/profile";
+import { DEFAULT_NOTE_HEADINGS, managedKeys } from "../mirror/profile";
 import { diffFrontmatter } from "./diff";
 import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type PlanResult } from "./types";
 import { validateInput } from "./schema";
@@ -47,7 +47,7 @@ export const RERENDER_COMMAND: CommandDescriptor = {
       // steht dann nirgends mehr. Wer eines von beiden aendert, liest zuerst das andere.
       linkFor: (id) => ctx.linkFor(id),
     });
-    const block = renderMessageBlock(mail);
+    const block = renderMessageBlock(mail, { heading: blockHeadingOf(ctx.content) || (p.noteHeadings ?? DEFAULT_NOTE_HEADINGS).message });
     const r = mergeNote({
       existing: ctx.content,
       derived,

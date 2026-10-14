@@ -131,7 +131,7 @@ export class MailstoneSettingTab extends PluginSettingTab {
   private accountsGroup(): SettingDefinitionList {
     const accounts = this.host.settings.accounts;
     const items: SettingGroupItem[] = accounts.map((acc) => {
-      const base = t("settings.accounts.desc", acc.imap.host || acc.smtp.host || "–", acc.identities.length);
+      const base = t(acc.identities.length === 1 ? "settings.accounts.desc.one" : "settings.accounts.desc", acc.imap.host || acc.smtp.host || "–", acc.identities.length);
       // SecretStore.has() lag seit M2 ungenutzt herum — die Kontenzeile ist die einzige Stelle,
       // an der ein fehlendes Passwort sichtbar wird, bevor ein Sync-Lauf mit "no-secret" scheitert.
       const missing = !this.host.secrets.has(acc.secretId);

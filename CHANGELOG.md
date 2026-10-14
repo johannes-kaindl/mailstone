@@ -6,9 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A mail without a subject can now be sent; before, the plugin asked for confirmation and then failed (an empty subject is allowed by the mail standard).
+- The accounts list says “1 identity” instead of “1 identities” (and “1 Identität” in German).
+- The inbox says “No account yet” with the settings button when no account is set up, instead of “No messages in this folder”.
+
 ### Changed
 
 - Internal housekeeping only, nothing changes for you: the shared kit libraries were updated (obsidian-kit 0.57.0, code-kit 0.24.0), the sync busy-guard, the Node-builtin build helper and the test timer shim now come from the shared library. The built plugin file is byte-identical to the one before this change.
+- Internal housekeeping, almost nothing changes for you: the shared kit libraries were updated again (obsidian-kit 0.60.1, code-kit 0.27.1); local date and time and the file-name slug now come from the shared library. One visible difference, for new mails only: a subject with `™` or `Ⅳ` keeps its letters in the file name (`Co™` gives `cotm`, before `co`) and a capital `ẞ` becomes `ss` (before it was dropped). Existing notes are not renamed.
+- New mail notes get their headings (“Notes”, “Message”) in the language of the interface instead of always German. Existing notes keep the headings they have; nothing is rewritten.
+- The “Notes folder” and “Debug log” descriptions are accurate now (the year subfolder depends on its own switch; the debug log needs a reload to change).
 - The calendar-notes link now accepts either `apiVersion` or `version` from calendar-notes' plugin API (same number), so newer and older calendar-notes versions both keep working for invitations.
 
 ## [0.7.2] — 2026-10-03

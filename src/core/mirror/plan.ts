@@ -2,8 +2,8 @@ import type { ParsedMail } from "../mime/types";
 import { buildDerivedFrontmatter } from "../render/frontmatter";
 import { renderMessageBlock } from "../render/body";
 import { mailFilename, mailFolder, emlFolder } from "../render/filename";
-import { managedKeys, type MailProfile } from "./profile";
-import { mergeNote, newNote } from "../merge/merge";
+import { DEFAULT_NOTE_HEADINGS, managedKeys, type MailProfile } from "./profile";
+import { blockHeadingOf, mergeNote, newNote } from "../merge/merge";
 
 export type NotePlan =
   | { kind: "create"; path: string; emlPath: string; content: string; eml: Uint8Array; mailId: string; zoneHash: string }
@@ -75,11 +75,13 @@ export function planMailNote(input: PlanInput): NotePlan {
     syncedAt: input.syncedAt,
     linkFor: input.linkFor,
   });
-  const block = renderMessageBlock(mail);
+  const headings = profile.noteHeadings ?? DEFAULT_NOTE_HEADINGS;
+  // Bestand behaelt die Ueberschrift seiner Zone (nie umschreiben), neue Notizen die der Oberflaeche.
+  const block = renderMessageBlock(mail, { heading: (input.existing && blockHeadingOf(input.existing.content)) || headings.message });
 
   if (!input.existing) {
     const { path, emlPath } = freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
-    const { content, zoneHash } = newNote(derived, profile.onCreate, block);
+    const { content, zoneHash } = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`);
     return { kind: "create", path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash };
   }
 

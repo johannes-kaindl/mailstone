@@ -15,6 +15,17 @@ export interface MailProfile {
   syncedField: string; // "mail_id","mail_source","mail_state","mail_synced"
   fields: Record<MailServerField, string | null>;
   onCreate: Record<string, FmVal>; // Default { type: "mail" }
+  /** Ueberschriften NEUER Notizen in der Oberflaechensprache (`## Notizen` vor der Zone, `## Nachricht`
+   *  darin). Nur zur Laufzeit gesetzt (main.ts, `withNoteHeadings`), nie persistiert: Fehlt das Feld,
+   *  gilt {@link DEFAULT_NOTE_HEADINGS}. Bestehende Notizen behalten, was in ihrer Zone steht. */
+  noteHeadings?: NoteHeadings;
+}
+
+export interface NoteHeadings { notes: string; message: string }
+export const DEFAULT_NOTE_HEADINGS: NoteHeadings = { notes: "Notizen", message: "Nachricht" };
+
+export function withNoteHeadings(p: MailProfile, headings: NoteHeadings): MailProfile {
+  return { ...p, noteHeadings: headings };
 }
 
 export function defaultMailProfile(): MailProfile {

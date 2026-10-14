@@ -26,6 +26,14 @@ function fmBlock(data: Record<string, FmValue>, order: string[]): string {
   return serializeFrontmatter(data, order);
 }
 
+/** Ueberschrift der verwalteten Zone einer bestehenden Notiz (`## <Text>` als erste Zeile), oder
+ *  `undefined`. Ein Re-Render nimmt sie wieder auf: Bestand wird nie in eine andere Sprache umgeschrieben. */
+export function blockHeadingOf(content: string): string | undefined {
+  const { block } = splitBody(content);
+  const m = block === null ? null : /^## ([^\r\n]+)\r?\n/.exec(block + "\n");
+  return m ? m[1]!.trim() : undefined;
+}
+
 export function newNote(
   derived: Record<string, FmVal>,
   onCreate: Record<string, FmVal>,

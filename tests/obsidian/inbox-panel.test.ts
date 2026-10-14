@@ -3,6 +3,7 @@ import { makeFakeEl } from "../vendor/kit/obsidian-mock";
 import { InboxPanel, type InboxHost } from "../../src/obsidian/views/inbox-panel";
 import type { InboxViewModel } from "../../src/core/view/inbox-vm";
 import { initI18n } from "../../src/i18n/strings";
+import { newAccount } from "../../src/core/settings";
 import { t } from "../../src/vendor/code-kit/i18n";
 
 initI18n("de");
@@ -62,6 +63,15 @@ describe("InboxPanel", () => {
     const el = makeFakeEl();
     new InboxPanel(host({ state: "leer", rows: [] })).mount(el);
     expect(findAll(el, "mailstone-inbox-empty")).toHaveLength(1);
+  });
+
+  it("Leerzustand ohne Konto sagt noch kein Konto, mit Konto keine Nachrichten", () => {
+    const a = makeFakeEl();
+    new InboxPanel(host({ state: "leer", rows: [] })).mount(a);
+    expect(String(a.textContent)).toMatch(/Noch kein Konto|No account yet|inbox\.empty\.noAccount/);
+    const b = makeFakeEl();
+    new InboxPanel(host({ state: "leer", rows: [] }, { accounts: () => [{ ...newAccount("a1"), label: "Privat" }] })).mount(b);
+    expect(String(b.textContent)).not.toMatch(/Noch kein Konto|No account yet|inbox\.empty\.noAccount/);
   });
 
   it("zeichnet die Aktionsknoepfe deaktiviert MIT Grund als Tooltip, statt sie wegzulassen (I6) — ohne TaskNotes", () => {

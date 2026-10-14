@@ -71,6 +71,15 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
     expect(item?.desc).not.toContain("Kein Passwort hinterlegt");
   });
 
+  it("nennt die Identitaeten in der Zaehlform: 1 Identitaet, 0 und 2 Identitaeten", () => {
+    const mk = (n: number) => ({ ...newAccount("acc"), label: "Privat", identities: Array.from({ length: n }, (_, i) => ({ id: `i${i}`, name: "N", address: `a${i}@example.test` })) }) as Account;
+    const desc = (n: number) => accountList(newTab({ accounts: [mk(n)] })).items[0]!.desc;
+    expect(desc(1)).toContain("1 Identität");
+    expect(desc(1)).not.toContain("Identitäten");
+    expect(desc(2)).toContain("2 Identitäten");
+    expect(desc(0)).toContain("0 Identitäten");
+  });
+
   it("bietet einen Schalter fuer das Debug-Protokoll", () => {
     const tab = newTab({ accounts: [] });
     const defs = tab.getSettingDefinitions() as { name?: string; control?: { key?: string } }[];
