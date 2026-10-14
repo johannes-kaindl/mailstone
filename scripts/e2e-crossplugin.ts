@@ -36,8 +36,9 @@
  *
  * ```bash
  * python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "…" \
- *   --exclusive focus --ttl 1200
- * npm run deploy && npm run smoke:e2e
+ *   --exclusive focus --port <port> --ttl 1200
+ * # Zweitinstanz wie im Kopf von scripts/gui-smoke.ts (eigenes Profil und Port)
+ * npm run deploy && npm run smoke:e2e -- --port <port>
  * python3 ~/.claude/hooks/obsidian-cdp-lock.py release
  * ```
  */
@@ -45,7 +46,7 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachTo, clearNotices, clickReal, notices, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, beimAbbruch, clearNotices, clickReal, installiereAbbruch, istAbgebrochen, notices, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
 import { requireEigenerBuild } from "../../tools/obsidian-cdp/vault.js";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)));
@@ -65,6 +66,8 @@ interface Pruefpunkt {
 }
 
 const ergebnisse: Pruefpunkt[] = [];
+/** Pfad der von TaskNotes angelegten Aufgaben-Datei, sobald bekannt — der Abbruch-Schritt räumt sie mit weg. */
+let angelegteAufgabe = "";
 
 function pruefe(name: string, ok: boolean, detail: string): void {
   ergebnisse.push({ name, ok, detail });
@@ -360,6 +363,8 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
+  // Dieses Skript läuft ohne `runDriver`: die Signale hängt es selbst ein (Brücke, README § Abbruch).
+  installiereAbbruch();
   const cdp = await attachTo("workspace", PORT, VAULT);
   if (!cdp) {
     throw new Error(
@@ -387,6 +392,15 @@ async function main(): Promise<void> {
     );
   }
 
+  // Anmelden VOR der ersten Mutation (Spy, Notiz, Aufgabe). Der Schritt ist idempotent: `spyEntfernen`
+  // löscht seine Sicherung im Renderer, Notiz und Aufgabe werden nur gelöscht, wenn sie da sind.
+  const zustand = beimAbbruch(async () => {
+    await notizAufraeumen(cdp);
+    await aufgabeLoeschen(cdp, angelegteAufgabe);
+    const r = await spyEntfernen(cdp);
+    if (r.beruehrt) console.log(`  api.tasks.create: ${r.wiederhergestellt ? "Original wiederhergestellt" : "NICHT identisch wiederhergestellt"}`);
+  }, "Spy auf api.tasks.create entfernen, Notiz und Aufgabe löschen");
+
   try {
     await requireVisible(cdp);
     // Frisch geladenes mailstone: das eigene main.js soll der gerade deployte Stand sein, nicht
@@ -406,6 +420,7 @@ async function main(): Promise<void> {
       try {
         await pruefeA(cdp);
         pfad = await pruefeBCD(cdp);
+        angelegteAufgabe = pfad;
         await pruefeE(cdp);
       } finally {
         await notizAufraeumen(cdp);
@@ -419,6 +434,7 @@ async function main(): Promise<void> {
             "die echte TaskNotes-Registrierung im Vault ist möglicherweise beschädigt.",
         );
       }
+      await zustand.schliesse();
     }
 
     console.log("");
@@ -440,6 +456,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((e: Error) => {
+  if (istAbgebrochen()) return; // Ctrl-C: das Modul räumt auf und beendet mit Exit 130
   console.error("FEHLER:", e.message);
   process.exitCode = 1;
 });

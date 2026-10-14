@@ -16,22 +16,22 @@
  *
  * ## Voraussetzung
  *
- * Der Port ist PFLICHT (`--port <n>`, dokumentierter Wert dieses Rezepts: 9385); der Treiber hat
+ * Der Port ist PFLICHT (`--port <n>`, dokumentierter Wert dieses Rezepts: 9436); der Treiber hat
  * keinen Default und fasst die regulaere Instanz nie an. Gemessen wird in einer **Zweitinstanz**
  * (eigenes Profil, eigener Port) — nie in der Instanz, an der eine andere Session haengt, und nie
  * mit `quit`:
  *
  * ```bash
  * UD=/tmp/obs-test-mailstone; mkdir -p "$UD"
- * lsof -nP -iTCP:9385 -sTCP:LISTEN; pgrep -f "user-data-dir=$UD"      # beides leer, sonst ausweichen
+ * lsof -nP -iTCP:9436 -sTCP:LISTEN; pgrep -f "user-data-dir=$UD"      # beides leer, sonst ausweichen
  * # (a) aktuelle Version statt gebuendelter (nachsehen: ls ~/Library/Application\ Support/obsidian/*.asar)
  * cp ~/Library/Application\ Support/obsidian/obsidian-<version>.asar "$UD"/
  * # Vault "$STAGING_VAULTS_DIR/mailstone" und "language":"en" in "$UD/obsidian.json" eintragen
  * OBSIDIAN_PLUGIN_DIR="$STAGING_VAULTS_DIR/mailstone/.obsidian/plugins/mailstone" npm run deploy
- * /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=9385 &
- * python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "GUI-Smoke :9385" --exclusive focus --port 9385 --ttl 300
- * npm run smoke:gui -- --port 9385
- * npm run smoke:gui -- --port 9385 --vault mailstone --keep
+ * /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=9436 &
+ * python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "GUI-Smoke :9436" --exclusive focus --port 9436 --ttl 300
+ * npm run smoke:gui -- --port 9436
+ * npm run smoke:gui -- --port 9436 --vault mailstone --keep
  * ```
  *
  * Vertrauensdialog und Restricted Mode erledigt der Treiber selbst (`bereiteInstanzVor`); je
@@ -65,7 +65,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachTo, bereiteInstanzVor, clickReal, pollUntil, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, beimAbbruch, bereiteInstanzVor, clickReal, istAbgebrochen, pollUntil, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { requireEigenerBuild } from "../../tools/obsidian-cdp/vault.js";
 
@@ -942,16 +942,11 @@ async function v13_tabWahlUeberlebtWechsel(cdp: Cdp): Promise<void> {
 // `app.plugins.plugins` ist ein PLAIN OBJECT (kein Klassensystem), ein Eintrag darin laesst
 // sich also ohne echtes Fremd-Plugin setzen und wieder entfernen.
 //
-// ⚠️ Ein Abbruch (Ctrl-C) INNERHALB dieses Abschnitts laesst den Slot mit dem STUB stehen,
-// statt die echte Registrierung wiederherzustellen — `taskNotesOriginalWiederherstellen()`
-// (unten) laeuft nur im `finally` von `main()`, das ein SIGINT nicht erreicht. Das heilt sich
-// von selbst (ein Plugin-Reload im Staging-Vault, oder der naechste Lauf: `TASKNOTES_SICHERN`
-// greift beim ersten Zugriff und die Einmal-Sicherung im Speicher ist ohnehin futsch —
-// `window.__smokeTaskNotesOriginal` lebt nur im Renderer-Prozess und ueberlebt einen Reload
-// nicht, das naechste Mal sichert also wieder das echte Original), kostet bis dahin aber eine
-// andere Session ihre TaskNotes-Registrierung. Einen SIGINT/SIGTERM-Handler bewusst NICHT hier
-// gebaut — dieselbe Luecke besteht in `scripts/e2e-crossplugin.ts` und gehoert in einen eigenen
-// Vorgang ueber beide Treiber, nicht in eine Ad-hoc-Reparatur an einem.
+// Ein Abbruch (Ctrl-C) INNERHALB dieses Abschnitts stellt den Slot ueber das Abbruch-Modul der
+// Bruecke wieder her: `main()` meldet vor der ersten Mutation einen Schritt an (`beimAbbruch`),
+// der `taskNotesOriginalWiederherstellen()` ruft. Vorher blieb der Stub im Slot einer FREMDEN
+// Session stehen (`window.__smokeTaskNotesOriginal` lebt nur im Renderer und haette einen Reload
+// nicht ueberlebt) — das Modul sperrt den Hauptzweig, der Schritt darf noch senden.
 
 const TASKNOTES_SLOT = JSON.stringify(TASKNOTES_PLUGIN_ID);
 
@@ -1432,6 +1427,43 @@ async function main(): Promise<void> {
     copyFileSync(datenDatei, rettung);
   }
 
+  // Alles, was dieser Lauf am Wirt verändert, räumt EIN Schritt zurück: der Normalweg im `finally`
+  // (`zustand.schliesse()`) und Ctrl-C/SIGTERM über das Abbruch-Modul der Brücke. Er ist idempotent
+  // und wartet im Abbruch nicht (Frist 1 s). Die Mutation auf der Node-Seite (`data.json`) sperrt das
+  // Modul nicht; sie liegt deshalb hier, hinter der Rettungskopie, und die Reihenfolge ist dieselbe wie
+  // im Normalweg.
+  const zustandZurueck = async (): Promise<void> => {
+    server?.schliessen();
+    server = null;
+    await releaseAlwaysOnTop(cdp).catch(() => undefined);
+    await evaluieren(
+      cdp,
+      `app.secretStorage.setSecret(${JSON.stringify("mailstone-" + SMOKE_ACCOUNT_ID)}, ""); return true;`,
+    ).catch(() => undefined);
+    if (originalRoh !== null && !KEEP) {
+      // Reihenfolge zaehlt: das Plugin schreibt seinen Speicherstand beim Entladen zurueck.
+      // Wer die Datei zuerst herstellt und dann neu laedt, laesst genau diesen Schreibvorgang
+      // hinterher drueberlaufen — der Vergleich sah trotzdem "byte-gleich", weil er zu frueh
+      // mass. Gemessene Folge: ein absichtlich kaputt gesetztes Register (V7) blieb im Vault.
+      // Deshalb erst abschalten, dann herstellen, dann wieder einschalten.
+      await evaluieren(cdp, `await app.plugins.disablePlugin(${JSON.stringify(PLUGIN_ID)}); return true;`).catch(
+        () => undefined,
+      );
+      if (!istAbgebrochen()) await warte(1000);
+      writeFileSync(datenDatei, originalRoh);
+      await evaluieren(cdp, `await app.plugins.enablePlugin(${JSON.stringify(PLUGIN_ID)}); return true;`).catch(
+        () => undefined,
+      );
+      if (!istAbgebrochen()) await warte(2000);
+      if (istAbgebrochen()) {
+        const zurueck = readFileSync(datenDatei, "utf8");
+        console.log(`  data.json zurückgeschrieben: ${zurueck === originalRoh ? "byte-gleich" : "ABWEICHUNG — Rettungskopie bleibt liegen"}`);
+        if (zurueck === originalRoh && existsSync(rettung)) rmSync(rettung);
+      }
+    }
+  };
+  const zustand = beimAbbruch(zustandZurueck, "Wirt-Zustand zurücksetzen (data.json, Schlüsselbund, Fokus)");
+
   try {
     // Ohne Fokus drosselt Chromium die Timer dieses Fensters auf etwa einen Tick pro
     // Sekunde und rendert verzoegert: die Abtastung in V10 verliert dann 95 % ihrer Proben
@@ -1488,6 +1520,13 @@ async function main(): Promise<void> {
     console.log("");
 
     console.log("── TaskNotes-Kopplung (M5, Stub statt echtem Nachbarplugin)");
+    // Anmelden VOR der ersten Mutation. Idempotent: `taskNotesOriginalWiederherstellen` loescht die
+    // Sicherung im Renderer, ein zweiter Aufruf (Abbruch UND `finally`) findet nichts mehr vor.
+    const taskNotesZustand = beimAbbruch(async () => {
+      await taskNotesNotizAufraeumen(cdp);
+      const r = await taskNotesOriginalWiederherstellen(cdp);
+      if (r.beruehrt) console.log(`  TaskNotes-Slot: ${r.wiederhergestellt ? "Original wiederhergestellt" : "NICHT identisch wiederhergestellt"}`);
+    }, "TaskNotes-Slot zurueckgeben");
     await taskNotesNotizAnlegenUndOeffnen(cdp);
     try {
       await ta_kommandoFehltOhneTaskNotes(cdp);
@@ -1508,6 +1547,7 @@ async function main(): Promise<void> {
             "eine evtl. echte TaskNotes-Registrierung im Vault ist moeglicherweise beschaedigt.",
         );
       }
+      await taskNotesZustand.schliesse();
     }
     console.log("");
 
@@ -1516,28 +1556,11 @@ async function main(): Promise<void> {
     console.log("");
   } finally {
     // Aufräumen darf nie am Ergebnis hängen: auch ein abgebrochener Lauf gibt den Vault so
-    // zurück, wie er ihn vorgefunden hat.
-    server?.schliessen();
-    await releaseAlwaysOnTop(cdp).catch(() => undefined);
-    await evaluieren(
-      cdp,
-      `app.secretStorage.setSecret(${JSON.stringify("mailstone-" + SMOKE_ACCOUNT_ID)}, ""); return true;`,
-    ).catch(() => undefined);
+    // zurück, wie er ihn vorgefunden hat. Nach Ctrl-C übernimmt das Abbruch-Modul denselben
+    // Schritt (Hauptzweig gesperrt) und beendet den Prozess selbst.
+    await zustand.schliesse();
+    if (istAbgebrochen()) return;
     if (originalRoh !== null && !KEEP) {
-      // Reihenfolge zaehlt: das Plugin schreibt seinen Speicherstand beim Entladen zurueck.
-      // Wer die Datei zuerst herstellt und dann neu laedt, laesst genau diesen Schreibvorgang
-      // hinterher drueberlaufen — der Vergleich sah trotzdem "byte-gleich", weil er zu frueh
-      // mass. Gemessene Folge: ein absichtlich kaputt gesetztes Register (V7) blieb im Vault.
-      // Deshalb erst abschalten, dann herstellen, dann wieder einschalten.
-      await evaluieren(cdp, `await app.plugins.disablePlugin(${JSON.stringify(PLUGIN_ID)}); return true;`).catch(
-        () => undefined,
-      );
-      await warte(1000);
-      writeFileSync(datenDatei, originalRoh);
-      await evaluieren(cdp, `await app.plugins.enablePlugin(${JSON.stringify(PLUGIN_ID)}); return true;`).catch(
-        () => undefined,
-      );
-      await warte(2000);
       // Am Ergebnis messen, nicht am Objekt im Speicher — und das Ergebnis ins Protokoll.
       const zurueck = readFileSync(datenDatei, "utf8");
       console.log(
