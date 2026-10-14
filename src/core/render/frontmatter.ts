@@ -1,6 +1,7 @@
 import type { ParsedMail } from "../mime/types";
 import { formatAddress } from "../mime/headers";
 import { wikilink } from "./wikilink";
+import { localDate, localIso, localTime } from "../../vendor/code-kit/local-stamp";
 import { fmKeyFor, identityKeys, MAIL_SERVER_FIELDS, type FmVal, type MailProfile, type MailServerField } from "../mirror/profile";
 
 export interface MailFrontmatterInput {
@@ -11,24 +12,8 @@ export interface MailFrontmatterInput {
   linkFor?: (id: string) => string | null; // Wikilink-Ziel oder null
 }
 
-const pad = (n: number): string => String(n).padStart(2, "0");
-
-export function localDateParts(d: Date): { date: string; time: string } {
-  return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  };
-}
-
-/** ISO-8601 mit lokalem Offset, z. B. 2026-08-23T15:00:00+02:00 */
-export function localIso(d: Date): string {
-  const { date, time } = localDateParts(d);
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const a = Math.abs(off);
-  return `${date}T${time}:${pad(d.getSeconds())}${sign}${pad(Math.floor(a / 60))}:${pad(a % 60)}`;
-}
-
+// Bewusst NICHT code-kit `formatBytes`: dessen Basis ist 1000, dieses Format steht persistiert im Frontmatter
+// (`attachments`) und wird bei jedem Update verglichen — ein Tausch schriebe jede Mail mit Anhang um (Rundschreiben 1, Welle 22).
 function humanSize(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -43,7 +28,7 @@ export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterIn
     const t = linkFor?.(id) ?? null;
     return (t === null ? null : wikilink(t)) ?? id;
   };
-  const parts = mail.date ? localDateParts(mail.date) : { date: "", time: "" };
+  const parts = mail.date ? { date: localDate(mail.date), time: localTime(mail.date) } : { date: "", time: "" };
   const values: Record<MailServerField, FmVal> = {
     title: mail.subject,
     date: parts.date,
@@ -62,7 +47,7 @@ export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterIn
     [idK]: mail.id,
     [srcK]: input.source,
     [stK]: input.state,
-    [syK]: localIso(input.syncedAt),
+    [syK]: localIso(input.syncedAt, { offset: true }),
   };
   for (const f of MAIL_SERVER_FIELDS) {
     const k = fmKeyFor(p, f);

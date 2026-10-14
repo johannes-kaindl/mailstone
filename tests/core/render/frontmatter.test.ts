@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { buildDerivedFrontmatter, localDateParts } from "../../../src/core/render/frontmatter";
+import { buildDerivedFrontmatter } from "../../../src/core/render/frontmatter";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
 import { parseEml } from "../../../src/core/mime/parse";
 import { loadFixture } from "../../helpers/fixtures";
 
-describe("localDateParts (TZ=Europe/Berlin)", () => {
-  it("rechnet UTC in Lokalzeit", () => {
-    expect(localDateParts(new Date("2026-08-19T22:30:00.000Z"))).toEqual({ date: "2026-08-20", time: "00:30" });
+describe("Lokalzeit im Frontmatter (TZ=Europe/Berlin)", () => {
+  it("rechnet UTC in Lokalzeit: date, time und mail_synced mit Offset", async () => {
+    const m = await parseEml(loadFixture("utf8-plain"));
+    const fm = buildDerivedFrontmatter(defaultMailProfile(), { mail: { ...m, date: new Date("2026-08-19T22:30:00.000Z") }, source: "s", state: "live", syncedAt: new Date("2026-08-19T22:30:00.000Z") });
+    expect(fm["date"]).toBe("2026-08-20");
+    expect(fm["time"]).toBe("00:30");
+    expect(fm["mail_synced"]).toBe("2026-08-20T00:30:00+02:00");
   });
 });
 describe("buildDerivedFrontmatter", () => {

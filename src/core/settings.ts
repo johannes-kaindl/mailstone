@@ -1,3 +1,4 @@
+import { slugify } from "../vendor/code-kit/slug";
 import { mergeSettings } from "../vendor/code-kit/settings";
 import { secretIdFor as kitSecretIdFor } from "../vendor/kit/secrets";
 import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
@@ -31,20 +32,10 @@ function isObj(v: unknown): v is Record<string, unknown> {
 
 export function secretIdFor(accountId: string): string { return kitSecretIdFor("mailstone", accountId); }
 
-const SLUG_TRANSLIT: Record<string, string> = { ä: "ae", ö: "oe", ü: "ue", ß: "ss", Ä: "ae", Ö: "oe", Ü: "ue" };
-
 /** Slug aus einem Konto-Label fuer die Konto-`id` (und damit `secretId`) — a-z0-9 mit Bindestrichen,
  *  Umlaute transliteriert statt weggeworfen. Leer/nur-Sonderzeichen faellt auf "account" zurueck. */
 export function slugifyAccountId(label: string): string {
-  const s = label
-    .trim()
-    .replace(/[äöüßÄÖÜ]/g, (c) => SLUG_TRANSLIT[c] ?? c)
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return s || "account";
+  return slugify(label, { fallback: "account" });
 }
 
 /** Haengt bei Kollision `-2`, `-3`, … an (kein Zaehler-Suffix bei der ersten Vergabe). */

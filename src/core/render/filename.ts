@@ -1,9 +1,8 @@
 import { buildFilename } from "../../vendor/code-kit/filename-template";
 import type { ParsedMail } from "../mime/types";
 import type { MailProfile } from "../mirror/profile";
-import { localDateParts } from "./frontmatter";
-
-const TRANSLIT: Record<string, string> = { ä: "ae", ö: "oe", ü: "ue", ß: "ss", Ä: "ae", Ö: "oe", Ü: "ue" };
+import { slugify } from "../../vendor/code-kit/slug";
+import { localDate, localTime } from "../../vendor/code-kit/local-stamp";
 
 export function subjectSlug(subject: string, max = 60): string {
   let s = subject.trim();
@@ -12,18 +11,11 @@ export function subjectSlug(subject: string, max = 60): string {
     if (n === s) break;
     s = n;
   }
-  s = s
-    .replace(/[äöüßÄÖÜ]/g, (c) => TRANSLIT[c] ?? c)
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "");
-  s = s.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  if (s.length > max) s = s.slice(0, max).replace(/-+$/, "");
-  return s;
+  return slugify(s, { maxLength: max });
 }
 
 function vars(mail: ParsedMail): Record<string, string> {
-  const parts = mail.date ? localDateParts(mail.date) : null;
+  const parts = mail.date ? { date: localDate(mail.date), time: localTime(mail.date) } : null;
   return {
     date: parts ? parts.date : "undated",
     time: parts ? parts.time.replace(":", "") : "",
