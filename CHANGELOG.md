@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-16
+
 ### Added
 
 - **Mail notes now carry a `richtung` field (`eingehend` or `ausgehend`).** It is `ausgehend` when the sender is one of your own identities (any account, case and display name ignored) and `eingehend` otherwise, so a mail note fits the same tables as a communication note. Only the sender counts: a mail to your own address stays incoming. New notes get it with the next sync or import; existing notes get it when you run *Re-render* on them. The field name can be changed or switched off in the profile like the other fields, and a hand edit of the value is overwritten by a re-render.
