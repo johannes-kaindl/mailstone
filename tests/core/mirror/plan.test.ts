@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { planMailNote } from "../../../src/core/mirror/plan";
-import { defaultMailProfile, withTaskPreset } from "../../../src/core/mirror/profile";
+import { defaultMailProfile, withOwnAddresses, withTaskPreset } from "../../../src/core/mirror/profile";
 import { parseEml } from "../../../src/core/mime/parse";
 import { loadFixture } from "../../helpers/fixtures";
 
@@ -21,6 +21,13 @@ describe("planMailNote", () => {
     expect(p.content).toContain("%% mailstone:begin %%\n## Nachricht");
     // Treueflaeche: die .eml geht byte-identisch durch den Plan (Spec § 2.2)
     expect(p.eml).toEqual(c.eml);
+  });
+  it("create: richtung steht in der neuen Notiz — eingehend ohne, ausgehend mit der Absenderadresse unter den eigenen", async () => {
+    const c = await common();
+    const ein = planMailNote({ ...c, existing: null });
+    expect(ein.kind === "create" && ein.content).toContain("richtung: eingehend");
+    const aus = planMailNote({ ...c, profile: withOwnAddresses(c.profile, ["erika@example.org"]), existing: null });
+    expect(aus.kind === "create" && aus.content).toContain("richtung: ausgehend");
   });
   it("create: Kollision → -2", async () => {
     const c = await common();

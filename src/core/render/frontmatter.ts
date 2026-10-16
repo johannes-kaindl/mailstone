@@ -20,6 +20,14 @@ function humanSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** `ausgehend`, wenn der Absender eine der eigenen Adressen ist (Gross-/Kleinschreibung und Namensteil egal), sonst `eingehend`.
+ *  Nur der Absender zaehlt: eine Mail an die eigene Adresse ist eingehend. Ohne Identitaeten oder ohne Absender: eingehend. */
+function directionOf(from: ParsedMail["from"], own: readonly string[] | undefined): "eingehend" | "ausgehend" {
+  if (!from || !own) return "eingehend";
+  const sender = from.address.trim().toLowerCase();
+  return sender !== "" && own.some((a) => a.trim().toLowerCase() === sender) ? "ausgehend" : "eingehend";
+}
+
 export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterInput): Record<string, FmVal> {
   const { mail, linkFor } = input;
   // Faellt auf die rohe Message-ID zurueck, wenn es kein Ziel gibt ODER der Zielpfad sich
@@ -40,6 +48,7 @@ export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterIn
     in_reply_to: mail.inReplyTo ? link(mail.inReplyTo) : "",
     references: mail.references.map(link),
     attachments: mail.attachments.filter((a) => !a.inline).map((a) => `${a.name} (${a.type}, ${humanSize(a.size)})`),
+    richtung: directionOf(mail.from, p.ownAddresses),
   };
 
   const [idK, srcK, stK, syK] = identityKeys(p) as [string, string, string, string];

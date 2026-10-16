@@ -14,6 +14,7 @@ describe("settings", () => {
     expect(s.accounts[0]?.secretId).toBe("mailstone-a");
     expect(s.profile.folder).toBe("Post");
     expect(s.profile.fields.from).toBe("from");
+    expect(s.profile.fields.richtung).toBe("richtung");
   });
   // Fix-Runde 1, Task 7: taskPreset kennt keinen boolean mehr (toFm/needsQuoting machen daraus
   // immer die Zeichenkette "false", nie ein echtes YAML-Bool — s. Kommentar an

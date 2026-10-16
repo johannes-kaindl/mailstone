@@ -24,7 +24,7 @@ import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/event
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
 import { findNotePathForMailId, mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
-import { withNoteHeadings, withTaskPreset, type MailProfile } from "./core/mirror/profile";
+import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
@@ -282,11 +282,19 @@ export default class MailstonePlugin extends Plugin {
    *  („darf ich jetzt schreiben?") richtig ist. */
   private cockpitRuns = 0;
 
+  /** Alle eigenen Adressen (Identitaeten aller Konten): daraus leitet der Render `richtung` ab. */
+  private ownAddresses(): string[] {
+    return this.settings.accounts.flatMap((a) => a.identities.map((i) => i.address));
+  }
+  /** Das Profil fuer Kommandos (Neu-Rendern): wie `settings.profile`, aber mit den eigenen Adressen, sonst schriebe es `richtung` immer als eingehend. */
+  private commandProfile(): MailProfile {
+    return withOwnAddresses(this.settings.profile, this.ownAddresses());
+  }
   /** Das Profil fuer Schreibwege: taskPreset (nur onCreate) und die Notiz-Ueberschriften in der
    *  Oberflaechensprache (nur NEUE Notizen — Bestand behaelt seine, s. `blockHeadingOf`). Laufzeit,
    *  nie in den Settings gespeichert. */
   private writeProfile(): MailProfile {
-    return withNoteHeadings(withTaskPreset(this.settings.profile, this.settings.taskPreset), { notes: t("note.heading.notes"), message: t("note.heading.message") });
+    return withNoteHeadings(withOwnAddresses(withTaskPreset(this.settings.profile, this.settings.taskPreset), this.ownAddresses()), { notes: t("note.heading.notes"), message: t("note.heading.message") });
   }
   api: MailstoneApi | null = null;
   private entladen = false;
@@ -691,7 +699,7 @@ export default class MailstonePlugin extends Plugin {
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(
-        { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
+        { app: this.app, profile: () => this.commandProfile(), hashes: this.hashStore(), now: () => new Date() },
         this.commandExecuteDeps(),
         descriptor,
       ));
@@ -728,7 +736,7 @@ export default class MailstonePlugin extends Plugin {
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(
-        { app: this.app, profile: () => this.settings.profile, hashes: this.hashStore(), now: () => new Date() },
+        { app: this.app, profile: () => this.commandProfile(), hashes: this.hashStore(), now: () => new Date() },
         this.commandExecuteDeps(),
         CREATE_TASK_COMMAND,
         file,

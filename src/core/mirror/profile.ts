@@ -1,5 +1,5 @@
 export type FmVal = string | number | boolean | string[];
-export const MAIL_SERVER_FIELDS = ["title", "date", "time", "from", "to", "cc", "subject", "in_reply_to", "references", "attachments"] as const;
+export const MAIL_SERVER_FIELDS = ["title", "date", "time", "from", "to", "cc", "subject", "in_reply_to", "references", "attachments", "richtung"] as const;
 export type MailServerField = (typeof MAIL_SERVER_FIELDS)[number];
 
 export interface MailProfile {
@@ -19,6 +19,9 @@ export interface MailProfile {
    *  darin). Nur zur Laufzeit gesetzt (main.ts, `withNoteHeadings`), nie persistiert: Fehlt das Feld,
    *  gilt {@link DEFAULT_NOTE_HEADINGS}. Bestehende Notizen behalten, was in ihrer Zone steht. */
   noteHeadings?: NoteHeadings;
+  /** Die eigenen Adressen (alle Identitaeten aller Konten), aus denen `richtung` abgeleitet wird. Wie `noteHeadings` nur zur
+   *  Laufzeit gesetzt (main.ts, `withOwnAddresses`), nie persistiert: Fehlt das Feld, gilt jede Mail als eingehend. */
+  ownAddresses?: string[];
 }
 
 export interface NoteHeadings { notes: string; message: string }
@@ -26,6 +29,10 @@ export const DEFAULT_NOTE_HEADINGS: NoteHeadings = { notes: "Notizen", message: 
 
 export function withNoteHeadings(p: MailProfile, headings: NoteHeadings): MailProfile {
   return { ...p, noteHeadings: headings };
+}
+
+export function withOwnAddresses(p: MailProfile, addresses: readonly string[]): MailProfile {
+  return { ...p, ownAddresses: [...addresses] };
 }
 
 export function defaultMailProfile(): MailProfile {
@@ -51,6 +58,7 @@ export function defaultMailProfile(): MailProfile {
       in_reply_to: "in_reply_to",
       references: "references",
       attachments: "attachments",
+      richtung: "richtung",
     },
     onCreate: { type: "mail" },
   };
