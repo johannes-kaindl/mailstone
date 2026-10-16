@@ -5,7 +5,7 @@ Message-ID ist die Identität, das `.eml` liegt als Treuefläche daneben. Dazu S
 `calendar-notes` als iMIP-Transport registriert. Specs und Pläne liegen im Vault-Cockpit unter `_SDD/` (CORE-META-14), z. B. `_SDD/2026-08-23-mailstone-design.md`; Handproben-Protokoll `docs/SMOKE.md`.
 
 > **Workspace-Standards (maintainer-lokal):** Die verbindliche Leitkonvention steht in
-> `_docs/CONVENTIONS.md` im Multi-Projekt-Workspace des Maintainers, `../../_docs` relativ zu
+> `_docs/CONVENTIONS.md` im Multi-Projekt-Workspace des Maintainers, `../../workspace/_docs` relativ zu
 > diesem Repo — nicht Teil dieses Repos, ignorieren falls im Klon nicht vorhanden. Modell
 > comply-or-explain.
 
