@@ -35,7 +35,7 @@ Triage stays where your mail already lives: move a message into one designated I
 
 ### Community Plugins
 
-Listing in the Community Plugins directory is pending review. Once it is through: Settings → Community plugins → Browse → "Mailstone". Until then use one of the ways below.
+Settings → Community plugins → Browse → "Mailstone" → Install, then enable it. Updates arrive like for any Community plugin. The two ways below are alternatives.
 
 ### AnySource Sideloader
 

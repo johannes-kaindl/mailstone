@@ -37,7 +37,7 @@ Die Sichtung bleibt dort, wo die Mail ohnehin liegt: Verschiebe eine Nachricht i
 
 ### Community Plugins
 
-Die Aufnahme ins Community-Plugin-Verzeichnis steht noch im Review aus. Danach: Einstellungen → Community-Plugins → Durchsuchen → „Mailstone“. Bis dahin einen der folgenden Wege nutzen.
+Einstellungen → Community-Plugins → Durchsuchen → „Mailstone“ → Installieren, dann aktivieren. Updates kommen wie bei jedem Community-Plugin. Die zwei folgenden Wege sind Alternativen.
 
 ### AnySource Sideloader
 
