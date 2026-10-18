@@ -1,3 +1,4 @@
+import { inputIssues, unsupportedSchemaKeywords } from "../../../src/core/commands/schema";
 import { describe, it, expect } from "vitest";
 import { CREATE_TASK_COMMAND } from "../../../src/core/commands/create-task";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
@@ -75,3 +76,12 @@ describe("CREATE_TASK_COMMAND", () => {
     expect(schema?.properties["title"]).not.toHaveProperty("default");
   });
 });
+
+describe("Schema liegt im Teilbereich, den das Kit prueft", () => {
+  it("kein unbekanntes Schema-Wort und kein bad-schema (CREATE_TASK_COMMAND)", () => {
+    const schema = CREATE_TASK_COMMAND.schemaFor?.(ctx({ subject: "Angebot" })) ?? CREATE_TASK_COMMAND.schema;
+    expect(unsupportedSchemaKeywords(schema)).toEqual([]);
+    expect(inputIssues(schema, {}).map((i) => i.code)).not.toContain("bad-schema");
+  });
+});
+

@@ -41,5 +41,17 @@ describe("Zeilenenden", () => {
   it("zoneHash ist unabhaengig vom Zeilenende", () => {
     expect(zoneHash("a\r\nb")).toBe(zoneHash("a\nb"));
   });
+  it("BEGIN ohne END: block null, nichts wird als Zone gelesen (Aufrufer meldet fences-missing und schreibt nicht)", () => {
+    expect(splitBody(`vorher\n${BLOCK_BEGIN}\nhalber Block`)).toEqual({ before: `vorher\n${BLOCK_BEGIN}\nhalber Block`, block: null, after: "" });
+  });
+  it("eine LF-Zone verschluckt ein einzelnes \\r am Blockende nicht (Kit marker-zone, Unterschied zur frueheren lokalen Fassung)", () => {
+    expect(splitBody(`${BLOCK_BEGIN}\nx\r\n${BLOCK_END}`).block).toBe("x\r");
+    expect(splitBody(`${BLOCK_BEGIN}\r\nx\r\n${BLOCK_END}`).block).toBe("x");
+  });
+  it("wrapBlock und splitBody sind zueinander umkehrbar, auch mit CRLF", () => {
+    for (const eol of ["\n", "\r\n"] as const) {
+      const block = eol === "\n" ? "a\n\nb" : "a\r\n\r\nb";
+      expect(splitBody(`vor${eol}${wrapBlock("a\n\nb", eol)}${eol}nach`).block).toBe(block);
+    }
+  });
 });
-

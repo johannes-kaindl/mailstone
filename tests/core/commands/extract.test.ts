@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { attachmentLink, insertAttachmentLink, EXTRACT_ATTACHMENT_COMMAND } from "../../../src/core/commands/extract";
 import { schemaOf, type CommandContext } from "../../../src/core/commands/types";
+import { inputIssues, unsupportedSchemaKeywords } from "../../../src/core/commands/schema";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
 import type { ParsedMail } from "../../../src/core/mime/types";
 
@@ -206,3 +207,12 @@ describe("derselbe Anhang ein zweites Mal (M3b-Nachlese, entschieden 2026-09-05)
     expect(r.plan.attachment).toEqual({ path: "Anhaenge/invoice 1.pdf", data: new Uint8Array([2, 2]) });
   });
 });
+
+describe("Schema liegt im Teilbereich, den das Kit prueft", () => {
+  it("kein unbekanntes Schema-Wort und kein bad-schema (EXTRACT_ATTACHMENT_COMMAND)", () => {
+    const schema = schemaOf(EXTRACT_ATTACHMENT_COMMAND, ctx());
+    expect(unsupportedSchemaKeywords(schema)).toEqual([]);
+    expect(inputIssues(schema, {}).map((i) => i.code)).not.toContain("bad-schema");
+  });
+});
+

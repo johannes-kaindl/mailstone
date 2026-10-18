@@ -33,4 +33,20 @@ describe("importEmlFolder", () => {
     expect(r.created).toBeGreaterThanOrEqual(1);
     expect(r.created + r.errors.length).toBe(2);
   });
+  it("Ordnerangabe mit Schraegstrich am Ende, eine einzelne Datei als Angabe und ein Ordner mit gleichem Namensanfang (Kit folder-scope, self)", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    await app.vault.createBinary("Import-Archiv/b.eml", loadFixture("thread-reply").buffer);
+    const mk = () => ({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) });
+    const mitSlash = await importEmlFolder(mk(), "Import/");
+    expect(mitSlash.created).toBe(1);
+    const einzeln = await importEmlFolder(mk(), "Import-Archiv/b.eml");
+    expect(einzeln.created).toBe(1);
+  });
+  it("ein leerer Ordnername importiert nichts, statt den ganzen Vault", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const r = await importEmlFolder({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "");
+    expect(r.created + r.errors.length).toBe(0);
+  });
 });

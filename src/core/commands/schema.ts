@@ -18,107 +18,12 @@ export interface ObjectSchema {
   required?: string[];
 }
 
-export type ValidationResult = { ok: true; value: Record<string, unknown> } | { ok: false; errors: string[] };
-
-function checkFormat(field: string, format: "email" | "uri" | "multiline" | "date", value: string, errors: string[]): void {
-  if (format === "email" && !value.includes("@")) errors.push(`${field}: not a valid e-mail address`);
-  // Leer = nicht gesetzt; ein optionales Datum darf leer bleiben.
-  if (format === "date" && value !== "" && !isIsoDate(value)) errors.push(`${field}: must be a date (YYYY-MM-DD)`);
-}
-
-/** YYYY-MM-DD und ein Datum, das es wirklich gibt — `2026-02-31` faellt durch. */
-function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
-}
-
-function checkField(field: string, schema: FieldSchema, value: unknown, errors: string[]): void {
-  switch (schema.type) {
-    case "string": {
-      if (typeof value !== "string") { errors.push(`${field}: must be a string`); return; }
-      if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${field}: too short (min. ${schema.minLength})`);
-      if (schema.enum && !schema.enum.includes(value)) errors.push(`${field}: must be one of [${schema.enum.join(", ")}]`);
-      if (schema.format) checkFormat(field, schema.format, value, errors);
-      break;
-    }
-    case "number": {
-      if (typeof value !== "number" || Number.isNaN(value)) { errors.push(`${field}: must be a number`); return; }
-      if (schema.minimum !== undefined && value < schema.minimum) errors.push(`${field}: below minimum ${schema.minimum}`);
-      if (schema.maximum !== undefined && value > schema.maximum) errors.push(`${field}: above maximum ${schema.maximum}`);
-      break;
-    }
-    case "boolean": {
-      if (typeof value !== "boolean") errors.push(`${field}: must be a boolean`);
-      break;
-    }
-    case "array": {
-      if (!Array.isArray(value)) { errors.push(`${field}: must be an array`); return; }
-      value.forEach((item, i) => {
-        if (typeof item !== "string") { errors.push(`${field}[${i}]: must be a string`); return; }
-        if (schema.items.format) checkFormat(`${field}[${i}]`, schema.items.format, item, errors);
-      });
-      break;
-    }
-  }
-}
-
-export function validateInput(schema: ObjectSchema, input: unknown): ValidationResult {
-  const errors: string[] = [];
-  if (!input || typeof input !== "object" || Array.isArray(input)) return { ok: false, errors: ["input is not an object"] };
-  const o = input as Record<string, unknown>;
-  for (const key of schema.required ?? []) {
-    const value = o[key];
-    if (!Object.hasOwn(o, key) || value === undefined) { errors.push(`${key}: missing (required)`); continue; }
-    // Ein String, der nur aus Whitespace besteht (oder leer ist), erfuellt die Pflicht nicht —
-    // ohne minLength wuerde er sonst durchrutschen (M3b-Nachlese, Fund 4).
-    if (typeof value === "string" && value.trim() === "") errors.push(`${key}: missing (required)`);
-  }
-  for (const [key, value] of Object.entries(o)) {
-    const fieldSchema = schema.properties[key];
-    if (!fieldSchema) { errors.push(`${key}: unknown field`); continue; }
-    if (value === undefined) continue;
-    checkField(key, fieldSchema, value, errors);
-  }
-  if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, value: o };
-}
-
-/**
- * Der Name des ersten Feldes, dessen Auswahlliste LEER ist — sonst null.
- *
- * Ein solches Feld macht das Formular unbedienbar: das Dropdown zeigt keine Option, und jeder
- * Absendeversuch scheitert an `must be one of []`, Abbrechen ist der einzige Ausgang. Der
- * Ablauf fragt deshalb VOR dem Oeffnen (s. runCommand) und meldet stattdessen `no-choices`.
- * Ein Feld ganz OHNE `enum` ist frei bedienbar und faellt nicht darunter.
- */
-export function emptyChoiceField(schema: ObjectSchema): string | null {
-  for (const [name, field] of Object.entries(schema.properties)) {
-    if (field.type === "string" && field.enum && field.enum.length === 0) return name;
-  }
-  return null;
-}
-
-/**
- * Die Eingabe, die schon feststeht — oder null, wenn der Nutzer etwas zu entscheiden hat.
- *
- * Gegenstueck zu `emptyChoiceField`, dieselbe Achse: **keine** Option → das Formular waere
- * unbedienbar und geht nicht auf; **eine** Option → es gaebe nichts zu waehlen und es muss nicht
- * aufgehen; **zwei oder mehr** → der Nutzer waehlt. Bestaetigt wird auch im ersten Fall weiterhin
- * in der Vorschau, es geht also keine Zustimmung verloren, nur ein Klick ohne Inhalt.
- *
- * Festgelegt ist ausschliesslich ein Auswahlfeld mit genau einer Option. NICHT festgelegt sind:
- * ein `default` (eine Vorbelegung ist ein Vorschlag — sie will bearbeitbar sein, sonst waere sie
- * keine), ein Umschalter (`false` ist sein Startwert, nicht die Entscheidung des Nutzers) und
- * jedes freie Feld.
- */
-export function predeterminedInput(schema: ObjectSchema): Record<string, unknown> | null {
-  const out: Record<string, unknown> = {};
-  for (const [name, field] of Object.entries(schema.properties)) {
-    if (field.type !== "string" || field.enum?.length !== 1) return null;
-    out[name] = field.enum[0];
-  }
-  return out;
-}
+// Die Pruefung selbst (validateInput, emptyChoiceField, predeterminedInput) liegt im Kit (code-kit `validate-input`; Herkunft: die
+// lokale Fassung dieser Datei bis 0.9.0, die ihrerseits aus calendar-notes uebernommen war). Unterschiede, begruendet: das Kit
+// meldet unbekannte Schema-Woerter benennbar (`unsupportedSchemaKeywords`) und liest `required`-Namen ohne Eintrag in `properties` als
+// Schema-Fehler (`bad-schema`) statt als stilles Pflichtfeld; `integer` ist zusaetzlich erlaubt; unendliche Zahlen fallen durch;
+// `date-time` prueft eine Uhrzeit, die es gibt (mailstone nutzt es nicht). Texte und Regeln fuer `date` (Tag, den es gibt; leer =
+// nicht gesetzt), Leerraum-Pflichtfeld und leere/einzelne Auswahl sind unveraendert, sie stammen aus dieser Datei.
+export { emptyChoiceField, inputIssues, predeterminedInput, validateInput, unsupportedSchemaKeywords, type ValidationIssue, type ValidationResult } from "../../vendor/code-kit/validate-input";
 
 export const EMPTY_SCHEMA: ObjectSchema = { type: "object", properties: {} };

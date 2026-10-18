@@ -1,4 +1,5 @@
 import { normalizePath, TFile, type App } from "obsidian";
+import { isInFolder } from "../vendor/code-kit/folder-scope";
 import { parseEml } from "../core/mime/parse";
 import { planMailNote, type NotePlan } from "../core/mirror/plan";
 import type { MailProfile } from "../core/mirror/profile";
@@ -9,7 +10,7 @@ export interface ImportDeps { app: App; profile: MailProfile; hashes: ZoneHashSt
 export async function importEmlFolder(deps: ImportDeps, folder: string): Promise<{ created: number; updated: number; skipped: NotePlan[]; errors: { path: string; message: string }[] }> {
   const { app, profile } = deps;
   const root = normalizePath(folder);
-  const files = app.vault.getFiles().filter((f) => f.extension === "eml" && (f.path === root || f.path.startsWith(`${root}/`)));
+  const files = app.vault.getFiles().filter((f) => f.extension === "eml" && isInFolder(f.path, root, { self: true }));
   const index = findMailNotes(app, profile.idField);
   const taken = new Set(app.vault.getFiles().map((f) => f.path));
   const plans: NotePlan[] = []; const errors: { path: string; message: string }[] = [];

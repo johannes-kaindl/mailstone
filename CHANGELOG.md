@@ -9,6 +9,9 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - Internal housekeeping: the shared kit libraries were updated (obsidian-kit 0.63.0, code-kit 0.31.0). The changes in between (a copy button on the thinking block, a text-area suggester, Claude as a language-model provider, LM Studio detection from model metadata, kit texts for image, OCR and audio errors) touch no part this plugin shows; what changes visibly for you is listed separately.
+- The README no longer says the Community Plugins listing is pending review; it is listed, and the install text now starts there.
+- **The `.eml` import accepts a folder name with a trailing slash** (`Import/`), and a single `.eml` path as before. Before, `Import/` found nothing. An empty folder name still imports nothing.
+- Internal, no visible change: the managed-block split (`%% mailstone:begin/end %%`), the command-input check (including the “no options / one option” rules for the form) and the folder test of the import now come from the shared kit instead of local copies. A note whose block has a begin marker but no end marker is still left alone (“fences missing”); the last end marker still closes the block.
 
 ## [0.9.0] — 2026-10-16
 
