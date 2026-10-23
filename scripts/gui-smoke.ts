@@ -65,7 +65,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { attachTo, beimAbbruch, bereiteInstanzVor, clickReal, istAbgebrochen, pollUntil, releaseAlwaysOnTop, requireVisible, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, beimAbbruch, bereiteInstanzVor, clickReal, istAbgebrochen, pollUntil, releaseAlwaysOnTop, requireVisible, schliesseEinstellungen, type Cdp } from "../../tools/obsidian-cdp/cdp.js";
 import { createBilanz, parseArgs, runDriver } from "../../tools/obsidian-cdp/bilanz.js";
 import { requireEigenerBuild } from "../../tools/obsidian-cdp/vault.js";
 
@@ -731,7 +731,7 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
   // wenn der CTA die Einstellungen bloß öffnet und der eigene Tab zufällig oben steht.
   await evaluieren(cdp, `app.setting.open(); app.setting.openTabById("appearance"); return true;`);
   await warte(1500);
-  await evaluieren(cdp, `app.setting.close(); return true;`);
+  await schliesseEinstellungen(cdp);
   await warte(800);
 
   await clickReal(cdp, ctaAusdruck, 150);
@@ -750,7 +750,7 @@ async function v9_einstellungenOeffnenTrifftDenEigenenTab(cdp: Cdp): Promise<voi
       ? "kein Einstellungs-Fenster gefunden — öffnete der CTA die Einstellungen überhaupt?"
       : `aktiver Tab: „${aktiv}“${/darstellung|appearance/i.test(aktiv) ? " — der CTA hat den Tab nicht gewechselt" : ""}`,
   );
-  await evaluieren(cdp, `app.setting.close(); return true;`).catch(() => undefined);
+  await schliesseEinstellungen(cdp);
 }
 
 /** V9b · Hilfe-Zeile (UI-STANDARD §8): die ERSTE Zeile des Einstellungs-Tabs traegt einen Text-Knopf
@@ -786,7 +786,7 @@ async function v9b_hilfeZeile(cdp: Cdp): Promise<void> {
     );
   } finally {
     fenster.close();
-    await evaluieren(cdp, `app.setting.close(); return true;`).catch(() => undefined);
+    await schliesseEinstellungen(cdp);
   }
 }
 
