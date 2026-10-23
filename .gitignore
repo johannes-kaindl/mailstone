@@ -33,7 +33,8 @@ main.js
 data.json
 *.log
 .DS_Store
-.claude/
+.claude/*
+!.claude/rules/
 .remember/
 .gui-smoke.mjs
 .e2e.mjs
