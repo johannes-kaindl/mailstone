@@ -172,7 +172,6 @@ export const en = {
   "cockpit.mobile.hint": "Synchronisation only works on the desktop. Already synchronised notes stay readable here; open Mailstone on the desktop to fetch new mail.",
 
   "inbox.title": "Inbox",
-  "inbox.mobile.hint": "The inbox reads the mailbox live and only works on the desktop.",
   "inbox.aria.error": "Loading the inbox failed",
   "inbox.refresh": "Refresh",
   "inbox.empty": "No messages in this folder.",
@@ -418,7 +417,6 @@ export const de: typeof en = {
   "cockpit.mobile.hint": "Synchronisierung funktioniert nur am Desktop. Bereits synchronisierte Notizen bleiben hier lesbar — öffne Mailstone am Desktop, um neue Mails zu holen.",
 
   "inbox.title": "Posteingang",
-  "inbox.mobile.hint": "Der Posteingang liest die Mailbox live und funktioniert nur am Desktop.",
   "inbox.aria.error": "Laden des Posteingangs gescheitert",
   "inbox.refresh": "Aktualisieren",
   "inbox.empty": "Keine Nachrichten in diesem Ordner.",
