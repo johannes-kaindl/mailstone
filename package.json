@@ -34,7 +34,7 @@
   "author": "Johannes Kaindl",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "postal-mime": "^3.0.0",
+    "postal-mime": "^4.1.4",
     "turndown": "^7.2.4"
   },
   "devDependencies": {

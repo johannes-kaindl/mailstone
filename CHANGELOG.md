@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- **The `.eml` parser is updated to postal-mime 4.1.4** (3.0.0 → 4.1.4) and closes the advisory GHSA-f2hq-32vh-53cc: a header with very many joinable RFC 2047 base64 words made decoding take quadratic CPU time, so a crafted mail could freeze Obsidian while it was imported. Importing mails works as before; the unit, integration and bundle tests pass with the new version.
+
 ### Fixed
 
 - **A mail note with an empty front matter block (`---` directly followed by `---`) now gets its state written.** When a mail moves between live and detached, the plugin used to refuse such a note as unreadable; it now writes the state field into the empty block. The sync itself still refuses an empty block when it merges a mail into a note.
