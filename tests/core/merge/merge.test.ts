@@ -211,6 +211,21 @@ describe("mergeFrontmatterOnly", () => {
   it("laesst eine Notiz ohne Frontmatter unveraendert", () => {
     expect(mergeFrontmatterOnly({ existing: "nur Text", values: { mail_id: "a" } })).toEqual({ ok: true, content: "nur Text", changed: false });
   });
+
+  it("laesst einen leeren Block unveraendert, statt ihn als unlesbar zu melden", () => {
+    expect(mergeFrontmatterOnly({ existing: "---\n---\ntext", values: { mail_id: "a" } })).toEqual({ ok: true, content: "---\n---\ntext", changed: false });
+  });
+
+  // Verhaltenswechsel (Kit-Uebernahme): der Zeilenleser erkennt einen Schluessel mit Nicht-ASCII-Zeichen
+  // nicht als Schluessel. Der alte Code fand ihn deshalb nie und ignorierte ihn still (`ok, changed: false`);
+  // `patchFrontmatter` meldet ihn als `invalid-key`, und der Relink fuehrt die Notiz als uebersprungen.
+  it("meldet einen Schluessel mit Nicht-ASCII-Zeichen als frontmatter-unparseable statt ihn still zu ignorieren", () => {
+    expect(mergeFrontmatterOnly({ existing: note, values: { "zustand-ä": "x" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("meldet einen Wert mit Zeilenumbruch als frontmatter-unparseable", () => {
+    expect(mergeFrontmatterOnly({ existing: note, values: { in_reply_to: "a\nb" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
 });
 
 // M3-Nachlese, Befund aus der Live-Probe am echten Postfach (2026-08-30): der Zustandswechsel
@@ -277,6 +292,27 @@ describe("setFrontmatterField", () => {
     const r = setFrontmatterField({ existing: "nur Text", key: "mail_state", value: "detached" });
     expect(r).toMatchObject({ ok: true, changed: true });
     expect(r.ok && r.content).toBe("---\nmail_state: detached\n---\nnur Text");
+  });
+
+  it("beschreibt einen leeren Block, statt ihn als unlesbar zu melden", () => {
+    const r = setFrontmatterField({ existing: "---\n---\ntext", key: "mail_state", value: "detached" });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    expect(r.ok && r.content).toBe("---\nmail_state: detached\n---\ntext");
+  });
+
+  // Der Zeilenleser erkennt `zustand-ä` nicht als Schluessel: der alte Code haengte ihn bei jedem Lauf
+  // wieder an. Jetzt meldet `patchFrontmatter` `invalid-key`; der Aufrufer faellt auf die API zurueck.
+  it("meldet einen Schluessel mit Nicht-ASCII-Zeichen als frontmatter-unparseable", () => {
+    expect(setFrontmatterField({ existing: note, key: "zustand-ä", value: "detached" }))
+      .toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  // `patchFrontmatter` schuetzt `created` von sich aus; ein Zustandsfeld darf so heissen. Ohne
+  // `protect: []` im Adapter schriebe diese Funktion es nicht.
+  it("schreibt auch den Key `created`, den das Kit sonst schuetzt", () => {
+    const r = setFrontmatterField({ existing: "---\ncreated: 2026-01-01\nmail_id: a@x\n---\ntext", key: "created", value: "detached" });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    expect(r.ok && r.content).toBe("---\ncreated: detached\nmail_id: a@x\n---\ntext");
   });
 });
 

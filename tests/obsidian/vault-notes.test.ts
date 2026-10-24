@@ -25,6 +25,19 @@ describe("vaultPlanExecutor", () => {
     expect(c).toContain("zustand: detached");
     expect(c).toContain('up: "[[P]]"');
   });
+  // Ein Zustandsfeld, das der Zeilenleser nicht als Schluessel erkennt (Nicht-ASCII-Zeichen), faellt
+  // auf `processFrontMatter` zurueck, statt bei jedem Lauf eine weitere Zeile anzuhaengen.
+  it("setState faellt bei einem Zustandsfeld mit Nicht-ASCII-Zeichen auf die API zurueck", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/y.md", "---\nmail_id: b@x\nzustand-ä: live\n---\ntext");
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const geplant = [{ kind: "setState" as const, path: "Mail/y.md", mailId: "b@x", state: "detached" as const, stateField: "zustand-ä" }];
+    await ex.execute(geplant);
+    await ex.execute(geplant);
+    const c = await app.vault.adapter.read("Mail/y.md");
+    expect(c.match(/zustand-ä:/g)).toHaveLength(1);
+    expect(c).toContain("zustand-ä: detached");
+  });
   // M3-Nachlese, an einem echten Postfach gemessen (2026-08-30): der Zustandswechsel lief ueber
   // `fileManager.processFrontMatter`, und das re-serialisiert den ganzen Block — aus
   // `to: [adresse]` wurde eine Block-Liste. Der Mock bildet genau dieses Verhalten ab

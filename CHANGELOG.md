@@ -6,8 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A mail note with an empty front matter block (`---` directly followed by `---`) now gets its state written.** When a mail moves between live and detached, the plugin used to refuse such a note as unreadable; it now writes the state field into the empty block. The sync itself still refuses an empty block when it merges a mail into a note.
+- **A state field with a non-ASCII name (for example `zustand-ä`) is no longer appended again on every run.** The line-by-line writer does not recognise such a name, so it added a new line each time; it now falls back to Obsidian's own front matter API, which writes the field once.
+
 ### Changed
 
+- **Relink reports a note whose front matter has a key with a non-ASCII character as skipped** (`frontmatter-unparseable`) instead of silently leaving that key out. A value with a line break is reported the same way. In practice neither occurs with mailstone's own fields.
+- Internal: the two line-by-line front matter writers (`setFrontmatterField`, `mergeFrontmatterOnly`) now sit on the kit's `patchFrontmatter`; the sync merge (`mergeNote`) keeps its own writer for now.
 - Internal housekeeping: the shared kit libraries were updated (obsidian-kit 0.67.1, code-kit 0.36.0). None of the modules mailstone uses changed in behaviour, and the folder test of the `.eml` import reads exactly as before (the stricter file-system reading of code-kit 0.33.0 and 0.36.0 is opt-in). The new kit module `frontmatter-patch` is vendored but not used yet.
 
 ## [0.9.1] — 2026-10-18

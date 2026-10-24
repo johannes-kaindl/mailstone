@@ -1,4 +1,5 @@
 import { serializeFrontmatter, type FmValue } from "../../vendor/kit/frontmatter";
+import { patchFrontmatter, type FrontmatterPatchResult } from "../../vendor/kit/frontmatter-patch";
 import type { FmVal } from "../mirror/profile";
 import { splitBody, wrapBlock, zoneHash } from "./fences";
 
@@ -180,15 +181,21 @@ export function mergeNote(input: MergeInput): MergeResult {
   return { ok: true, content: candidate, changed: true, zoneHash: zoneHash(input.block) };
 }
 
-/**
- * Aendert AUSSCHLIESSLICH bestehende Frontmatter-Keys und laesst den Body Byte fuer Byte
- * stehen — auch die verwaltete Zone. Fuer Kommandos, die am Inhalt der Nachricht nichts zu
- * suchen haben (mail.relink). Bewusst OHNE Zone-Hash-Pruefung: wer die Zone nicht anfasst,
- * darf an einer von Hand geaenderten Zone nicht scheitern.
- *
- * Keys, die im Frontmatter nicht vorkommen, werden ignoriert statt angelegt: ein Kommando,
- * das `in_reply_to` setzt, soll es dort, wo es die Mail nie gab, auch nicht erfinden.
- */
+/** Die Gruende des Kits (`unparseable`, `block-scalar`, `invalid-key`, `invalid-value`, `protected`) heissen hier alle
+ *  `frontmatter-unparseable`: der Aufrufer faellt auf die API zurueck bzw. ueberspringt die Notiz (`plan.ts`). `protected`
+ *  ist mit `protect: []` unerreichbar. */
+function fromPatch(r: FrontmatterPatchResult):
+  | { ok: true; content: string; changed: boolean }
+  | { ok: false; code: MergeErrorCode } {
+  return r.ok ? { ok: true, content: r.content, changed: r.changed } : { ok: false, code: "frontmatter-unparseable" };
+}
+
+function toFmValues(values: Record<string, FmVal>): Record<string, FmValue> {
+  const out: Record<string, FmValue> = {};
+  for (const [k, v] of Object.entries(values)) out[k] = toFm(v);
+  return out;
+}
+
 /**
  * Setzt EINEN Frontmatter-Key zeilenweise — der Ersatz fuer `fileManager.processFrontMatter`
  * im Zustandswechsel (`setState`). Der Unterschied ist nicht die Wirkung, sondern der Kollateral:
@@ -201,40 +208,33 @@ export function mergeNote(input: MergeInput): MergeResult {
  * einer gespiegelten Mail ist eine Aussage ueber die Notiz, kein Feld der Nachricht, das man
  * nicht erfinden darf — und `processFrontMatter` tat es ebenfalls.
  *
- * `frontmatter-unparseable` heisst hier: der Block schliesst nicht, ODER der Key selbst liegt
- * als Block-Skalar vor (den koennte nur eine echte YAML-Implementierung ersetzen). Der Aufrufer
- * darf in diesem Fall auf die API zurueckfallen — sie kann es, um den Preis der
+ * `frontmatter-unparseable` heisst hier: der Block schliesst nicht, der Key selbst liegt als
+ * Block-Skalar vor (den koennte nur eine echte YAML-Implementierung ersetzen), oder der Key ist
+ * keiner, den der Zeilenleser erkennt (etwa mit Umlaut), oder der Wert enthaelt einen Zeilenumbruch.
+ * Der Aufrufer darf in diesem Fall auf die API zurueckfallen — sie kann es, um den Preis der
  * Re-Serialisierung.
  */
 export function setFrontmatterField(input: { existing: string; key: string; value: FmVal }):
   | { ok: true; content: string; changed: boolean }
   | { ok: false; code: MergeErrorCode } {
-  const doc = readFm(input.existing);
-  if (!doc) {
-    if (input.existing.startsWith("---")) return { ok: false, code: "frontmatter-unparseable" };
-    // Notiz ohne Frontmatter: frischen Block voranstellen, wie es processFrontMatter tut.
-    return { ok: true, content: `${fmBlock({ [input.key]: toFm(input.value) }, [input.key])}${input.existing}`, changed: true };
-  }
-  const raw = rewriteFm(doc, { [input.key]: input.value }, [input.key], new Set());
-  if (raw === null) return { ok: false, code: "frontmatter-unparseable" };
-  const body = input.existing.slice(doc.open.length + doc.raw.length + doc.close.length);
-  const content = `${doc.open}${raw}${doc.close}${body}`;
-  return { ok: true, content, changed: content !== input.existing };
+  return fromPatch(patchFrontmatter(input.existing, { set: toFmValues({ [input.key]: input.value }), create: true, protect: [] }));
 }
 
+/**
+ * Aendert AUSSCHLIESSLICH bestehende Frontmatter-Keys und laesst den Body Byte fuer Byte
+ * stehen — auch die verwaltete Zone. Fuer Kommandos, die am Inhalt der Nachricht nichts zu
+ * suchen haben (mail.relink). Bewusst OHNE Zone-Hash-Pruefung: wer die Zone nicht anfasst,
+ * darf an einer von Hand geaenderten Zone nicht scheitern.
+ *
+ * Keys, die im Frontmatter nicht vorkommen, werden ignoriert statt angelegt: ein Kommando,
+ * das `in_reply_to` setzt, soll es dort, wo es die Mail nie gab, auch nicht erfinden.
+ *
+ * Ein Key, den der Zeilenleser nicht erkennt (Nicht-ASCII-Zeichen), oder ein Wert mit Zeilenumbruch
+ * heisst `frontmatter-unparseable`, auch wenn der Key im Frontmatter gar nicht vorkommt: das Kit prueft
+ * vor dem Lesen. Der Relink fuehrt die Notiz dann als uebersprungen.
+ */
 export function mergeFrontmatterOnly(input: { existing: string; values: Record<string, FmVal> }):
   | { ok: true; content: string; changed: boolean }
   | { ok: false; code: MergeErrorCode } {
-  const doc = readFm(input.existing);
-  if (!doc) {
-    if (input.existing.startsWith("---")) return { ok: false, code: "frontmatter-unparseable" };
-    return { ok: true, content: input.existing, changed: false };
-  }
-  const managed = Object.keys(input.values).filter((k) => doc.entries.has(k));
-  if (managed.length === 0) return { ok: true, content: input.existing, changed: false };
-  const raw = rewriteFm(doc, input.values, managed, new Set());
-  if (raw === null) return { ok: false, code: "frontmatter-unparseable" };
-  const body = input.existing.slice(doc.open.length + doc.raw.length + doc.close.length);
-  const content = `${doc.open}${raw}${doc.close}${body}`;
-  return { ok: true, content, changed: content !== input.existing };
+  return fromPatch(patchFrontmatter(input.existing, { set: toFmValues(input.values), onlyExisting: true, protect: [] }));
 }
