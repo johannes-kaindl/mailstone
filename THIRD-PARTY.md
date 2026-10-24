@@ -41,7 +41,7 @@ file for the exact commit and vendoring date; `tools/sync-kit.sh` re-vendors the
 source library and this plugin are authored by Johannes Kaindl and licensed
 AGPL-3.0-or-later, so no separate license section applies — see [`LICENSE`](LICENSE).
 
-Files: `src/vendor/kit/vault-path.ts`, `src/vendor/kit/frontmatter.ts`,
+Files: `src/vendor/kit/vault-path.ts`, `src/vendor/kit/frontmatter.ts`, `src/vendor/kit/frontmatter-patch.ts`,
 `src/vendor/kit-obsidian/confirm.ts`, `src/vendor/kit-obsidian/settings_walker.ts`,
 `src/vendor/kit-obsidian/folder-suggest.ts`, `tests/vendor/kit/obsidian-mock.ts`, `tests/vendor/kit/window-timers.ts`, and the build helper `scripts/vendor/node-builtin-require.mjs` (esbuild plugin, never part of the bundle).
 
