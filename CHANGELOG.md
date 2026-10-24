@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-24
+
 ### Security
 
 - **The `.eml` parser is updated to postal-mime 4.1.4** (3.0.0 → 4.1.4) and closes the advisory GHSA-f2hq-32vh-53cc: a header with very many joinable RFC 2047 base64 words made decoding take quadratic CPU time, so a crafted mail could freeze Obsidian while it was imported. Importing mails works as before; the unit, integration and bundle tests pass with the new version.
