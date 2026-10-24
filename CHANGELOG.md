@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Internal housekeeping: the shared kit libraries were updated (obsidian-kit 0.67.1, code-kit 0.36.0). None of the modules mailstone uses changed in behaviour, and the folder test of the `.eml` import reads exactly as before (the stricter file-system reading of code-kit 0.33.0 and 0.36.0 is opt-in). The new kit module `frontmatter-patch` is vendored but not used yet.
+
 ## [0.9.1] — 2026-10-18
 
 ### Changed
