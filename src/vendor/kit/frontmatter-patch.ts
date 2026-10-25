@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.67.1, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.70.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // frontmatter-patch.ts — eigene Frontmatter-Felder setzen, fremde Zeilen byte-gleich lassen. Kein obsidian-Import.
 //
 // Zusammengeführt aus zwei unabhängigen Fassungen desselben Vorgangs (Diachronic wäre die dritte):
@@ -21,6 +21,15 @@
 //   · Ein leerer Block (`---` / `---`) ist ein Block; mailstone meldete ihn als nicht lesbar.
 //   · Zusätzlich verweigert: ein Wert mit Zeilenumbruch (er bräche den Block, `serializeFrontmatter` quotet ihn nicht) und
 //     ein Schlüssel, den der Block-Leser nicht als Schlüssel erkennt (`invalid-key`).
+//   · Ein Literal (`{ literal: "53240.00" }`) wird unverändert geschrieben, nie gequotet — für Aufrufer, die fertige Skalare haben
+//     (finance-ledger: `saldo_eur` aus `Money.toFixed(2)`, `anfangssaldo_eur: null`). `FmValue` kann das nicht: ein `number` verliert
+//     die endende Null (`12.50` → `12.5`), ein `string` bekommt Anführungszeichen (`"null"`, `"53240.00"`). Zugelassen sind genau diese
+//     Formen (`null`, `true`, `false`, Dezimalzahl, einzeiliger doppelt gequoteter Text); alles andere ist `invalid-value`, damit kein Umbruch, Kommentar oder Fremd-YAML
+//     durch die Hintertür kommt. Der gequotete Text ist für Aufrufer, deren Wert im Bestand schon so steht (finance-ledger `glaeubiger_id`:
+//     `"DE98ZZZ00000000001"`); `isFmLiteralText` gibt die Prüfung heraus, damit kein Konsument die Regex kopiert. Die Regex ist enger als die in `needsQuoting` (`-.5` und `+.5` liest js-yaml als Text, Obsidian als Zahl: die Menge
+//     hier ist die gemeinsame). Gemessen 2026-10-25 in Obsidian 1.14.5 (`pilot/literal-formen.ts`): `parseYaml`, `metadataCache` und der gerenderte
+//     Eigenschaften-Editor (Zahlenfeld) lesen `5.`, `+5`, `-0` und `007` als Zahl mit demselben Wert wie js-yaml 4.2.0 (5, 5, 7); nur `-0` bleibt bei Obsidian
+//     ein `-0` (js-yaml: `0`), das Feld zeigt `0`, aus dem Cache einer unveränderten Notiz liest man `0`. Ungemessen: Bases.
 // Grenzen, bewusst wie im Kit-Parser: ein Schlüssel muss `[A-Za-z0-9_][\w .-]*` sein (ein Schlüssel mit Umlaut wird nicht gefunden,
 // also angehängt, nicht ersetzt — `invalid-key` fängt ihn deshalb schon beim Setzen ab); Kommentare auf der Zeile eines gesetzten
 // Schlüssels gehen mit der Zeile verloren; ein Block-Skalar (`|`, `>`) wird gemeldet, nicht ersetzt.
@@ -29,11 +38,18 @@
 
 import { serializeFrontmatter, type FmValue } from "./frontmatter";
 
+/**
+ * Ein fertig geschriebener YAML-Skalar, der unverändert in die Zeile geht (`key: <literal>`). Nur `null`, `true`, `false` (klein
+ * geschrieben), Dezimalzahlen wie `12.50`, `-0`, `.5`, `5.` und ein einzeiliger doppelt gequoteter Text ohne `"` und `\` darin
+ * (`"DE98ZZZ00000000001"`); alles andere meldet `patchFrontmatter` als `invalid-value`. Vorab prüfen: `isFmLiteralText`.
+ */
+export interface FmLiteral { literal: string }
+
 export interface FrontmatterPatchSpec {
   /** Setzen oder anhängen. */
-  set?: Record<string, FmValue>;
+  set?: Record<string, FmValue | FmLiteral>;
   /** Nur anhängen, wenn der Schlüssel fehlt (auch nach `set`). */
-  ensure?: Record<string, FmValue>;
+  ensure?: Record<string, FmValue | FmLiteral>;
   /** Schlüssel, die ein `set` verweigert. Default `["created"]`. */
   protect?: readonly string[];
   /** Eine Notiz ohne Block bekommt einen. Default `false`: sie bleibt unverändert. */
@@ -94,13 +110,43 @@ function readDoc(text: string): { doc: Doc; bodyFrom: number } | null {
   };
 }
 
-/** Die Zeilen EINES Schlüssels, über das Kit serialisiert (ohne die beiden Zäune). */
-function keyLines(key: string, value: FmValue): string[] {
+// Genau die Formen, die ein Literal haben darf — die EINZIGE Quelle (`badValue` und `isFmLiteralText`). Nicht die Regex aus `needsQuoting`
+// (sie lässt `-.5` und `+.5` durch, die js-yaml als Text liest). Die gequotete Form hält Anführungszeichen und Rückstrich draußen; Zeilenumbruch
+// und Steuerzeichen (ein NUL lehnt js-yaml ab) fängt `hasControl` ab, weil eine Zeichenklasse mit Steuerzeichen die Kernregel
+// `no-control-regex` auslöst (Konsumenten-Lint, 0.69.0).
+const LITERAL_RE = /^(?:null|true|false)$|^[+-]?\d+(\.\d*)?$|^\.\d+$|^"[^"\\]*"$/;
+
+/** Enthält `text` ein Zeichen unter 0x20 außer dem Tabulator? (Zeilenumbruch, NUL und die übrigen Steuerzeichen; DEL und Nicht-ASCII bleiben erlaubt.) */
+function hasControl(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 0x20 && c !== 0x09) return true;
+  }
+  return false;
+}
+
+/** Ist `text` ein gültiges Literal für `{ literal }`? Dieselbe Prüfung wie in `patchFrontmatter` (`invalid-value`); wirft nie, Nicht-Text ist `false`.
+ *  @example
+ *  isFmLiteralText("53240.00") // → true
+ *  isFmLiteralText('"DE98"')   // → true
+ *  isFmLiteralText("DE98")     // → false */
+export function isFmLiteralText(text: string): boolean {
+  return typeof text === "string" && LITERAL_RE.test(text) && !hasControl(text);
+}
+
+function isLiteral(v: FmValue | FmLiteral): v is FmLiteral {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** Die Zeilen EINES Schlüssels: ein Literal unverändert, alles andere über das Kit serialisiert (ohne die beiden Zäune). */
+function keyLines(key: string, value: FmValue | FmLiteral): string[] {
+  if (isLiteral(value)) return [`${key}: ${value.literal}`];
   const lines = serializeFrontmatter({ [key]: value }, [key]).split("\n");
   return lines.slice(1, lines.length - 2);
 }
 
-function badValue(v: FmValue): boolean {
+function badValue(v: FmValue | FmLiteral): boolean {
+  if (isLiteral(v)) return !isFmLiteralText(v.literal);
   if (typeof v === "number") return !Number.isFinite(v);
   const parts = Array.isArray(v) ? v : [v];
   return parts.some((s) => /[\r\n]/.test(s));
@@ -115,9 +161,14 @@ function badValue(v: FmValue): boolean {
  * (`block-scalar`), ein Block, der nicht schließt (`unparseable`), ein Wert mit Zeilenumbruch (`invalid-value`) und ein Schlüssel,
  * den der Block-Leser nicht erkennt (`invalid-key`).
  *
+ * Ein fertiger Skalar geht als `{ literal }` unquotet in die Zeile (`null`, `true`, `false`, Dezimalzahl); ein anderer Wert ist `invalid-value`.
+ *
  * @example
  * patchFrontmatter("---\ntitle: A\n---\nText\n", { set: { "diachronic-round": 2 } })
  * // → { ok: true, changed: true, content: "---\ntitle: A\ndiachronic-round: 2\n---\nText\n" }
+ * @example
+ * patchFrontmatter("---\ntitle: A\n---\n", { set: { saldo_eur: { literal: "53240.00" } }, ensure: { stand: { literal: "null" } } })
+ * // → { ok: true, changed: true, content: "---\ntitle: A\nsaldo_eur: 53240.00\nstand: null\n---\n" }
  */
 export function patchFrontmatter(text: string, spec: FrontmatterPatchSpec): FrontmatterPatchResult {
   const protect = new Set(spec.protect ?? ["created"]);
@@ -140,9 +191,8 @@ export function patchFrontmatter(text: string, spec: FrontmatterPatchSpec): Fron
     const writes = collect(setEntries, ensureEntries, () => false, spec.onlyExisting === true);
     if (writes.length === 0) return { ok: true, content: text, changed: false };
     const eol = text.includes("\r\n") ? "\r\n" : "\n";
-    const data: Record<string, FmValue> = {};
-    for (const [k, v] of writes) data[k] = v;
-    const block = serializeFrontmatter(data, writes.map(([k]) => k)).replace(/\n/g, eol);
+    // Jeder Eintrag über `keyLines`, damit ein Literal hier denselben Weg nimmt wie in einem vorhandenen Block.
+    const block = ["---", ...writes.flatMap(([k, v]) => keyLines(k, v)), "---", ""].join(eol);
     return { ok: true, content: `${block}${text}`, changed: true };
   }
 
@@ -175,12 +225,12 @@ export function patchFrontmatter(text: string, spec: FrontmatterPatchSpec): Fron
 
 /** Die Schreibvorgänge in Reihenfolge: erst `set`, dann `ensure` (nur wo der Schlüssel fehlt und `set` ihn nicht schon schreibt). */
 function collect(
-  setEntries: Array<[string, FmValue]>,
-  ensureEntries: Array<[string, FmValue]>,
+  setEntries: Array<[string, FmValue | FmLiteral]>,
+  ensureEntries: Array<[string, FmValue | FmLiteral]>,
   has: (key: string) => boolean,
   onlyExisting: boolean,
-): Array<[string, FmValue]> {
-  const out: Array<[string, FmValue]> = [];
+): Array<[string, FmValue | FmLiteral]> {
+  const out: Array<[string, FmValue | FmLiteral]> = [];
   const written = new Set<string>();
   for (const [k, v] of setEntries) {
     if (onlyExisting && !has(k)) continue;

@@ -1,6 +1,6 @@
 {
   "source": "code-kit",
-  "version": "0.36.0",
-  "sha": "9daec2c",
+  "version": "0.37.5",
+  "sha": "2bfd6dd",
   "vendored": "timeout.ts, sha256.ts, filename-template.ts, settings.ts, i18n.ts, busy-guard.ts, slug.ts, local-stamp.ts, marker-zone.ts, validate-input.ts, folder-scope.ts, rel-path.ts, secrets.ts"
 }
