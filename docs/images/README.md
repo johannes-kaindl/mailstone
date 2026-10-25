@@ -6,6 +6,8 @@ Dieser Ordner hält die Bilder, die `README.md` und `README.de.md` einbetten. Di
 
 **Stand 2026-09-26: alle fünf Bilder stehen.** Aufgenommen in einer Zweitinstanz (Obsidian 1.14.2, eigenes Profil, eigener Port), Oberfläche Englisch, helles Standard-Theme, Fensterbreite 1400 px. Die Mails stammen aus synthetischen `.eml` (nur `example.org`/`.net`/`.com`, `docs/images/fixture/notes/Import/`), kein echtes Postfach kommt in ein Bild.
 
+**Stand 2026-10-25: `hero.png` neu aufgenommen** (Obsidian 1.14.5, Fensterhöhe 440 statt 640). Die alte Aufnahme war zu 42 % leere App-Fläche unter Notiz und Seitenpanel (`readme_lint` `image-whitespace`, Grenze 25 %); die Höhe ist ein Parameter des Rezepts (`hero()` in `scripts/shots.ts`), kein Zuschnitt, jetzt 16 %. Die Uhrzeiten im Panel erscheinen mit `--lang=en-US` im 12-Stunden-Format.
+
 **Nicht im Vertrag, mit Grund:**
 
 - **Der Posteingangs-Tab** (`inbox`): er liest live per IMAP und braucht ein Postfach mit gültigem TLS-Zertifikat. Ein Fake-Server hilft nicht, weil sich die Zertifikatsprüfung bewusst nicht abschalten lässt, und ein echtes Postfach kommt in kein Bild. Der Tab ist im README beschrieben, nicht abgebildet.

@@ -176,7 +176,8 @@ async function schreibe(cdp: Cdp, name: string, clip: Rect | null, thumb = false
 // ── Motive ──────────────────────────────────────────────────────────────────────────────
 
 async function hero(cdp: Cdp): Promise<void> {
-  await fensterVorbereiten(cdp, 640);
+  // Fensterhoehe knapp ueber dem Inhalt: bei 640 war ein Drittel des Bildes leere App-Flaeche (42 % identische Zeilen, readme_lint image-whitespace).
+  await fensterVorbereiten(cdp, 440);
   // Der Hero zeigt den Text der Mail, nicht das Eigenschaften-Fenster (das ist Sache von mail-note.png).
   await cdp.evaluate(`app.vault.setConfig("propertiesInDocument", "hidden"); return true;`);
   await openExisting(cdp, await notizPfad(cdp, "-1140-"), "preview");
