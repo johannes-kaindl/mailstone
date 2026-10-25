@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-10-25
+
 ### Changed
 
 - Documentation: the README hero image is retaken with a shorter window, so it no longer ends in a large empty area below the note and the sidebar (42 % of its height was blank, the README linter now reports 16 %). The plugin itself is unchanged.
