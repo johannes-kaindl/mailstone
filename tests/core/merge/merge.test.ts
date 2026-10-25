@@ -369,3 +369,108 @@ describe("mergeNote in einer CRLF-Notiz", () => {
   });
 });
 
+
+// --- Welle 27: mergeNote schreibt das Frontmatter ueber das Kit (patchFrontmatter), nicht mehr ueber eine eigene Zeilenlogik ---
+describe("mergeNote: Frontmatter ueber das Kit", () => {
+  const hash = zoneHash("## Nachricht\n\nalt");
+  const koerper = (kopf: string): string => `${kopf}## Notizen\n\nMein Gedanke.\n\n${zone}\n`;
+  const run = (existing: string, over: Partial<Parameters<typeof mergeNote>[0]> = {}) =>
+    mergeNote({ existing, derived, managed, block: "## Nachricht\n\nalt", expectedZoneHash: hash, ...over });
+
+  it("ein leerer Frontmatter-Block wird beschrieben, statt als unlesbar abgelehnt", () => {
+    const r = run(koerper("---\n---\n"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.changed).toBe(true);
+    expect(r.content.startsWith("---\nmail_id: a@x\nmail_source: s\nmail_state: live\nmail_synced: 2026-08-23T15:00:00+02:00\ntitle: Hi\nfrom: a@x\n---\n## Notizen\n\nMein Gedanke.\n")).toBe(true);
+    expect(r.content.endsWith(`${zone}\n`)).toBe(true);
+  });
+
+  it("ein leerer Block in einer CRLF-Notiz bleibt CRLF", () => {
+    const r = run(koerper("---\n---\n").replace(/\n/g, "\r\n"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect((r.content.match(/(?<!\r)\n/g) ?? []).length).toBe(0);
+  });
+
+  it("ein Schluessel mit Nicht-ASCII-Zeichen in managed → frontmatter-unparseable (frueher: bei jedem Lauf noch einmal angehaengt)", () => {
+    const existing = koerper("---\ntype: mail\n---\n");
+    const r = run(existing, { derived: { ...derived, "Größe": "3" }, managed: [...managed, "Größe"] });
+    expect(r).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("ein Wert mit Zeilenumbruch → frontmatter-unparseable, kein kaputtes YAML in der Notiz", () => {
+    const existing = koerper("---\ntype: mail\n---\n");
+    const r = run(existing, { derived: { ...derived, title: "eins\nzwei" } });
+    expect(r).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("fehlende verwaltete Keys werden in der Reihenfolge von managed angehaengt, nicht in der von derived", () => {
+    const umgekehrt = Object.fromEntries(Object.entries(derived).reverse());
+    const r = run(koerper("---\ntype: mail\n---\n"), { derived: umgekehrt });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const kopf = r.content.slice(0, r.content.indexOf("\n---\n", 4));
+    expect(kopf.split("\n")).toEqual(["---", "type: mail", "mail_id: a@x", "mail_source: s", "mail_state: live", "mail_synced: 2026-08-23T15:00:00+02:00", "title: Hi", "from: a@x"]);
+  });
+
+  it("eine Notiz ohne Frontmatter bekommt einen Block mit den verwalteten Keys", () => {
+    const r = run(`## Notizen\n\nOhne Kopf.\n\n${zone}\n`);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content.startsWith("---\nmail_id: a@x\n")).toBe(true);
+    expect(r.content).toContain("Ohne Kopf.");
+    expect(r.changed).toBe(true);
+  });
+
+  it("eine CRLF-Notiz ohne Frontmatter bekommt einen CRLF-Block (frueher: LF-Kopf vor CRLF-Rumpf)", () => {
+    const r = run(`## Notizen\n\nOhne Kopf.\n\n${zone}\n`.replace(/\n/g, "\r\n"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content.startsWith("---\r\nmail_id: a@x\r\n")).toBe(true);
+    expect((r.content.match(/(?<!\r)\n/g) ?? []).length).toBe(0);
+  });
+
+  it("Rangfolge der Fehler wie bisher: ein nie geschlossener Block gewinnt gegen einen Wert mit Zeilenumbruch und fehlende Fences", () => {
+    expect(run("---\nmail_id: a@x\n\nfrei, ohne Zone", { derived: { ...derived, title: "eins\nzwei" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("das Zeilenende der Zone folgt dem Kopf der Notiz, wie bisher (LF-Kopf mit CRLF-Rumpf: die Zone wird mit LF geschrieben)", () => {
+    const existing = `---\ntype: mail\n---\n${"## Notizen\n\nMein Gedanke.\n\n".replace(/\n/g, "\r\n")}${zone.replace(/\n/g, "\r\n")}\r\n`;
+    const r = run(existing, { block: "## Nachricht\n\nneu" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content).toContain("%% mailstone:begin %%\n## Nachricht\n\nneu\n%% mailstone:end %%");
+  });
+
+  it("`created` ist hier ein Schluessel wie jeder andere: ist er verwaltet, wird er geschrieben (das Kit schuetzt ihn sonst)", () => {
+    const r = run(koerper("---\ntype: mail\ncreated: 2026-01-01\n---\n"), { derived: { ...derived, created: "2026-08-23" }, managed: [...managed, "created"] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content).toContain("created: 2026-08-23");
+    expect(r.content).not.toContain("created: 2026-01-01");
+  });
+
+  it("Rangfolge der Fehler wie bisher: ein nie geschlossener Block gewinnt gegen fehlende Fences", () => {
+    expect(run("---\nmail_id: a@x\n\nfrei, ohne Zone")).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("Rangfolge der Fehler wie bisher: fehlende Fences gewinnen gegen einen Block-Skalar am verwalteten Key", () => {
+    expect(run("---\ntitle: |\n  mehrzeilig\n---\nfrei, ohne Zone")).toEqual({ ok: false, code: "fences-missing" });
+  });
+
+  it("Rangfolge der Fehler wie bisher: eine editierte Zone gewinnt gegen einen Block-Skalar am verwalteten Key", () => {
+    const existing = koerper("---\ntitle: |\n  mehrzeilig\n---\n").replace("alt", "alt (von Hand)");
+    expect(run(existing)).toEqual({ ok: false, code: "zone-edited" });
+  });
+
+  it("fluechtige Keys, die es schon gibt, halten die Notiz unveraendert; fehlt der Key, zaehlt sein Anhaengen als Aenderung", () => {
+    const spaeter = { ...derived, mail_synced: "2026-08-23T16:30:00+02:00" };
+    const mit = newNote(derived, { type: "mail" }, "## Nachricht\n\nalt");
+    expect(run(mit.content, { derived: spaeter, volatileKeys: ["mail_synced"] })).toMatchObject({ ok: true, changed: false, content: mit.content });
+    const ohne = mit.content.replace(/mail_synced: .*\n/, "");
+    const r = run(ohne, { derived: spaeter, volatileKeys: ["mail_synced"] });
+    expect(r).toMatchObject({ ok: true, changed: true });
+    if (r.ok) expect(r.content).toContain("mail_synced: 2026-08-23T16:30:00+02:00");
+  });
+});

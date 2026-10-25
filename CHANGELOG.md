@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A mail note with an empty front matter block (`---` directly followed by `---`) is now updated by the sync.** The sync used to refuse such a note as unreadable and left it alone; it now writes the mail fields into the empty block.
+- **A front matter value with a line break is no longer written into the note as broken YAML.** The sync used to write `key: one` followed by `two` as separate lines, which no reader can parse; the note is now skipped (`frontmatter-unparseable`) and stays untouched, on every sync, instead of being damaged.
+- **A field name with a non-ASCII character in the mail profile (hand-edited `data.json`, there is no setting for it) is no longer added again on every sync.** The line-by-line writer did not recognise such a name and appended a new line each time; the note is now skipped (`frontmatter-unparseable`) instead.
+- **A mail note with Windows line endings (CRLF) and no front matter gets a front matter block with Windows line endings** instead of a block with Unix line endings in front of the CRLF text.
+
+### Changed
+
+- Internal: the sync merge (`mergeNote`) now writes the front matter through the kit's `patchFrontmatter` as well, so all three front matter writers of the plugin sit on the same code. The old line-by-line writer and its helpers are gone. Measured against the previous writer on 40,000 random notes: 33,526 identical, the other 6,474 are exactly the four cases above (an empty block, a line break in a value, a non-ASCII field name, CRLF without front matter).
+
 ## [0.10.0] — 2026-10-24
 
 ### Security

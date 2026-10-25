@@ -1,4 +1,4 @@
-import { serializeFrontmatter, type FmValue } from "../../vendor/kit/frontmatter";
+import { parseFrontmatter, serializeFrontmatter, type FmValue } from "../../vendor/kit/frontmatter";
 import { patchFrontmatter, type FrontmatterPatchResult } from "../../vendor/kit/frontmatter-patch";
 import type { FmVal } from "../mirror/profile";
 import { splitBody, wrapBlock, zoneHash } from "./fences";
@@ -54,127 +54,52 @@ export function newNote(
 // Merge-Regel 2 (Spec § 2.2): "unbekannte Keys bleiben samt Wert und Reihenfolge; Parsing
 // nach Schluessel, nie nach Position." Eine Re-Serialisierung ueber das vendorte yaml_lite
 // kann das nicht halten — es kennt weder Kommentare noch verschachtelte Maps, Block-Skalare
-// oder Block-Listen und wuerfe sie beim Schreiben weg. Deshalb wird der ROHTEXT des
-// Frontmatters zeilenweise umgeschrieben: nur die Zeilen der verwalteten Keys werden
-// ersetzt bzw. ergaenzt, alles andere bleibt Byte fuer Byte stehen.
-//
-// Gruppen dieselbe Delimiter-Form wie DELIM_RE im Kit, aber mit getrennten Gruppen fuer
-// oeffnenden Delimiter / Rohtext / schliessenden Delimiter, damit beide Delimiter
-// unveraendert wieder eingesetzt werden koennen.
-const FM_RE = /^(---\r?\n)([\s\S]*?)(\r?\n---[ \t]*\r?\n?)/;
-// Key-Zeile: Schluessel am Zeilenanfang (nie eingerueckt) — identisch zur Kit-Form.
-const KEY_RE = /^([A-Za-z0-9_][\w .-]*?):[ \t]*(.*)$/;
-// Fortsetzungszeile einer Key-Darstellung: eingerueckt (verschachtelte Map, Block-Skalar)
-// oder Listenpunkt auf Spalte 0.
-const CONT_RE = /^([ \t]|-[ \t])/;
+// oder Block-Listen und wuerfe sie beim Schreiben weg. Deshalb schreibt das Kit
+// (`patchFrontmatter`) den ROHTEXT zeilenweise um: nur die Zeilen der verwalteten Keys werden
+// ersetzt bzw. ergaenzt, alles andere bleibt Byte fuer Byte stehen, auch alles hinter dem Block.
 
-interface FmEntry { start: number; end: number; rest: string }
-
-/** Zeilenbereiche je Key ("Darstellung des Keys"): die `key:`-Zeile plus alle folgenden
- *  Fortsetzungszeilen. Erster Treffer gewinnt; spaetere Dubletten bleiben unberuehrt. */
-function scanEntries(lines: string[]): Map<string, FmEntry> {
-  const out = new Map<string, FmEntry>();
-  let i = 0;
-  while (i < lines.length) {
-    const kv = KEY_RE.exec(lines[i] ?? "");
-    if (!kv) { i++; continue; }
-    let j = i + 1;
-    while (j < lines.length && CONT_RE.test(lines[j] ?? "")) j++;
-    const key = (kv[1] ?? "").trim();
-    if (!out.has(key)) out.set(key, { start: i, end: j, rest: (kv[2] ?? "").trim() });
-    i = j;
-  }
-  return out;
-}
-
-/** Serialisiert EINEN Key ueber das Kit und schneidet die Delimiter wieder ab. */
-function keyLines(k: string, v: FmVal): string[] {
-  const lines = serializeFrontmatter({ [k]: toFm(v) }, [k]).split("\n");
-  return lines.slice(1, lines.length - 2);
-}
-
-interface FmDoc { open: string; raw: string; close: string; lines: string[]; entries: Map<string, FmEntry>; eol: string }
-
-function readFm(text: string): FmDoc | null {
-  const m = FM_RE.exec(text);
-  if (!m) return null;
-  const raw = m[2] ?? "";
-  const open = m[1] ?? "";
-  const lines = raw.split(/\r?\n/);
-  return {
-    open,
-    raw,
-    close: m[3] ?? "",
-    lines,
-    entries: scanEntries(lines),
-    eol: raw.includes("\r\n") || open.includes("\r\n") ? "\r\n" : "\n",
-  };
-}
-
-/** Schreibt die verwalteten Keys in den Rohtext. `skip` bleibt unangetastet (fluechtige Keys
- *  in der Vergleichsfassung). `null` = ein verwalteter Key liegt als Block-Skalar vor; den
- *  koennte nur eine echte YAML-Implementierung ersetzen — also melden statt zerstoeren. */
-function rewriteFm(doc: FmDoc, derived: Record<string, FmVal>, managed: string[], skip: Set<string>): string | null {
-  const replaced = new Map<number, string[]>();
-  const dropped = new Set<number>();
-  const appended: string[] = [];
-  for (const k of managed) {
-    if (!Object.hasOwn(derived, k) || skip.has(k)) continue;
-    const neu = keyLines(k, derived[k] as FmVal);
-    const e = doc.entries.get(k);
-    if (!e) { appended.push(...neu); continue; }
-    if (/^[|>]/.test(e.rest)) return null;
-    replaced.set(e.start, neu);
-    for (let i = e.start; i < e.end; i++) dropped.add(i);
-  }
-  const out: string[] = [];
-  for (let i = 0; i < doc.lines.length; i++) {
-    const neu = replaced.get(i);
-    if (neu) out.push(...neu);
-    else if (!dropped.has(i)) out.push(doc.lines[i] as string);
-  }
-  out.push(...appended);
-  return out.join(doc.eol);
+/** Die Notiz mit dem Ergebnis des Kits als Kopf und der Zone aus `block`: der Rumpf kommt aus dem gepatchten Text (das Kit laesst
+ *  alles hinter dem Frontmatter byte-gleich), nur die Zone zwischen den Markern wird ersetzt. Das Zeilenende folgt dem Kopf, bei
+ *  einer Notiz ohne Kopf dem Text: eine CRLF-Notiz bleibt CRLF. */
+function assemble(patched: string, existing: string, block: string): string {
+  const body = parseFrontmatter(patched).body;
+  const head = patched.slice(0, patched.length - body.length);
+  const { before, after } = splitBody(body);
+  const eol: "\n" | "\r\n" = (head === "" ? existing : head).includes("\r\n") ? "\r\n" : "\n";
+  return `${head}${before}${wrapBlock(block, eol)}${after}`;
 }
 
 export function mergeNote(input: MergeInput): MergeResult {
-  const doc = readFm(input.existing);
-  // "frontmatter-unparseable" greift, wenn der Text zwar mit "---" beginnt, aber kein
-  // schliessendes "---" hat.
-  if (!doc && input.existing.startsWith("---")) return { ok: false, code: "frontmatter-unparseable" };
-  const body = doc ? input.existing.slice(doc.open.length + doc.raw.length + doc.close.length) : input.existing;
-  const { before, block, after } = splitBody(body);
+  const set: Record<string, FmValue> = {};
+  for (const k of input.managed) if (Object.hasOwn(input.derived, k)) set[k] = toFm(input.derived[k] as FmVal);
+  // `create`: eine Notiz ohne Frontmatter bekommt einen Block; `protect: []`: `created` ist hier kein geschuetzter Schluessel.
+  const patched = patchFrontmatter(input.existing, { set, create: true, protect: [] });
+  // Rangfolge der Fehler wie bisher: ein nie geschlossener Block gewinnt gegen alles; erst danach Zone, und was das Kit sonst am
+  // Frontmatter ablehnt (Block-Skalar am verwalteten Key, unlesbarer Schluessel, Wert mit Zeilenumbruch) zuletzt. Das Kit prueft
+  // Schluessel und Werte VOR dem Block und nennt dann `invalid-*`, auch bei einem nie geschlossenen Block: den fragt eine Anfrage
+  // ohne Schreibauftrag allein.
+  if (!patchFrontmatter(input.existing, {}).ok) return { ok: false, code: "frontmatter-unparseable" };
+  const existingFm = parseFrontmatter(input.existing);
+  const { block } = splitBody(existingFm.body);
   if (block === null) return { ok: false, code: "fences-missing" };
   if (input.expectedZoneHash !== null && zoneHash(block) !== input.expectedZoneHash) {
     return { ok: false, code: "zone-edited" };
   }
+  if (!patched.ok) return { ok: false, code: "frontmatter-unparseable" };
 
-  // Zeilenende der Notiz, nicht des gerenderten Blocks: eine CRLF-Notiz bleibt CRLF.
-  const eol: "\n" | "\r\n" = (doc ? doc.eol : input.existing).includes("\r\n") ? "\r\n" : "\n";
-  const tail = `${before}${wrapBlock(input.block, eol)}${after}`;
-  const build = (skip: Set<string>): string | null => {
-    if (!doc) {
-      // Notiz ohne Frontmatter: einen frischen Block aus den abgeleiteten Keys voranstellen.
-      const data: Record<string, FmValue> = {};
-      const order: string[] = [];
-      for (const k of input.managed) {
-        if (!Object.hasOwn(input.derived, k) || skip.has(k)) continue;
-        data[k] = toFm(input.derived[k] as FmVal);
-        order.push(k);
-      }
-      return `${fmBlock(data, order)}${tail}`;
-    }
-    const raw = rewriteFm(doc, input.derived, input.managed, skip);
-    return raw === null ? null : `${doc.open}${raw}${doc.close}${tail}`;
-  };
-
-  const candidate = build(new Set());
-  if (candidate === null) return { ok: false, code: "frontmatter-unparseable" };
+  const candidate = assemble(patched.content, input.existing, input.block);
   // Vergleichsfassung: fluechtige Keys, die es schon gibt, auf ihrem BESTEHENDEN Wert
   // halten. Nur wenn sich sonst etwas unterscheidet, wird geschrieben.
-  const skip = new Set((input.volatileKeys ?? []).filter((k) => doc?.entries.has(k)));
-  const probe = skip.size === 0 ? candidate : build(skip);
-  if (probe === null) return { ok: false, code: "frontmatter-unparseable" };
+  const present = new Set(existingFm.order);
+  const skip = (input.volatileKeys ?? []).filter((k) => present.has(k));
+  let probe = candidate;
+  if (skip.length > 0) {
+    const stable = { ...set };
+    for (const k of skip) delete stable[k];
+    const p = patchFrontmatter(input.existing, { set: stable, create: true, protect: [] });
+    if (!p.ok) return { ok: false, code: "frontmatter-unparseable" };
+    probe = assemble(p.content, input.existing, input.block);
+  }
   if (probe === input.existing) {
     return { ok: true, content: input.existing, changed: false, zoneHash: zoneHash(input.block) };
   }
