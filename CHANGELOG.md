@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-10-25
+
 ### Fixed
 
 - **A mail note with an empty front matter block (`---` directly followed by `---`) is now updated by the sync.** The sync used to refuse such a note as unreadable and left it alone; it now writes the mail fields into the empty block.
