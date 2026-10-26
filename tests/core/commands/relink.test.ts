@@ -112,8 +112,8 @@ describe("mail.relink", () => {
 
 describe("mail.relink: uebersprungene Notizen werden gezaehlt statt verschluckt", () => {
   /** Der Cache liest `in_reply_to` als Zeichenkette, im Rohtext liegt es aber als
-   *  Block-Skalar — genau die Form, an der `rewriteFm` mit `frontmatter-unparseable`
-   *  aussteigt (Merge-Regel 2). */
+   *  Block-Skalar — genau die Form, an der `patchFrontmatter` des Kits mit `block-scalar`
+   *  aussteigt (Merge-Regel 2); `mergeFrontmatterOnly` meldet das als `frontmatter-unparseable`. */
   function notizMitBlockSkalar(): MailNoteRef {
     return {
       mailId: "z@x",
