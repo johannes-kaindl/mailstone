@@ -70,9 +70,11 @@ cd mailstone && npm install && npm run build
 1. **Set up an account.** Settings → Mailstone → *Add account*: IMAP and SMTP host, port and TLS mode, username, an app-specific password, at least one identity, and the folder names as your IMAP server shows them. *Test SMTP connection* checks host, TLS and login without sending anything.
 
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/account.png" width="600" alt="The account dialog: IMAP and SMTP host, port and TLS mode, username and a password linked to Obsidian's secret storage.">
+
 2. **Decide on the server which mail matters.** Move it into your allowlist folder. The next sync — every few minutes, or *Synchronise now* in the sidebar — writes a note under `Mail/<year>/` and the `.eml` under `Mail/<year>/_eml/`.
 
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="A mail note: front matter with sender, recipients, date and Message-ID, in_reply_to and references as wikilinks to the earlier mail, and the message text below.">
+
 3. **Or work from the inbox tab.** Open the sidebar with the ribbon icon or the command *Mailstone: Open the sidebar panel*, switch to **Inbox**, and use *Move to vault* on anything worth keeping. The message moves into the allowlist folder on the server, and the following sync writes the note.
 4. **On a mail note**, the command palette offers *Re-render mail note from its .eml*, *Relink mail threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear. Each one shows what it would change before it writes:
 
