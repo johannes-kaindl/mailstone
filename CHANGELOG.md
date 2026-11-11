@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.3] — 2026-11-11
+
 ### Fixed
 
 - Documentation: the numbered steps under *Usage* in the README (English and German) no longer show raw `**bold**` markers on the Community Plugins page; a screenshot line was swallowing the step below it. The plugin itself is unchanged.
