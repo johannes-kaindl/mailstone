@@ -2,5 +2,6 @@
   "source": "obsidian-kit",
   "version": "0.70.0",
   "sha": "86a2d2d",
-  "vendored": "node-builtin-require.mjs"
+  "vendored": "node-builtin-require.mjs",
+  "license": "AGPL-3.0-or-later"
 }
