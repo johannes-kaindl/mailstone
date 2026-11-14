@@ -109,6 +109,7 @@ Globale Einstellungen:
 | Zusatzfelder für neue Mail-Notizen | Felder, die beim ersten Anlegen einmalig ins Frontmatter geschrieben werden, etwa `status: open` | keine |
 | Erlaubte Werte bei Neuanlage | Werte, die für die beim Anlegen geschriebenen Felder zulässig sind | `mail` |
 | Plugins mit Sendeerlaubnis | Plugins, die ohne Rückfrage über Mailstone senden; Widerruf fragt wieder | keine |
+| Statusleiste | Zeigt den Sync-Stand in der Statusleiste (Desktop); ausschalten, wenn die Leiste zu breit wird | an |
 | Beim Start öffnen | Öffnet das Seitenleisten-Panel beim Start von Obsidian | aus |
 | Debug-Protokoll | Schreibt den IMAP-/SMTP-Dialog in die Entwicklerkonsole, Passwörter maskiert | aus |
 | Sprache | Oberflächensprache | Automatisch |

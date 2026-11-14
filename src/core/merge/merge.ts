@@ -2,6 +2,7 @@ import { parseFrontmatter, serializeFrontmatter, type FmValue } from "../../vend
 import { patchFrontmatter, type FrontmatterPatchResult } from "../../vendor/kit/frontmatter-patch";
 import type { FmVal } from "../mirror/profile";
 import { splitBody, wrapBlock, zoneHash } from "./fences";
+import { detectEol } from "../../vendor/code-kit/text-window";
 
 export type MergeErrorCode = "fences-missing" | "zone-edited" | "frontmatter-unparseable";
 export interface MergeInput {
@@ -65,7 +66,7 @@ function assemble(patched: string, existing: string, block: string): string {
   const body = parseFrontmatter(patched).body;
   const head = patched.slice(0, patched.length - body.length);
   const { before, after } = splitBody(body);
-  const eol: "\n" | "\r\n" = (head === "" ? existing : head).includes("\r\n") ? "\r\n" : "\n";
+  const eol = detectEol(head === "" ? existing : head);
   return `${head}${before}${wrapBlock(block, eol)}${after}`;
 }
 

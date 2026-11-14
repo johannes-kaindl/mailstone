@@ -36,7 +36,7 @@ function fakeSecrets(overrides?: Partial<SecretStore>): SecretStore {
  *  ist fuer Obsidian <1.13 gedacht, das Manifest hier fuehrt aber 1.13.0 als Untergrenze und der
  *  Tab hat kein eigenes `display()` — der gerenderte Pfad waere also nie der reale gewesen.
  */
-function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; runState?: RunState } = {}): MailstoneSettingTab {
+function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; runState?: RunState; onStatusBar?: (on: boolean) => void } = {}): MailstoneSettingTab {
   const settings: MailstoneSettings = { ...loadSettings(undefined), accounts: opts.accounts ?? [] };
   const host: SettingsHost = {
     settings,
@@ -44,6 +44,7 @@ function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; ru
     secrets: fakeSecrets(opts.secrets),
     transport: () => ({}) as unknown as SocketTransport,
     runState: () => opts.runState ?? {},
+    setStatusBarVisible: opts.onStatusBar ?? (() => {}),
   };
   const manifest = { id: "mailstone", name: "Mailstone", version: "0.1.0", minAppVersion: "1.13.0", description: "", author: "" };
   const app = new App();
@@ -86,6 +87,27 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
     const toggle = defs.find((d) => d.control?.key === "debugLog");
     expect(toggle).toBeDefined();
     expect(toggle?.name).toBe("Debug-Protokoll");
+  });
+});
+
+describe("MailstoneSettingTab — Statusleiste (UI-STANDARD § 8)", () => {
+  type Hatch = { name?: string; desc?: string; render?: (s: Setting) => void };
+  const zeile = (tab: MailstoneSettingTab): Hatch => {
+    const defs = tab.getSettingDefinitions() as unknown as Hatch[];
+    const z = defs.find((d) => d.name === "Statusleiste");
+    expect(z).toBeDefined();
+    return z!;
+  };
+  it("bietet die Zeile Statusleiste mit einem Schalter, der den gespeicherten Wert zeigt und den Eintrag umschaltet", async () => {
+    initI18n("de");
+    const calls: boolean[] = [];
+    const tab = newTab({ onStatusBar: (on) => { calls.push(on); } });
+    const setting = new Setting(undefined as never);
+    zeile(tab).render?.(setting);
+    const comp = (setting as unknown as { components: Array<{ getValue(): boolean; onChangeCB: ((v: boolean) => unknown) | null }> }).components[0]!;
+    expect(comp.getValue()).toBe(true); // Standard an
+    await comp.onChangeCB?.(false);
+    expect(calls).toEqual([false]);
   });
 });
 

@@ -36,7 +36,8 @@ interface Aufbau {
 function aufbau(accounts: Account[], syncAccount?: (id: string) => Promise<SyncRunResult>, app: any = {}): Aufbau {
   const plugin: any = new MailstonePlugin(app, { id: "mailstone", name: "Mailstone", version: "0.1.0" } as any);
   plugin.settings.accounts = accounts;
-  plugin.status = makeFakeEl();
+  // Der Eintrag laeuft ueber den Kit-Baustein; hier genuegt ein Handle, das nichts zeichnet (runSync ruft nur `set`).
+  plugin.status = { set: () => {}, setVisible: () => {}, reveal: () => () => {}, refresh: () => {}, shown: false, el: null, destroy: () => {} };
   plugin.uidCache = { data: () => ({}) };
   const spy = vi.fn(syncAccount ?? (async (id: string): Promise<SyncRunResult> => ({ ok: true, accountId: id, counts: NIX })));
   plugin.syncService = { syncAccount: spy, syncAll: vi.fn() };

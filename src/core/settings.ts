@@ -24,7 +24,9 @@ export interface Account {
 // Hand-Edit in data.json). Das zu reparieren waere ein Eingriff in toFm/needsQuoting, der ALLE
 // Frontmatter-Felder betraefe — kein M5-Vorgang. Ein `number` ist davon nicht betroffen: er
 // laeuft an toFm vorbei und wird unquoted ausgegeben.
-export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; onCreateAllowedValues: string[]; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[] }
+export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; onCreateAllowedValues: string[]; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[];
+  /** Eintrag in der Statusleiste (Standard an; UI-STANDARD § 8). */
+  showStatusBar: boolean }
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -96,7 +98,7 @@ function repairAccount(raw: unknown): Account {
 // openViewOnStartup: Default AUS — ein Plugin, das sich beim Start ungefragt in die
 // Seitenleiste draengt, ist ein Aergernis (REGISTRY: Opt-in-Gate fuer Startup-Seiteneffekt,
 // n=2 in vim-dojo und kuro-gamification).
-export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, onCreateAllowedValues: ["mail"], debugLog: false, openViewOnStartup: false, trustedSenders: [] };
+export const DEFAULT_SETTINGS: MailstoneSettings = { schemaVersion: 1, language: "auto", accounts: [], profile: defaultMailProfile(), taskPreset: {}, onCreateAllowedValues: ["mail"], debugLog: false, openViewOnStartup: false, trustedSenders: [], showStatusBar: true };
 
 /** Reine Pruefung ohne Reparatur: welche STRING-Werte in `onCreate` stehen nicht in `allowed`?
  *  Nicht-String-Werte (number/boolean/string[], s. `FmVal`) sind kein Enum-Fall und bleiben
@@ -167,6 +169,8 @@ export function loadSettings(raw: unknown): MailstoneSettings {
   s.taskPreset = repairTaskPreset(isObj(raw) ? raw.taskPreset : undefined);
   s.onCreateAllowedValues = repairOnCreateAllowedValues(isObj(raw) ? raw.onCreateAllowedValues : undefined);
   s.trustedSenders = repairTrustedSenders(isObj(raw) ? raw.trustedSenders : undefined);
+  // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json), startet das Plugin mit an — ein gespeichertes `false` bleibt aus.
+  s.showStatusBar = isObj(raw) && typeof raw.showStatusBar === "boolean" ? raw.showStatusBar : DEFAULT_SETTINGS.showStatusBar;
   const rawProfile = isObj(raw) && isObj(raw.profile) ? raw.profile : {};
   const onCreateRoh = rawOnCreate(raw);
   const onCreateUngueltig = onCreateInvalidValues(onCreateRoh, s.onCreateAllowedValues);

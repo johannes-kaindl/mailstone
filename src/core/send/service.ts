@@ -8,6 +8,7 @@ import { smtpSend, type SmtpErrorCode } from "../smtp/client";
 import type { SocketTransport } from "../net/types";
 import { imapConnect } from "../imap/client";
 import type { TimeoutTimers } from "../../vendor/code-kit/timeout";
+import { isLoopbackHost } from "../../vendor/code-kit/loopback";
 
 export type SendErrorCode = "unknown-account" | "unknown-identity" | "no-secret" | "invalid" | SmtpErrorCode;
 
@@ -55,7 +56,10 @@ export function resolveSender(accounts: Account[], accountId: string, identityId
  *  Fake-SMTP-Server fuer Tests/Debugging. Jeder andere Host wird mit "tls-required" abgewiesen,
  *  BEVOR ueberhaupt verbunden wird. */
 export function isLoopback(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+  // Der Kit-Vergleich kennt die Schreibweise von `URL.hostname` ("[::1]" mit Klammern); ein Kontofeld traegt die Adresse unverklammert ("::1").
+  // Hier klammern wir vor dem Aufruf: nur ein Host mit Doppelpunkt (IPv6) und ohne Klammer bekommt sie.
+  const h = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return isLoopbackHost(h);
 }
 
 function domainOf(address: string): string {

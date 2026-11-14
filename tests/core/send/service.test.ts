@@ -159,6 +159,17 @@ describe("isLoopback", () => {
   it("smtp.example.net -> false", () => {
     expect(isLoopback("smtp.example.net")).toBe(false);
   });
+  it("[::1] (verklammert, wie URL.hostname) -> true", () => {
+    expect(isLoopback("[::1]")).toBe(true);
+  });
+  it("Gegenprobe: example.com, ein Präfix-Trick und andere IPv6-Adressen -> false", () => {
+    expect(isLoopback("example.com")).toBe(false);
+    expect(isLoopback("127.0.0.1.evil.test")).toBe(false);
+    expect(isLoopback("localhost.evil.test")).toBe(false);
+    expect(isLoopback("::2")).toBe(false);
+    expect(isLoopback("2001:db8::1")).toBe(false);
+    expect(isLoopback("")).toBe(false);
+  });
 });
 
 describe("Kopie im Sent-Ordner", () => {

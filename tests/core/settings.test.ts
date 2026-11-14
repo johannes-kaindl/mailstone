@@ -201,3 +201,19 @@ describe("onCreate-Enum", () => {
     expect(rawOnCreate({ profile: { onCreate: "junk" } })).toBeUndefined();
   });
 });
+
+describe("showStatusBar (UI-STANDARD § 8 Statusleisten-Eintrag)", () => {
+  it("Standard ist an", () => {
+    expect(DEFAULT_SETTINGS.showStatusBar).toBe(true);
+    expect(loadSettings(undefined).showStatusBar).toBe(true);
+  });
+  it("eine alte data.json ohne den Schlüssel startet mit an, ein gespeichertes aus bleibt aus", () => {
+    expect(loadSettings({ language: "de", debugLog: true }).showStatusBar).toBe(true);
+    expect(loadSettings({ showStatusBar: false }).showStatusBar).toBe(false);
+    expect(loadSettings({ showStatusBar: true }).showStatusBar).toBe(true);
+  });
+  it("ein Wert, der kein Boolean ist, fällt auf den Standard", () => {
+    expect(loadSettings({ showStatusBar: "nein" }).showStatusBar).toBe(true);
+    expect(loadSettings({ showStatusBar: null }).showStatusBar).toBe(true);
+  });
+});

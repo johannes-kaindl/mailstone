@@ -8,6 +8,7 @@ import { noticeNotifier, type Notifier } from "./obsidian/notifier";
 import { FolderPromptModal } from "./obsidian/modals/folder-prompt";
 import { obsidianSecretStore } from "./vendor/kit-obsidian/secrets";
 import { nodeSocketTransport } from "./obsidian/tls-transport";
+import { createStatusBarItem, statusBarEnabled, type StatusBarItemHandle } from "./vendor/kit-obsidian/status-bar-item";
 import { createSendService, resolveSender, isLoopback, type SendService } from "./core/send/service";
 import { transportAccounts, splitTransportId } from "./core/send/imip";
 import type { SecretStore } from "./vendor/kit/secrets";
@@ -267,7 +268,7 @@ export default class MailstonePlugin extends Plugin {
   bridge!: CalendarNotesBridge;
   syncService!: SyncService;
   uidCache!: UidCacheStore;
-  status!: HTMLElement;
+  status!: StatusBarItemHandle;
   readonly busy = createBusyGuard();
   /** Zuletzt gemeldeter Stand ausgelassener Abloesungen — Wiederholungssperre im stillen Lauf. */
   private lastDetachSkipped: number | null = null;
@@ -324,6 +325,7 @@ export default class MailstonePlugin extends Plugin {
         secrets,
         transport: () => nodeSocketTransport(),
         runState: () => this.runState,
+        setStatusBarVisible: (on) => { this.status.setVisible(on); },
       }),
     );
     const notify = noticeNotifier();
@@ -364,9 +366,9 @@ export default class MailstonePlugin extends Plugin {
       ...(this.settings.debugLog ? { log: (l: string) => { console.debug("[mailstone imap]", l); } } : {}),
     });
 
-    this.status = this.addStatusBarItem();
+    this.status = createStatusBarItem({ plugin: this, visible: statusBarEnabled(this.settings.showStatusBar) });
     this.syncEvents.on("synced", ({ counts }) => {
-      this.status.setText(syncIdleStatus(counts, new Date().toLocaleTimeString()));
+      this.status.set(syncIdleStatus(counts, new Date().toLocaleTimeString()));
     });
 
     if (networkFeaturesAvailable()) {
@@ -787,7 +789,7 @@ export default class MailstonePlugin extends Plugin {
   private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<SyncRunResult[]> {
     const ziele = syncTargets(this.settings.accounts, only);
     if (ziele.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return []; }
-    this.status.setText(t("status.sync.running"));
+    this.status.set(t("status.sync.running"));
     // Der Lauf beginnt SICHTBAR: der BusyGuard wird erst in syncAccount belegt und im finally
     // dort wieder freigegeben — beim Render ist er darum immer frei, und der is-checking-
     // Indikator waere unerreichbar. Ein eigener Zaehler statt eines Bools, weil ein Takt des
@@ -807,7 +809,7 @@ export default class MailstonePlugin extends Plugin {
       // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
       // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).
       const failureStatus = syncFailureStatus(results, silent);
-      if (failureStatus) this.status.setText(failureStatus);
+      if (failureStatus) this.status.set(failureStatus);
       const { notices, detachSkipped } = syncNotices(results, silent, this.lastDetachSkipped);
       for (const n of notices) notify.info(n.key, ...n.args);
       this.lastDetachSkipped = detachSkipped;

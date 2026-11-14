@@ -10,7 +10,7 @@ import {
   type SettingDefinitionList,
   type SettingGroupItem,
 } from "obsidian";
-import { t } from "../vendor/code-kit/i18n";
+import { getLang, t } from "../vendor/code-kit/i18n";
 import { confirmAction, applyDestructive } from "../vendor/kit-obsidian/confirm";
 import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
@@ -22,6 +22,7 @@ import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
 import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
+import { statusBarEnabled, statusBarSettingDefinition } from "../vendor/kit-obsidian/status-bar-item";
 
 /** Was der Tab vom Plugin braucht — als Interface, damit Tests eine Attrappe geben können
  *  (Muster aus calendar-notes/src/obsidian/settings-tab.ts, dortiges `SettingsHost`). */
@@ -33,6 +34,8 @@ export interface SettingsHost {
   transport(): SocketTransport;
   /** Fuer den Sync-Stand-Hinweis auf Mobile (Welle 7) — Sync laeuft nur am Desktop. */
   runState(): RunState;
+  /** Der Schalter „Statusleiste“: legt den Eintrag an oder haengt ihn ab (der Wert steht danach in `settings.showStatusBar`). */
+  setStatusBarVisible(on: boolean): void;
 }
 
 /** M1: Ordner, Jahr-Unterordner, Dateiname-Template, Sprache. M2: Konten (Accounts-Liste +
@@ -110,6 +113,15 @@ export class MailstoneSettingTab extends PluginSettingTab {
       this.taskPresetGroup(),
       { name: t("settings.onCreateAllowedValues"), desc: t("settings.onCreateAllowedValues.desc") },
       this.onCreateAllowedValuesGroup(),
+      statusBarSettingDefinition({
+        value: statusBarEnabled(this.host.settings.showStatusBar),
+        strings: { lang: getLang() },
+        onChange: async (v) => {
+          this.host.settings.showStatusBar = v;
+          this.host.setStatusBarVisible(v);
+          await this.host.saveSettings();
+        },
+      }),
       {
         name: t("settings.openViewOnStartup"),
         desc: t("settings.openViewOnStartup.desc"),

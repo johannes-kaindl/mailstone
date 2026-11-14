@@ -107,6 +107,7 @@ Global settings:
 | Extra fields for new mail notes | Fields written once into a note's front matter when it is first created, for example `status: open` | none |
 | Allowed note-creation values | Values accepted for the fields written at creation | `mail` |
 | Plugins allowed to send | Plugins that send through Mailstone without asking; revoke one to be asked again | none |
+| Status bar | Shows the sync state in the status bar (desktop); turn it off if the bar gets too wide | on |
 | Open the panel at startup | Opens the sidebar panel when Obsidian starts | off |
 | Debug log | Writes the IMAP/SMTP dialogue to the developer console, passwords masked | off |
 | Language | Interface language | Automatic |

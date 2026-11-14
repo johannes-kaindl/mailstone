@@ -31,7 +31,15 @@
           "name": "fold-case",
           "ref": "0.44.0"
         },
-        "rel-path"
+        "rel-path",
+        {
+          "name": "loopback",
+          "ref": "0.68.0"
+        },
+        {
+          "name": "text-window",
+          "ref": "0.68.0"
+        }
       ]
     },
     {
@@ -72,7 +80,11 @@
         "confirm",
         "hub",
         "secrets",
-        "help-setting"
+        "help-setting",
+        {
+          "name": "status-bar-item",
+          "ref": "0.88.0"
+        }
       ],
       "rewrite": [
         [

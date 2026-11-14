@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Settings: a "Status bar" switch (on by default). Turn it off if the status bar gets too wide. Existing installs keep the entry; nothing disappears after the update.
+
+### Changed
+
+- A mail server given as `[::1]` now counts as the local machine for the unencrypted-test-server exception, like `::1`, `localhost` and `127.0.0.1` (the check now uses the shared code-kit module). Host names are compared case-insensitively.
+
 ## [0.10.3] — 2026-11-11
 
 ### Fixed
