@@ -36,7 +36,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { argv, cwd, exit } from "node:process";
 
-import { attachTo, Cdp, closeExtraLeaves, openExisting, pollUntil, requireUntil, requireVisible } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, Cdp, closeExtraLeaves, mitPlatzhalterSchluessel, openExisting, pollUntil, requireUntil, requireVisible } from "../../tools/obsidian-cdp/cdp.js";
 import { boxOf, capture, setWindowSize, writeShot, type Rect, type ShotOptions } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -116,7 +116,6 @@ async function zustandHerstellen(cdp: Cdp): Promise<void> {
   }
   await cdp.evaluate(`
     const p = app.plugins.plugins[${JSON.stringify(PLUGIN_ID)}];
-    app.secretStorage.setSecret(${JSON.stringify(SECRET_ID)}, "demo-not-a-real-password");
     const konto = (id, label, host, adresse, name) => ({
       id, label,
       imap: { host: "imap." + host, port: 993, tls: "implicit" },
@@ -279,20 +278,23 @@ async function main(): Promise<void> {
   if (!cdp) throw new Error(`Kein Fenster fuer Vault "${VAULT_NAME}" auf Port ${String(PORT)}.`);
   await requireVisible(cdp);
   await pruefeSprache(cdp);
-  await zustandHerstellen(cdp);
+  // Der Platzhalter-Schlüssel des Demo-Kontos (zustandHerstellen legt das Konto an) wird nach dem Lauf entfernt, auch bei Fehler und Ctrl-C.
+  await mitPlatzhalterSchluessel(cdp, { id: SECRET_ID, wert: "demo-not-a-real-password" }, async () => {
+    await zustandHerstellen(cdp);
 
-  const motive: Record<string, () => Promise<void>> = {
-    "hero.png": () => hero(cdp),
-    "mail-note.png": () => mailNote(cdp),
-    "relink-preview.png": () => Promise.resolve(), // entsteht in zustandHerstellen()
-    "settings.png": () => settingsBild(cdp, PORT),
-    "account.png": () => konto(cdp, PORT),
-  };
-  for (const name of VERTRAG) {
-    if (ONLY && ONLY !== name) continue;
-    console.log(`── ${name}`);
-    await motive[name]!();
-  }
+    const motive: Record<string, () => Promise<void>> = {
+      "hero.png": () => hero(cdp),
+      "mail-note.png": () => mailNote(cdp),
+      "relink-preview.png": () => Promise.resolve(), // entsteht in zustandHerstellen()
+      "settings.png": () => settingsBild(cdp, PORT),
+      "account.png": () => konto(cdp, PORT),
+    };
+    for (const name of VERTRAG) {
+      if (ONLY && ONLY !== name) continue;
+      console.log(`── ${name}`);
+      await motive[name]!();
+    }
+  });
   cdp.close?.();
 }
 

@@ -79,6 +79,9 @@ const PLUGIN_ID = "mailstone";
 const VIEW_TYPE = "mailstone-cockpit";
 /** Konto-Id des Testkontos. Distinkt genug, dass ein Rest im Vault als Testrest erkennbar ist. */
 const SMOKE_ACCOUNT_ID = "gui-smoke-testkonto";
+// `deleteSecret` statt `setSecret(id, "")`: das Leeren lässt den Meta-Eintrag im Schlüsselbund stehen (Task „Treiber-Skripte räumen ihren Platzhalter-Schlüssel nicht ab“).
+const SECRET_WEG = (idAusdruck: string): string =>
+  `{ const s = app.secretStorage; if (typeof s.deleteSecret === "function") await s.deleteSecret(${idAusdruck}); else await s.setSecret(${idAusdruck}, ""); }`;
 /** Fremder Plugin-Slot, den `readTaskNotesApi` abtastet (`src/obsidian/tasknotes-bridge.ts`).
  *  Ein Stub genuegt: die Bruecke prueft nur `apiVersion`, `tasks.create` und `model.config`
  *  (typeof-Pruefung, kein `hasCapability`) — ein echtes TaskNotes braucht dieser Treiber nicht. */
@@ -1438,7 +1441,7 @@ async function main(): Promise<void> {
     await releaseAlwaysOnTop(cdp).catch(() => undefined);
     await evaluieren(
       cdp,
-      `app.secretStorage.setSecret(${JSON.stringify("mailstone-" + SMOKE_ACCOUNT_ID)}, ""); return true;`,
+      `${SECRET_WEG(JSON.stringify("mailstone-" + SMOKE_ACCOUNT_ID))} return true;`,
     ).catch(() => undefined);
     if (originalRoh !== null && !KEEP) {
       // Reihenfolge zaehlt: das Plugin schreibt seinen Speicherstand beim Entladen zurueck.
