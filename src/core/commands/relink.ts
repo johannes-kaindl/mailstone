@@ -1,5 +1,5 @@
 import { mergeFrontmatterOnly } from "../merge/merge";
-import { wikilink } from "../render/wikilink";
+import { wikilinkOf } from "../../vendor/kit/frontmatter";
 import { fmKeyFor, type FmVal } from "../mirror/profile";
 import { show } from "./diff";
 import { keepZoneHash } from "./zone";
@@ -22,7 +22,7 @@ export function relinkOne(value: string, linkFor: (id: string) => string | null)
   const target = linkFor(value);
   // Kein Ziel ODER ein Pfad, der sich nicht klammern laesst: die ID bleibt stehen. Ein Link auf
   // die falsche Notiz waere schlimmer als eine sichtbare ID (M3b-Nachlese, geparkter Befund 1).
-  return (target === null ? null : wikilink(target)) ?? value;
+  return (target === null ? null : wikilinkOf(target)) ?? value;
 }
 
 /** Die geaenderten Keys — oder null, wenn dieser Aufruf nichts zu tun hat. */

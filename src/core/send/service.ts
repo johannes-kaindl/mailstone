@@ -56,10 +56,8 @@ export function resolveSender(accounts: Account[], accountId: string, identityId
  *  Fake-SMTP-Server fuer Tests/Debugging. Jeder andere Host wird mit "tls-required" abgewiesen,
  *  BEVOR ueberhaupt verbunden wird. */
 export function isLoopback(host: string): boolean {
-  // Der Kit-Vergleich kennt die Schreibweise von `URL.hostname` ("[::1]" mit Klammern); ein Kontofeld traegt die Adresse unverklammert ("::1").
-  // Hier klammern wir vor dem Aufruf: nur ein Host mit Doppelpunkt (IPv6) und ohne Klammer bekommt sie.
-  const h = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  return isLoopbackHost(h);
+  // Der Kit-Vergleich (code-kit 0.73.0) kennt "::1" mit und ohne Klammern, ein Kontofeld traegt die Adresse unverklammert.
+  return isLoopbackHost(host);
 }
 
 function domainOf(address: string): string {

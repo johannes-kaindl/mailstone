@@ -1,7 +1,7 @@
 {
   "source": "obsidian-kit",
-  "version": "0.70.0",
-  "sha": "86a2d2d",
+  "version": "0.94.0",
+  "sha": "bf78d8b",
   "vendored": "frontmatter.ts, frontmatter-patch.ts, vault-path.ts",
   "license": "AGPL-3.0-or-later"
 }

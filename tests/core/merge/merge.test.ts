@@ -29,6 +29,17 @@ describe("mergeNote", () => {
     expect(r.content).not.toContain("alt");
     expect(r.changed).toBe(true);
   });
+  it("eine Blockliste mit Leerzeile oder Kommentar (fremd und am verwalteten Key) hinterlaesst keinen Listenrest als Wert des Keys davor (Kit 0.94.0, Datenfix)", () => {
+    const existing = base.content.replace("type: mail\n", "type: mail\ntags:\n  - a\n\n  # Hinweis\n  - b\n").replace("from: a@x\n", "from:\n  - a@x\n\n  # Hinweis\n  - b@x\n");
+    const r = mergeNote({ existing, derived: { ...derived, title: "Neu" }, managed, block: "## Nachricht\n\nneu", expectedZoneHash: base.zoneHash });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content).toContain("tags:\n  - a\n\n  # Hinweis\n  - b\n");
+    expect(r.content).toContain("title: Neu");
+    expect(r.content).not.toMatch(/^title: Hi$/m);
+    expect(r.content).not.toContain("b@x");
+    expect(r.content).toMatch(/^from: a@x$/m);
+  });
   it("umsortiertes Frontmatter ist keine Manipulation", () => {
     const lines = base.content.split("\n"); // Frontmatter-Zeilen 1..n rotieren
     const end = lines.indexOf("---", 1);

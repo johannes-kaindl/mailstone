@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { wikilink } from "../../../src/core/render/wikilink";
+import { wikilinkOf as wikilink } from "../../../src/vendor/kit/frontmatter";
 
-describe("wikilink", () => {
+describe("wikilinkOf (Kit) — die Faelle, die mailstone braucht", () => {
   it("klammert einen gewoehnlichen Vault-Pfad", () => {
     expect(wikilink("Mail/2026/2026-08-19-1000-termin")).toBe("[[Mail/2026/2026-08-19-1000-termin]]");
   });

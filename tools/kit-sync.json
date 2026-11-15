@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.70.0"
+      "ref": "0.94.0"
     },
     "code-kit": {
-      "ref": "0.37.5"
+      "ref": "0.73.0"
     }
   },
   "targets": [
@@ -23,23 +23,11 @@
         "local-stamp",
         "marker-zone",
         "validate-input",
-        {
-          "name": "folder-scope",
-          "ref": "0.44.0"
-        },
-        {
-          "name": "fold-case",
-          "ref": "0.44.0"
-        },
+        "folder-scope",
+        "fold-case",
         "rel-path",
-        {
-          "name": "loopback",
-          "ref": "0.68.0"
-        },
-        {
-          "name": "text-window",
-          "ref": "0.68.0"
-        }
+        "loopback",
+        "text-window"
       ]
     },
     {
@@ -50,6 +38,16 @@
         "frontmatter",
         "frontmatter-patch",
         "vault-path"
+      ],
+      "rewrite": [
+        [
+          "../vendor/code-kit/pure/",
+          "../code-kit/"
+        ],
+        [
+          "../pure/",
+          "./"
+        ]
       ]
     },
     {
@@ -81,10 +79,8 @@
         "hub",
         "secrets",
         "help-setting",
-        {
-          "name": "status-bar-item",
-          "ref": "0.88.0"
-        }
+        "status-bar-item",
+        "setting-body-host"
       ],
       "rewrite": [
         [

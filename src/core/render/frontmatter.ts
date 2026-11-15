@@ -1,6 +1,6 @@
 import type { ParsedMail } from "../mime/types";
 import { formatAddress } from "../mime/headers";
-import { wikilink } from "./wikilink";
+import { wikilinkOf } from "../../vendor/kit/frontmatter";
 import { localDate, localIso, localTime } from "../../vendor/code-kit/local-stamp";
 import { fmKeyFor, identityKeys, MAIL_SERVER_FIELDS, type FmVal, type MailProfile, type MailServerField } from "../mirror/profile";
 
@@ -34,7 +34,7 @@ export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterIn
   // nicht als Wikilink schreiben laesst (M3b-Nachlese, geparkter Befund 1).
   const link = (id: string): string => {
     const t = linkFor?.(id) ?? null;
-    return (t === null ? null : wikilink(t)) ?? id;
+    return (t === null ? null : wikilinkOf(t)) ?? id;
   };
   const parts = mail.date ? { date: localDate(mail.date), time: localTime(mail.date) } : { date: "", time: "" };
   const values: Record<MailServerField, FmVal> = {
