@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-11-15
+
 ### Fixed
 
 - Front matter is only written when Obsidian can read it; notes whose front matter Obsidian shows as “Invalid properties” stay untouched (before, the plugin wrote into them without the property becoming visible). A block list with a blank line or a comment line inside no longer leaves the rest of the list behind as the value of the key before it when a mail note is updated (kit `frontmatter-patch` 0.94.0).
