@@ -216,6 +216,35 @@ describe("ImapReadSession", () => {
     });
   });
 
+  describe("uidSearchSince (A1)", () => {
+    const examine: DialogStep = { expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] };
+
+    it("sendet UID SEARCH SINCE im Datumsformat dd-Mon-yyyy (RFC 3501) und liest die UIDs", async () => {
+      const { fake, s } = await session([examine, { expect: /^a004 UID SEARCH SINCE 05-Mar-2026$/, send: ["* SEARCH 4 9", "a004 OK done"] }]);
+      await s.examine("INBOX");
+      expect(await s.uidSearchSince(new Date(Date.UTC(2026, 2, 5, 23, 59)))).toEqual([4, 9]);
+      expect(fake.written).toContain("a004 UID SEARCH SINCE 05-Mar-2026");
+    });
+
+    it("schreibt jeden Monat englisch, auch Dezember und Januar, mit zweistelligem Tag", async () => {
+      const { fake, s } = await session([
+        examine,
+        { expect: /^a004 UID SEARCH SINCE 31-Dec-2025$/, send: ["* SEARCH", "a004 OK done"] },
+        { expect: /^a005 UID SEARCH SINCE 01-Jan-2026$/, send: ["* SEARCH", "a005 OK done"] },
+      ]);
+      await s.examine("INBOX");
+      await s.uidSearchSince(new Date(Date.UTC(2025, 11, 31)));
+      await s.uidSearchSince(new Date(Date.UTC(2026, 0, 1)));
+      expect(fake.written).toContain("a005 UID SEARCH SINCE 01-Jan-2026");
+    });
+
+    it("wirft bei abgelehntem SEARCH wie uidSearchAll", async () => {
+      const { s } = await session([examine, { expect: /^a004 UID SEARCH SINCE /, send: ["a004 BAD nope"] }]);
+      await s.examine("INBOX");
+      await expect(s.uidSearchSince(new Date(Date.UTC(2026, 0, 1)))).rejects.toThrow(/SEARCH/);
+    });
+  });
+
   it("uidSearchAll liefert [] bei leerer SEARCH-Antwort", async () => {
     const { s } = await session([
       { expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] },
@@ -578,5 +607,59 @@ describe("uidFetchHeaders", () => {
     if (!r.ok) throw new Error("unreachable");
     expect((await r.session.uidFetchHeaders([])).size).toBe(0);
     expect(fake.written.some((l) => /UID FETCH/.test(l))).toBe(false);
+  });
+});
+
+describe("uidFetchThreadHeaders (A1)", () => {
+  const felder = "FROM SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES";
+
+  it("holt die sechs Felder per BODY.PEEK und liefert die Header-Bytes je UID, ohne FLAGS", async () => {
+    const header = "From: a@example.invalid\r\nSubject: Re: Hallo\r\nIn-Reply-To: <a@example.invalid>\r\n\r\n";
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      {
+        expect: new RegExp(`^a003 UID FETCH 5:6 \\(BODY\\.PEEK\\[HEADER\\.FIELDS \\(${felder}\\)\\]\\)$`),
+        send: [
+          `* 1 FETCH (UID 5 BODY[HEADER.FIELDS (${felder})] {${header.length}}`,
+          new TextEncoder().encode(header),
+          ")",
+          `* 2 FETCH (UID 6 BODY[HEADER.FIELDS (${felder})] {${header.length}}`,
+          new TextEncoder().encode(header),
+          ")",
+          "a003 OK done",
+        ],
+      },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    const rows = await r.session.uidFetchThreadHeaders([5, 6]);
+    expect([...rows.keys()]).toEqual([5, 6]);
+    expect(new TextDecoder().decode(rows.get(5)!)).toContain("In-Reply-To: <a@example.invalid>");
+    expect(fake.written.some((l) => /BODY\[HEADER/.test(l))).toBe(false);
+  });
+
+  it("sendet bei einer leeren UID-Liste nichts", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    expect((await r.session.uidFetchThreadHeaders([])).size).toBe(0);
+    expect(fake.written.some((l) => /UID FETCH/.test(l))).toBe(false);
+  });
+
+  it("laesst uidFetchHeaders (Posteingang) bei seinen vier Feldern", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      ...greetingAndAuth,
+      { expect: /^a003 UID FETCH 5 \(FLAGS BODY\.PEEK\[HEADER\.FIELDS \(FROM SUBJECT DATE MESSAGE-ID\)\]\)$/, send: ["a003 OK done"] },
+    ]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    await r.session.uidFetchHeaders([5]);
+  });
+
+  it("wirft bei abgelehntem FETCH", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], [...greetingAndAuth, { expect: /^a003 UID FETCH 5 /, send: ["a003 NO nope"] }]);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    await expect(r.session.uidFetchThreadHeaders([5])).rejects.toThrow(/FETCH/);
   });
 });

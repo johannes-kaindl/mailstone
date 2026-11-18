@@ -5,15 +5,15 @@
 // echte Postfaecher gedacht.
 //
 // Start: `node scripts/fake-imap.mjs` (Port 11143, override per PORT env fuer parallele Laeufe
-// im Integrationstest). Liefert einen festen Ordner mit zwei Mails, unabhaengig vom
-// EXAMINE-Ordnernamen — der Test prueft nur den Dialog gegen den echten Socket, nicht Multi-
-// Ordner-Logik.
+// im Integrationstest). Ordner: `Sent` hat seine eigene Mail-Liste (SENT_MAILS), `Leer` ist
+// leer; JEDER ANDERE Name (INBOX, Vault, Vault/Belege, …) liefert dieselbe gemeinsame Liste
+// MAILS — so laufen die aelteren Tests, die den Ordnernamen beliebig waehlen, unveraendert.
 //
 // SELECT und UID MOVE sind absichtlich NUR fuer den schreibenden Pfad da (client.ts
 // imapConnectWritable / select() / uidMove()) — der Sync-Pfad bleibt bei EXAMINE +
 // BODY.PEEK und setzt nie \Seen (AGENTS.md "Ein Sync-Lauf darf \Seen nie setzen"). Dieser Fake
-// unterscheidet Ordner nicht (EXAMINE/SELECT ignorieren den Namen, s.o.) — MAILS ist eine
-// einzige gemeinsame Liste. UID MOVE entfernt die UID daraus: ohne diese Mutation koennte der
+// unterscheidet nur `Sent` und `Leer` von dem Rest (s.o.) — MAILS ist fuer alle uebrigen Namen
+// eine einzige gemeinsame Liste. UID MOVE entfernt die UID aus der Liste des offenen Ordners: ohne diese Mutation koennte der
 // GUI-Smoke fuer den Posteingang gruen melden, ohne dass je ein MOVE stattgefunden hat.
 //
 // Jede Mail traegt ein \Seen-Flag (Default: ungelesen). Gesetzt wird es nur von einem Fetch
@@ -36,7 +36,7 @@ const MAILS = [
     uid: 9,
     seen: false,
     id: "<zwei@example.net>",
-    raw: "From: a@example.net\r\nTo: b@example.net\r\nSubject: Zweite Testmail\r\nMessage-ID: <zwei@example.net>\r\nDate: Sat, 29 Aug 2026 09:00:00 +0000\r\n\r\nHallo zwei\r\n",
+    raw: "From: a@example.net\r\nTo: b@example.net\r\nSubject: Zweite Testmail\r\nMessage-ID: <zwei@example.net>\r\nIn-Reply-To: <eins@example.net>\r\nDate: Sat, 29 Aug 2026 09:00:00 +0000\r\n\r\nHallo zwei\r\n",
   },
   // Dritte Mail bewusst mit Nicht-ASCII: IMAP-Literale zaehlen BYTES, nicht Zeichen. Hier fallen
   // beide Laengen weit auseinander (Umlaute 2 Bytes, das Emoji 4) — liest der Client Zeichen
@@ -49,6 +49,45 @@ const MAILS = [
     raw: "From: a@example.net\r\nTo: b@example.net\r\nSubject: Dritte Testmail mit Umlauten\r\nMessage-ID: <drei@example.net>\r\nDate: Sat, 29 Aug 2026 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nGrüße aus München: Äpfel, Öl, Füße – und ein Gruß 🚀\r\n",
   },
 ];
+
+// Der Ordner `Sent` (A1, Vorgang folgen): eine Antwort auf `eins` im Suchfenster, eine Mail weit davor
+// (faellt aus `UID SEARCH SINCE`) und eine, die nur ueber References auf `zwei` verweist.
+const SENT_MAILS = [
+  {
+    uid: 3,
+    seen: true,
+    id: "<antwort-eins@example.net>",
+    raw: "From: b@example.net\r\nTo: a@example.net\r\nSubject: Re: Erste Testmail\r\nMessage-ID: <antwort-eins@example.net>\r\nIn-Reply-To: <eins@example.net>\r\nReferences: <eins@example.net>\r\nDate: Sun, 30 Aug 2026 08:00:00 +0000\r\n\r\nDanke\r\n",
+  },
+  {
+    uid: 4,
+    seen: true,
+    id: "<alt@example.net>",
+    raw: "From: b@example.net\r\nTo: a@example.net\r\nSubject: Re: Erste Testmail (alt)\r\nMessage-ID: <alt@example.net>\r\nIn-Reply-To: <eins@example.net>\r\nDate: Thu, 01 Jan 2026 08:00:00 +0000\r\n\r\nzu alt\r\n",
+  },
+  {
+    uid: 5,
+    seen: true,
+    id: "<ohne-bezug@example.net>",
+    raw: "From: b@example.net\r\nTo: c@example.net\r\nSubject: Etwas ganz anderes\r\nMessage-ID: <ohne-bezug@example.net>\r\nDate: Sun, 30 Aug 2026 09:00:00 +0000\r\n\r\nohne Bezug\r\n",
+  },
+];
+
+/** Die Mail-Liste eines Ordnernamens (`EXAMINE "Sent"` -> SENT_MAILS). Unbekannte Namen: MAILS. */
+function mailsOf(rest) {
+  const name = /^(?:EXAMINE|SELECT)\s+"?([^"]*)"?$/i.exec(rest.join(" "))?.[1] ?? "";
+  if (name.toLowerCase() === "sent") return SENT_MAILS;
+  if (name.toLowerCase() === "leer") return [];
+  return MAILS;
+}
+
+/** Der Tag einer Mail (UTC), `YYYYMMDD`, aus ihrem Date-Header. */
+function dayOf(m) {
+  const d = new Date(/^Date: (.+)$/m.exec(m.raw)?.[1] ?? "");
+  return Number.isNaN(d.getTime()) ? 0 : d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+}
+
+const MONATE = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 // Jede empfangene Kommandozeile geht als `< …` nach stdout. Der Integrationstest liest das
 // Protokoll und prueft daran den Nur-Lese-Vertrag AUF DER LEITUNG (EXAMINE + BODY.PEEK, nie
@@ -70,7 +109,7 @@ function handleConnection(socket) {
   let buf = "";
   // Pro Verbindung, nicht global: EXAMINE oeffnet nur-lesend, SELECT schreibbar. Genau daran
   // haengt unten, ob ein Fetch ohne .PEEK ueberhaupt \Seen setzen darf.
-  const sitzung = { schreibbar: false };
+  const sitzung = { schreibbar: false, mails: MAILS };
 
   socket.on("data", (chunk) => {
     buf += chunk.toString("utf8");
@@ -101,12 +140,14 @@ function handleLine(socket, line, sitzung) {
     socket.write(`${tag} OK [CAPABILITY IMAP4rev1 UIDPLUS MOVE] authenticated\r\n`);
   } else if (cmd.startsWith("EXAMINE")) {
     sitzung.schreibbar = false;
-    socket.write(`* ${String(MAILS.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-ONLY] done\r\n`);
+    sitzung.mails = mailsOf(rest);
+    socket.write(`* ${String(sitzung.mails.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-ONLY] done\r\n`);
   } else if (cmd.startsWith("SELECT")) {
     // Wie EXAMINE, aber [READ-WRITE] — das ist die einzige Antwort, die den Ordner fuer
     // client.ts als schreibbar ausweist (imapConnectWritable liest genau dieses Flag).
     sitzung.schreibbar = true;
-    socket.write(`* ${String(MAILS.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-WRITE] done\r\n`);
+    sitzung.mails = mailsOf(rest);
+    socket.write(`* ${String(sitzung.mails.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-WRITE] done\r\n`);
   } else if (cmd.startsWith("UID MOVE")) {
     // "UID MOVE <uid> <mailbox>" (RFC 6851, per UIDPLUS-Capability oben angekuendigt). Der
     // Ziel-Ordnername wird bewusst ignoriert (dieser Fake fuehrt keine getrennten Ordner) —
@@ -114,11 +155,11 @@ function handleLine(socket, line, sitzung) {
     // Wortlaut der Antwort und nie die Wirkung.
     const teile = rest.join(" ").split(/\s+/);
     const uid = Number(teile[2]);
-    const index = MAILS.findIndex((m) => m.uid === uid);
+    const index = sitzung.mails.findIndex((m) => m.uid === uid);
     if (index === -1) {
       socket.write(`${tag} NO [NONEXISTENT] Mail nicht gefunden\r\n`);
     } else {
-      MAILS.splice(index, 1);
+      sitzung.mails.splice(index, 1);
       socket.write(`${tag} OK [COPYUID 1 ${String(uid)} 1] Move completed\r\n`);
     }
   } else if (cmd.startsWith("UID SEARCH HEADER ")) {
@@ -129,11 +170,23 @@ function handleLine(socket, line, sitzung) {
     const feld = treffer?.[1]?.toUpperCase();
     const wert = treffer?.[2]?.replace(/\\(.)/g, "$1").toLowerCase();
     const uids = feld === "MESSAGE-ID" && wert
-      ? MAILS.filter((m) => m.id.toLowerCase().includes(wert)).map((m) => String(m.uid))
+      ? sitzung.mails.filter((m) => m.id.toLowerCase().includes(wert)).map((m) => String(m.uid))
       : [];
     socket.write(`* SEARCH${uids.length > 0 ? ` ${uids.join(" ")}` : ""}\r\n${tag} OK done\r\n`);
+  } else if (cmd.startsWith("UID SEARCH SINCE ")) {
+    // `UID SEARCH SINCE dd-Mon-yyyy` (RFC 3501 § 6.4.4): Mails am oder nach dem Tag, Uhrzeit und Zeitzone
+    // ignoriert. Nur das exakte Datumsformat wird angenommen, alles andere ist BAD wie bei einem echten Server.
+    const t = /^UID SEARCH SINCE (\d{2})-([A-Za-z]{3})-(\d{4})$/.exec(rest.join(" "));
+    const monat = t ? MONATE.indexOf(t[2].toLowerCase()) : -1;
+    if (!t || monat === -1) {
+      socket.write(`${tag} BAD Datum nicht lesbar\r\n`);
+    } else {
+      const grenze = Number(t[3]) * 10000 + (monat + 1) * 100 + Number(t[1]);
+      const uids = sitzung.mails.filter((m) => dayOf(m) >= grenze).map((m) => String(m.uid));
+      socket.write(`* SEARCH${uids.length > 0 ? ` ${uids.join(" ")}` : ""}\r\n${tag} OK done\r\n`);
+    }
   } else if (cmd === "UID SEARCH ALL") {
-    socket.write(`* SEARCH ${MAILS.map((m) => String(m.uid)).join(" ")}\r\n${tag} OK done\r\n`);
+    socket.write(`* SEARCH ${sitzung.mails.map((m) => String(m.uid)).join(" ")}\r\n${tag} OK done\r\n`);
   } else if (cmd.startsWith("UID FETCH")) {
     // ".PEEK" fehlt = der Server darf \Seen setzen — aber nur in einem SCHREIBBAR geoeffneten
     // Ordner: EXAMINE ist nach RFC 3501 § 6.3.2 read-only ("no changes to the permanent state
@@ -145,13 +198,14 @@ function handleLine(socket, line, sitzung) {
     const wantsBody = cmd.includes("BODY.PEEK[]") || cmd.includes("BODY[]");
     const wantsFlags = /\bFLAGS\b/.test(cmd);
     const volleHeader = cmd.includes("FROM SUBJECT DATE");
-    for (const m of MAILS) {
+    const mitBezug = cmd.includes("IN-REPLY-TO REFERENCES");
+    for (const m of sitzung.mails) {
       if (!new RegExp(`\\b${String(m.uid)}\\b`).test(rest.join(" "))) continue;
       if (!peek && sitzung.schreibbar) m.seen = true;
       const kopf = volleHeader ? `${m.raw.split("\r\n\r\n")[0]}\r\n\r\n` : `Message-ID: ${m.id}\r\n\r\n`;
       const payload = wantsBody ? m.raw : kopf;
       const bytes = Buffer.from(payload, "utf8");
-      const felder = volleHeader ? "FROM SUBJECT DATE MESSAGE-ID" : "MESSAGE-ID";
+      const felder = mitBezug ? "FROM SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES" : volleHeader ? "FROM SUBJECT DATE MESSAGE-ID" : "MESSAGE-ID";
       // Die Antwort traegt immer "BODY[…]" ohne .PEEK — so schreibt es RFC 3501 § 7.4.2 vor,
       // .PEEK ist nur eine Eigenschaft der Anfrage.
       const label = wantsBody ? "BODY[]" : `BODY[HEADER.FIELDS (${felder})]`;

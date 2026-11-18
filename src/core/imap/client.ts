@@ -40,12 +40,19 @@ export interface ImapReadSession {
    *  Nicht-ASCII oder Leerzeichen und ein Feldname mit Sonderzeichen ergeben `[]` OHNE Kommando
    *  (kein `CHARSET`, keine zweite Kommandozeile). */
   uidSearchHeader(field: string, value: string): Promise<number[]>;
+  /** `UID SEARCH SINCE <dd-Mon-yyyy>` (RFC 3501 § 6.4.4): alle Mails, deren interne Zeit am oder nach dem
+   *  Tag liegt; Uhrzeit und Zeitzone ignoriert der Server. Der Tag wird in UTC geschrieben. Liest nur. */
+  uidSearchSince(date: Date): Promise<number[]>;
   /** uid → normalisierte Message-ID; null, wenn die Mail keinen Message-ID-Header hat. */
   uidFetchMessageIds(uids: readonly number[]): Promise<Map<number, string | null>>;
   /** Flags plus ein schmaler Header-Block je UID — Rohmaterial fuer die Posteingangs-Liste.
    *  Die Bytes gehen durch denselben parseEml wie eine vollstaendige .eml (Task 6), damit
    *  Betreff/Absender/Message-ID hier dieselbe Auslegung tragen wie im Sync-Pfad. */
   uidFetchHeaders(uids: readonly number[]): Promise<Map<number, ImapHeaderRow>>;
+  /** Der Kopf-Block je UID mit `FROM SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES` (A1, Vorgang folgen), nur per
+   *  BODY.PEEK, ohne FLAGS. Eigene Methode statt eine Erweiterung von `uidFetchHeaders`: der Posteingang und
+   *  sein Kommandotext bleiben unveraendert. Die Bytes gehen durch `parseEml` wie die der Posteingangs-Liste. */
+  uidFetchThreadHeaders(uids: readonly number[]): Promise<Map<number, Uint8Array>>;
   /** Rohe RFC-5322-Bytes via BODY.PEEK[] — null, wenn die UID nicht mehr existiert. */
   uidFetchBody(uid: number): Promise<Uint8Array | null>;
   /** Legt eine Nachricht in einem Ordner ab (RFC 3501 § 6.3.11). Der einzige schreibende
@@ -82,6 +89,8 @@ const DEFAULT_TIMEOUT_MS = 30000;
 /** UIDs je FETCH-Kommando. 200 haelt die Kommandozeile deutlich unter jeder ueblichen
  *  Laengengrenze und begrenzt zugleich, was ein einzelner Fehlschlag kostet. */
 const HEADER_BATCH = 200;
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 interface Tagged { status: "OK" | "NO" | "BAD"; text: string; untagged: ImapResponse[] }
 
@@ -378,6 +387,14 @@ function makeReadSession(conn: Connection, capabilities: string[]): ImapReadSess
       return uidsFromSearch(r.untagged);
     },
 
+    async uidSearchSince(date) {
+      const day = `${String(date.getUTCDate()).padStart(2, "0")}-${MONTHS[date.getUTCMonth()]}-${String(date.getUTCFullYear())}`;
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `UID SEARCH SINCE ${day}`);
+      if (r.status !== "OK") throw new NetError("protocol", `UID SEARCH (Datum) abgelehnt: ${r.text}`);
+      return uidsFromSearch(r.untagged);
+    },
+
     async uidSearchHeader(field, value) {
       if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(field) || !isSearchableValue(value)) return [];
       const tag = conn.nextTag();
@@ -424,6 +441,27 @@ function makeReadSession(conn: Connection, capabilities: string[]): ImapReadSess
           const uid = Number(uidText);
           if (!Number.isSafeInteger(uid) || uid <= 0) continue;
           out.set(uid, { uid, flags: flagsFrom(list.items), header });
+        }
+      }
+      return out;
+    },
+
+    async uidFetchThreadHeaders(uids) {
+      const out = new Map<number, Uint8Array>();
+      for (const batch of chunk(uids, HEADER_BATCH)) {
+        const tag = conn.nextTag();
+        const r = await conn.command(
+          tag,
+          `UID FETCH ${buildUidSet(batch)} (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])`,
+        );
+        if (r.status !== "OK") throw new NetError("protocol", `UID FETCH (Vorgangskoepfe) abgelehnt: ${r.text}`);
+        for (const resp of r.untagged) {
+          const list = resp.items.find((i) => i.kind === "list");
+          if (list?.kind !== "list") continue;
+          const uid = Number(findAtomValue(list.items, "UID"));
+          const header = firstLiteral(list.items);
+          if (!Number.isSafeInteger(uid) || uid <= 0 || !header) continue;
+          out.set(uid, header);
         }
       }
       return out;

@@ -242,6 +242,30 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     expect(kommandos().filter((z) => /^UID FETCH/i.test(z))).toEqual([]);
   });
 
+  // A1 (Welle 36): der Fake kennt jetzt Ordner (`Sent` hat eine eigene Liste) und `UID SEARCH SINCE`.
+  it("liest den Ordner Sent mit eigener Liste: SINCE schneidet die alte Mail ab, der Kopf traegt In-Reply-To", async () => {
+    await starteServer();
+    const r = await imapConnect(nodeSocketTransport(), verbindungsOptionen());
+    if (!r.ok) throw new Error("unreachable");
+    try {
+      expect(await r.session.examine("Sent")).toMatchObject({ ok: true, exists: 3 });
+      expect(await r.session.uidSearchAll()).toEqual([3, 4, 5]);
+      expect(await r.session.uidSearchSince(new Date(Date.UTC(2026, 6, 12)))).toEqual([3, 5]);
+      const koepfe = await r.session.uidFetchThreadHeaders([3, 5]);
+      expect(new TextDecoder().decode(koepfe.get(3)!)).toContain("In-Reply-To: <eins@example.net>");
+      expect((await r.session.examine("Leer"))).toMatchObject({ ok: true, exists: 0 });
+      expect(await r.session.uidSearchSince(new Date(Date.UTC(2026, 6, 12)))).toEqual([]);
+    } finally {
+      await r.session.logout();
+    }
+    await warteAufKommando(/^LOGOUT$/i);
+    const zeilen = kommandos();
+    expect(zeilen).toContain("UID SEARCH SINCE 12-Jul-2026");
+    expect(zeilen.filter((z) => /\bSELECT\b/i.test(z))).toEqual([]);
+    expect(zeilen.filter((z) => /BODY\[/i.test(z))).toEqual([]);
+    expect(zeilen.filter((z) => /\b(COPY|STORE|MOVE)\b/i.test(z))).toEqual([]);
+  });
+
   // Die andere Haelfte des Vertrags, und zugleich der erste Test, der den SCHREIBENDEN Pfad
   // ueber einen echten Socket faehrt: `scripts/fake-imap.mjs` kann SELECT und UID MOVE seit
   // M4 (c728b6b), benutzt hat das bis heute kein Test — nur Unit-Tests mit Fake-Transport.
