@@ -260,7 +260,7 @@ function uidsFromSearch(untagged: ImapResponse[]): number[] {
   return uids;
 }
 
-function messageIdFromHeader(bytes: Uint8Array): string | null {
+export function messageIdFromHeader(bytes: Uint8Array): string | null {
   const text = new TextDecoder().decode(bytes);
   const m = /^message-id:\s*(.+)$/im.exec(text);
   return m?.[1] ? normalizeMessageId(m[1].trim()) : null;

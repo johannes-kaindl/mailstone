@@ -49,6 +49,10 @@ describe("suppressDoneNotice", () => {
     expect(suppressDoneNotice(okResult({ openedUrl: true, skipped }))).toBe(false);
   });
 
+  it("unterdrueckt, wenn NUR .eml-Dateien in den Papierkorb gingen (mail.removeEml hat eine eigene Meldung)", () => {
+    expect(suppressDoneNotice(okResult({ trashed: 3 }))).toBe(true);
+  });
+
   it("unterdrueckt NICHT ohne geoeffnete URL, auch wenn nichts geschrieben wurde", () => {
     expect(suppressDoneNotice(okResult())).toBe(false);
   });

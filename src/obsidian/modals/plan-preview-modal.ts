@@ -7,7 +7,12 @@ import { fieldLabel, trPlan } from "../command-i18n";
 /** Zeilen der Vorschau-Tabelle; "—" statt undefined, damit die Spalte nicht leer wirkt.
  *  Pure, ohne DOM testbar. */
 export function diffRows(plan: MailCommandPlan): { field: string; before: string; after: string }[] {
-  return plan.diff.map((d) => ({ field: fieldLabel(d.field), before: d.before ?? "—", after: d.after ?? "—" }));
+  return plan.diff.map((d) => ({
+    field: fieldLabel(d.field),
+    before: d.before ?? "—",
+    // Der Grund einer uebersprungenen .eml (mail.removeEml) ist ein Code des Kerns, kein Text.
+    after: d.field === "skipped" && d.after !== undefined ? t(`plan.skipReason.${d.after}`) : d.after ?? "—",
+  }));
 }
 
 /**

@@ -21,6 +21,7 @@ function deps(over: Partial<CommandExecuteDeps> = {}): CommandExecuteDeps {
     writeAttachment: vi.fn(async () => undefined),
     openExternal: vi.fn(),
     createTask: vi.fn(async () => ({ ok: true as const, path: "TaskNotes/Tasks/x.md" })),
+    trash: vi.fn(async () => undefined),
     ...over,
   };
 }
@@ -172,5 +173,40 @@ describe("createTask im Plan", () => {
     const r = await executeCommandPlan(plan({ createTask: createTaskReq }), d);
     expect(r).toEqual({ ok: false, code: "write-failed" });
     expect(createTask).not.toHaveBeenCalled();
+  });
+
+  describe("trash (mail.removeEml)", () => {
+    const trashPlan = (): MailCommandPlan => plan({ notes: [], trash: [
+      { kind: "trash", path: "Mail/2026/_eml/a.eml", mailId: "a@x" },
+      { kind: "trash", path: "Mail/2026/_eml/b.eml", mailId: "b@x" },
+    ] });
+
+    it("reicht jeden Pfad an die Dep trash und zaehlt die erledigten", async () => {
+      const d = deps({ notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) } });
+      const r = await executeCommandPlan(trashPlan(), d);
+      expect(d.trash).toHaveBeenCalledTimes(2);
+      expect(d.trash).toHaveBeenNthCalledWith(1, "Mail/2026/_eml/a.eml");
+      expect(r).toMatchObject({ ok: true, trashed: 2, created: 0, updated: 0 });
+    });
+
+    it("macht bei einem Fehler mit den uebrigen weiter und meldet write-failed", async () => {
+      const trash = vi.fn(async (p: string) => { if (p.endsWith("a.eml")) throw new Error("gesperrt"); });
+      const d = deps({ trash, notes: { execute: vi.fn(async () => ({ created: 0, updated: 0, skipped: [], stateChanged: 0, errors: [] })) } });
+      expect(await executeCommandPlan(trashPlan(), d)).toEqual({ ok: false, code: "write-failed" });
+      expect(trash).toHaveBeenCalledTimes(2);
+    });
+
+    it("belegt den Guard: belegt ergibt busy, ohne etwas in den Papierkorb zu legen", async () => {
+      const busy = createBusyGuard();
+      busy.tryAcquire();
+      const d = deps({ busy });
+      expect(await executeCommandPlan(trashPlan(), d)).toEqual({ ok: false, code: "busy" });
+      expect(d.trash).not.toHaveBeenCalled();
+    });
+
+    it("ein Plan ohne trash meldet kein trashed", async () => {
+      const r = await executeCommandPlan(plan(), deps());
+      expect(r).not.toHaveProperty("trashed");
+    });
   });
 });

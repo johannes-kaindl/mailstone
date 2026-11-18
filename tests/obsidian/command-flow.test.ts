@@ -21,6 +21,7 @@ import { loadFixture } from "../helpers/fixtures";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import { RERENDER_COMMAND } from "../../src/core/commands/rerender";
 import { RELINK_COMMAND } from "../../src/core/commands/relink";
+import { REMOVE_EML_COMMAND } from "../../src/core/commands/remove-eml";
 import { EXTRACT_ATTACHMENT_COMMAND } from "../../src/core/commands/extract";
 
 const profile = defaultMailProfile();
@@ -245,6 +246,36 @@ describe("buildContext: Rueckfall auf das Original vom Server", () => {
     const falsch = new TextEncoder().encode(EML.replace("<a@x>", "<anders@x>"));
     expect(await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: true, bytes: falsch }) }, RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md")))
       .toEqual({ ok: false, code: "eml-mismatch" });
+  });
+});
+
+describe("buildContext: needs.emlProbe (mail.removeEml)", () => {
+  const off = { ...defaultMailProfile(), saveEml: false };
+  it("haengt je Notiz die Probe der .eml am Konventionspfad an und parst keine .eml", async () => {
+    const app = await vaultWithNote();
+    await app.vault.create("Mail/2026/y.md", `---\nmail_id: b@x\n---\n${ZONE}`);
+    await app.vault.createBinary("Mail/2026/_eml/y.eml", new TextEncoder().encode(EML.replace("<a@x>", "<fremd@x>")).buffer);
+    await app.vault.create("Mail/2026/z.md", `---\nmail_id: c@x\n---\n${ZONE}`);
+    const fetchOriginal = vi.fn();
+    const r = await buildContext({ ...deps(app), profile: () => off, fetchOriginal }, REMOVE_EML_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const byId = Object.fromEntries((r.ctx.notes ?? []).map((n) => [n.mailId, n.eml]));
+    expect(byId).toEqual({
+      "a@x": { path: "Mail/2026/_eml/x.eml", status: "match" },
+      "b@x": { path: "Mail/2026/_eml/y.eml", status: "mismatch" },
+      "c@x": undefined,
+    });
+    // Das Kommando holt nie ein Original und braucht keine geparste .eml.
+    expect(fetchOriginal).not.toHaveBeenCalled();
+    expect(r.ctx.mail).toBeUndefined();
+  });
+  it("laedt die Probe NICHT fuer ein Kommando ohne needs.emlProbe (mail.relink)", async () => {
+    const app = await vaultWithNote();
+    const spy = vi.spyOn(app.vault, "readBinary");
+    const r = await buildContext(deps(app), RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(spy).not.toHaveBeenCalled();
+    expect(r.ok && r.ctx.notes?.[0]?.eml).toBeUndefined();
   });
 });
 

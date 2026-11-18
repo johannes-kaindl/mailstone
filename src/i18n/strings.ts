@@ -105,6 +105,8 @@ export const en = {
 
   "cmd.mail.rerender.title": "Re-render mail note from its original",
   "cmd.mail.rerender.desc": "Rebuilds the message section and the derived front matter keys from the original: the .eml stored next to the note or, if there is none, the message fetched from the server (desktop only). Anything you wrote outside the managed section stays untouched.",
+  "cmd.mail.removeEml.title": "Remove stored .eml files",
+  "cmd.mail.removeEml.desc": "Moves the .eml files next to your mail notes to the trash. Notes are never touched, and only a .eml that belongs to its note is moved. Shown while “Save original as .eml” is off.",
   "cmd.mail.relink.title": "Relink mail threads",
   "cmd.mail.relink.desc": "Turns the message ids in in_reply_to and references into wikilinks wherever the target note exists. Runs across all mail notes.",
   "cmd.mail.extractAttachment.title": "Extract an attachment from a mail note",
@@ -122,6 +124,9 @@ export const en = {
   "plan.execute": "Apply", "plan.cancel": "Cancel",
   "plan.field.attachment": "Attachment",
   "plan.mail.rerender.summary": "Rebuild this note from its original: {0} front matter key(s) change, message section is rewritten.",
+  "plan.mail.removeEml.summary": "Move {0} .eml file(s) to the trash. {1} more are left alone because they do not belong to their note or cannot be read. Notes are not touched. What the trash does follows your vault's setting for deleted files — with some settings the files are deleted for good. Only the .eml files next to notes are covered, not the files you imported from.",
+  "plan.field.trash": "Trash", "plan.field.skipped": "Left alone",
+  "plan.skipReason.mismatch": "belongs to another mail", "plan.skipReason.unreadable": "cannot be read",
   "plan.mail.relink.summary": "{0} note(s) get new wikilinks in in_reply_to or references.",
   "plan.mail.extractAttachment.summary": "Copy {0} into the vault as {1} and link it from this note.",
   "plan.mail.replyExternal.summary": "Open your mail client with a reply to {0}.",
@@ -130,6 +135,7 @@ export const en = {
   "notice.command.done": "Done: {0} note(s) written, {1} skipped.",
   "notice.command.staleSkip": "{0} note(s) were skipped: they changed while the preview was open, so nothing was overwritten. Run the command again if you still want it applied.",
   "notice.command.attachment": "Attachment saved as {0}.",
+  "notice.command.trashed": "{0} .eml file(s) moved to the trash.",
   "notice.command.taskCreated": "Task created: {0}.",
   "notice.command.taskCreatedNoPath": "Task created.",
 
@@ -355,6 +361,8 @@ export const de: typeof en = {
 
   "cmd.mail.rerender.title": "Mail-Notiz aus dem Original neu aufbauen",
   "cmd.mail.rerender.desc": "Baut den Nachrichtenabschnitt und die abgeleiteten Frontmatter-Felder aus dem Original neu: der .eml neben der Notiz oder, wenn es keine gibt, der Nachricht vom Server (nur am Desktop). Was du außerhalb des verwalteten Abschnitts geschrieben hast, bleibt unberührt.",
+  "cmd.mail.removeEml.title": "Gespeicherte .eml-Dateien entfernen",
+  "cmd.mail.removeEml.desc": "Legt die .eml-Dateien neben deinen Mail-Notizen in den Papierkorb. Notizen werden nie angefasst, und nur eine .eml, die zu ihrer Notiz gehört, wird verschoben. Erscheint, solange „Original als .eml speichern“ aus ist.",
   "cmd.mail.relink.title": "Mail-Threads neu verknüpfen",
   "cmd.mail.relink.desc": "Macht aus den Message-IDs in in_reply_to und references Wikilinks, wo die Zielnotiz existiert. Läuft über alle Mail-Notizen.",
   "cmd.mail.extractAttachment.title": "Anhang aus einer Mail-Notiz herausholen",
@@ -372,6 +380,9 @@ export const de: typeof en = {
   "plan.execute": "Anwenden", "plan.cancel": "Abbrechen",
   "plan.field.attachment": "Anhang",
   "plan.mail.rerender.summary": "Diese Notiz aus ihrem Original neu aufbauen: {0} Frontmatter-Felder ändern sich, der Nachrichtenabschnitt wird neu geschrieben.",
+  "plan.mail.removeEml.summary": "{0} .eml-Datei(en) in den Papierkorb legen. {1} weitere bleiben liegen, weil sie nicht zu ihrer Notiz gehören oder nicht lesbar sind. Notizen werden nicht angefasst. Was der Papierkorb tut, richtet sich nach der Vault-Einstellung für gelöschte Dateien — bei manchen Einstellungen sind die Dateien endgültig weg. Erfasst werden nur die .eml-Dateien neben den Notizen, nicht die Dateien, aus denen importiert wurde.",
+  "plan.field.trash": "Papierkorb", "plan.field.skipped": "Nicht angefasst",
+  "plan.skipReason.mismatch": "gehört zu einer anderen Mail", "plan.skipReason.unreadable": "nicht lesbar",
   "plan.mail.relink.summary": "{0} Notizen bekommen neue Wikilinks in in_reply_to oder references.",
   "plan.mail.extractAttachment.summary": "{0} als {1} in den Vault kopieren und in dieser Notiz verlinken.",
   "plan.mail.replyExternal.summary": "Mailprogramm mit einer Antwort an {0} öffnen.",
@@ -380,6 +391,7 @@ export const de: typeof en = {
   "notice.command.done": "Fertig: {0} Notizen geschrieben, {1} übersprungen.",
   "notice.command.staleSkip": "{0} Notiz(en) wurden übersprungen: Sie haben sich geändert, während die Vorschau offen war, deshalb wurde nichts überschrieben. Bei Bedarf das Kommando erneut ausführen.",
   "notice.command.attachment": "Anhang gespeichert als {0}.",
+  "notice.command.trashed": "{0} .eml-Datei(en) in den Papierkorb gelegt.",
   "notice.command.taskCreated": "Aufgabe angelegt: {0}.",
   "notice.command.taskCreatedNoPath": "Aufgabe angelegt.",
 

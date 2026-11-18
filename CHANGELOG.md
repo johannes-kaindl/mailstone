@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 - Setting *Save original as .eml* (on by default, so existing vaults stay as they are). Switched off, sync and import no longer write the `.eml` next to each note; mails without a Message-ID keep theirs, because the server cannot find them again.
 - *Re-render mail note* and *Extract an attachment* fetch the original from the server by Message-ID when no `.eml` is stored next to the note (or it belongs to another mail or cannot be read). Read-only (`EXAMINE`, `BODY.PEEK`), desktop only; the fetched original is not saved. If the server does not have it either, the message lists the folders searched. Re-render is now called *Re-render mail note from its original*.
+- Command *Remove stored .eml files*, available while *Save original as .eml* is off: moves the `.eml` files next to your mail notes to the trash (the trash follows the vault's setting for deleted files). A preview lists the files first; a `.eml` whose Message-ID does not match its note, or that cannot be read, is left alone. Notes are never touched, and the files you imported from are not covered.
 
 ### Fixed
 

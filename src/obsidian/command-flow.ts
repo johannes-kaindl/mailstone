@@ -9,6 +9,7 @@ import type { MailProfile } from "../core/mirror/profile";
 import { SchemaFormModal } from "./modals/schema-form-modal";
 import { PlanPreviewModal } from "./modals/plan-preview-modal";
 import { trTitle } from "./command-i18n";
+import { probeEml } from "./eml-probe";
 import { findMailNotes, type ZoneHashStore } from "./vault-notes";
 
 export interface CommandFlowDeps {
@@ -54,13 +55,14 @@ export function probeFor(app: App, profile: MailProfile): CommandProbe | null {
   return target ? { profile, target, frontmatter } : null;
 }
 
-async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore): Promise<MailNoteRef[]> {
+async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore, withEmlProbe: boolean): Promise<MailNoteRef[]> {
   const out: MailNoteRef[] = [];
   for (const f of app.vault.getMarkdownFiles()) {
     const frontmatter = app.metadataCache.getFileCache(f)?.frontmatter ?? {};
     const id: unknown = frontmatter[profile.idField];
     if (typeof id !== "string" || id === "") continue;
-    out.push({ mailId: id, path: f.path, content: await app.vault.cachedRead(f), frontmatter, zoneHash: hashes.get(id) });
+    const eml = withEmlProbe ? await probeEml(app, profile, f.path, id) : undefined;
+    out.push({ mailId: id, path: f.path, content: await app.vault.cachedRead(f), frontmatter, zoneHash: hashes.get(id), ...(eml ? { eml } : {}) });
   }
   return out;
 }
@@ -161,7 +163,7 @@ export async function buildContext(
     }
   }
 
-  const notes = descriptor.needs?.allNotes ? await loadNotes(app, profile, deps.hashes) : undefined;
+  const notes = descriptor.needs?.allNotes ? await loadNotes(app, profile, deps.hashes, descriptor.needs.emlProbe === true) : undefined;
 
   return {
     ok: true,

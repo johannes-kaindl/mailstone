@@ -118,6 +118,18 @@ export function writeAttachment(app: App): (path: string, data: Uint8Array) => P
   };
 }
 
+/** Legt eine .eml in den Papierkorb (`fileManager.trashFile` folgt der Einstellung des Vaults;
+ *  je nach Einstellung loescht das endgueltig). Der EINZIGE Weg im Plugin, der eine Datei
+ *  entfernt, und deshalb eng: nur eine `.eml`, nie eine Notiz oder ein Anhang. Eine Datei, die
+ *  nicht mehr da ist, gilt als erledigt. */
+export function trashEml(app: App): (path: string) => Promise<void> {
+  return async (path) => {
+    if (!path.toLowerCase().endsWith(".eml")) throw new Error(`trashEml: nur .eml-Dateien, nicht ${path}`);
+    const f = app.vault.getAbstractFileByPath(normalizePath(path));
+    if (f instanceof TFile) await app.fileManager.trashFile(f);
+  };
+}
+
 export function findMailNotes(app: App, idField: string): Map<string, TFile> {
   const out = new Map<string, TFile>();
   for (const f of app.vault.getMarkdownFiles()) {

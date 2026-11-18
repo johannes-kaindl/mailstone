@@ -244,6 +244,16 @@ describe("ImapReadSession", () => {
     expect(map.get(9)).toBeNull();
   });
 
+  it("uidFetchMessageIds liest auch eine gefaltete Message-ID (Wert in der Fortsetzungszeile)", async () => {
+    const gefaltet = new TextEncoder().encode("Message-ID:\r\n <lang@example.net>\r\n\r\n");
+    const { s } = await session([
+      { expect: /^a003 EXAMINE /, send: ["* 1 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] },
+      { expect: /^a004 UID FETCH 7 /, send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(gefaltet.byteLength)}}`, gefaltet, ")", "a004 OK done"] },
+    ]);
+    await s.examine("Vault");
+    expect((await s.uidFetchMessageIds([7])).get(7)).toBe("lang@example.net");
+  });
+
   it("uidFetchBody liefert die rohen Bytes und benutzt BODY.PEEK", async () => {
     const eml = new TextEncoder().encode("From: a@b\r\nSubject: x\r\n\r\nHallo\r\n");
     const { fake, s } = await session([

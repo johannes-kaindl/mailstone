@@ -24,7 +24,7 @@ import { createBusyGuard } from "./vendor/code-kit/busy-guard";
 import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/events";
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
-import { findNotePathForMailId, mailIndex, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
+import { findNotePathForMailId, mailIndex, trashEml, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
@@ -190,7 +190,7 @@ export async function safeRunCommand(run: () => Promise<RunResult>): Promise<Run
  *  Funktion, damit die Bedingung ohne Obsidian-App pruefbar ist. */
 export function suppressDoneNotice(r: Extract<CommandExecuteResult, { ok: true }>): boolean {
   const wroteNothing = r.created + r.updated === 0 && r.skipped.length === 0 && !r.attachmentPath;
-  return wroteNothing && (r.openedUrl === true || r.taskPath !== undefined);
+  return wroteNothing && (r.openedUrl === true || r.taskPath !== undefined || r.trashed !== undefined);
 }
 
 /** Notice fuer eine angelegte Aufgabe — oder `null`, wenn keine angelegt wurde. `taskPath`
@@ -719,6 +719,7 @@ export default class MailstonePlugin extends Plugin {
       busy: this.busy,
       notes: vaultPlanExecutor(this.app, this.hashStore()),
       writeAttachment: writeAttachment(this.app),
+      trash: trashEml(this.app),
       openExternal: (url: string) => { window.open(url); },
       createTask: (req) => createTaskViaBridge(this.app, req),
     };
@@ -747,6 +748,7 @@ export default class MailstonePlugin extends Plugin {
     const staleSkips = staleSkipCount(r.skipped);
     if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
     if (r.attachmentPath) notify.info("notice.command.attachment", r.attachmentPath);
+    if (r.trashed !== undefined) notify.info("notice.command.trashed", r.trashed);
     const taskNotice = taskCreatedNotice(r);
     if (taskNotice) notify.info(taskNotice.key, ...taskNotice.args);
   }

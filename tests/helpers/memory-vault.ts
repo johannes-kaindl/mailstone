@@ -109,5 +109,13 @@ export function makeApp(seed?: { path: string; frontmatter: Record<string, FmVal
     }
   };
 
-  return Object.assign(app, { __files: files });
+  // Papierkorb: die Datei verschwindet aus dem Vault, der Pfad wird vermerkt (Obsidian folgt hier
+  // der Einstellung des Vaults; fuer die Tests zaehlt, DASS trashFile gerufen wurde).
+  const trashed: string[] = [];
+  app.fileManager.trashFile = async (file: TFile): Promise<void> => {
+    if (!files.delete(file.path)) throw new Error(`memory-vault: nicht gefunden: ${file.path}`);
+    trashed.push(file.path);
+  };
+
+  return Object.assign(app, { __files: files, __trashed: trashed });
 }

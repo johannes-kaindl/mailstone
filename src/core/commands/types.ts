@@ -54,6 +54,11 @@ export interface MailNoteRef {
   content: string;
   frontmatter: Record<string, unknown>;
   zoneHash: string | null;
+  /** Nur gefuellt bei `needs.emlProbe`, und nur wenn am Konventionspfad (`emlPathFor`) eine
+   *  Datei liegt. `status` kommt aus dem Message-ID-Kopf der Datei, nicht aus einem vollen
+   *  Parse: `match` = gehoert zu dieser Notiz, `mismatch` = andere Message-ID, `unreadable` =
+   *  kein Message-ID-Kopf lesbar. */
+  eml?: { path: string; status: "match" | "mismatch" | "unreadable" };
 }
 
 /**
@@ -102,6 +107,10 @@ export interface MailCommandPlan {
   diff: { field: string; before?: string; after?: string }[];
   /** Notiz-Schreibvorgaenge — ausgefuehrt vom vorhandenen PlanExecutor aus M1/M3. */
   notes: NotePlan[];
+  /** Dateien, die in den Papierkorb gehen (mail.removeEml). Die Art `trash` gibt es nur im
+   *  Kommandoplan, nie in einem NotePlan: ausgefuehrt wird ueber die Dep `trash`, die der
+   *  Papierkorb-Einstellung des Vaults folgt. Der Kern entscheidet nur WAS, nie WIE. */
+  trash?: { kind: "trash"; path: string; mailId: string }[];
   /** Genau eine Binaerdatei (mail.extractAttachment). */
   attachment?: { path: string; data: Uint8Array };
   /** Extern zu oeffnende URL (mail.replyExternal). */
@@ -131,7 +140,7 @@ export interface CommandDescriptor {
    *  nicht-inline Anhang einen Vault-Zugriff; wer es nicht deklariert, bekommt
    *  `attachmentPathFor`/`existingAttachment` als WERFENDE Attrappen statt stiller
    *  Fehlwerte. */
-  needs?: { eml?: true; allNotes?: true; attachments?: true };
+  needs?: { eml?: true; allNotes?: true; attachments?: true; /** Setzt `allNotes` voraus: liest je Notiz nur den Message-ID-Kopf der .eml am Konventionspfad. */ emlProbe?: true };
   /** Bekommt bewusst nur den `CommandProbe`, nicht den vollen Kontext — s. dort. */
   appliesTo(probe: CommandProbe): boolean;
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult;

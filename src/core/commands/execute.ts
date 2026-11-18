@@ -14,15 +14,18 @@ export interface CommandExecuteDeps {
    *  ueber eine fremde API und kann fehlschlagen. `path` ist der vault-relative Pfad der
    *  angelegten Aufgabennotiz (TaskNotes liefert kein `id`) — der brauchbare Teil fuer eine
    *  Erfolgs-Notice. */
+  /** Legt eine Datei in den Papierkorb (`fileManager.trashFile`, folgt der Einstellung des Vaults;
+   *  je nach Einstellung loescht das endgueltig). Wirft, wenn es nicht gelingt. */
+  trash(path: string): Promise<void>;
   createTask(req: { title: string; due: string | null; noteLink: string }): Promise<{ ok: true; path: string } | { ok: false; code: CommandErrorCode }>;
 }
 
 export type CommandExecuteResult =
-  | { ok: true; created: number; updated: number; stateChanged: number; skipped: NotePlan[]; attachmentPath?: string; openedUrl?: boolean; taskPath?: string }
+  | { ok: true; created: number; updated: number; stateChanged: number; skipped: NotePlan[]; attachmentPath?: string; openedUrl?: boolean; taskPath?: string; trashed?: number }
   | { ok: false; code: CommandErrorCode };
 
 /**
- * Der EINZIGE Ort, an dem ein Kommando etwas schreibt. Reihenfolge: Anhang, Notizen, URL —
+ * Der EINZIGE Ort, an dem ein Kommando etwas schreibt. Reihenfolge: Anhang, Notizen, Papierkorb, URL —
  * s. Task-Kommentar im Plan (ein toter Wikilink ist schlimmer als ein nicht extrahierter
  * Anhang). Der Guard wird im finally freigegeben, auch wenn ein Port wirft.
  */
@@ -40,6 +43,13 @@ export async function executeCommandPlan(plan: MailCommandPlan, deps: CommandExe
       if (!t.ok) return { ok: false, code: t.code };
       taskPath = t.path;
     }
+    let trashed = 0;
+    let trashFailed = false;
+    for (const t of plan.trash ?? []) {
+      // Jede Datei einzeln: ein gesperrter Eintrag haelt die uebrigen nicht auf.
+      try { await deps.trash(t.path); trashed++; } catch { trashFailed = true; }
+    }
+    if (trashFailed) return { ok: false, code: "write-failed" };
     if (plan.openUrl) deps.openExternal(plan.openUrl);
     return {
       ok: true,
@@ -50,6 +60,7 @@ export async function executeCommandPlan(plan: MailCommandPlan, deps: CommandExe
       ...(plan.attachment ? { attachmentPath: plan.attachment.path } : {}),
       ...(plan.openUrl ? { openedUrl: true } : {}),
       ...(taskPath !== undefined ? { taskPath } : {}),
+      ...(plan.trash ? { trashed } : {}),
     };
   } catch {
     // Fehler sind Werte (Spec § 5): ein werfender Port wird zum Code, nicht zum Stacktrace.

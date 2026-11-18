@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { vaultPlanExecutor, findMailNotes, mailIndex } from "../../src/obsidian/vault-notes";
+import { vaultPlanExecutor, findMailNotes, mailIndex, trashEml } from "../../src/obsidian/vault-notes";
 import { makeApp } from "../helpers/memory-vault";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 
@@ -185,5 +185,27 @@ describe("vaultPlanExecutor", () => {
     const index = mailIndex(app, defaultMailProfile());
     expect(index.get("a@x")).toEqual({ path: "Mail/2026/a.md", state: "live", source: "acc/Vault" });
     expect(index.size).toBe(1);
+  });
+});
+
+describe("trashEml (mail.removeEml)", () => {
+  it("legt eine .eml ueber fileManager.trashFile in den Papierkorb", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Mail/2026/_eml/x.eml", new Uint8Array([1]).buffer);
+    await trashEml(app)("Mail/2026/_eml/x.eml");
+    expect(app.__trashed).toEqual(["Mail/2026/_eml/x.eml"]);
+  });
+  it("verweigert alles, was keine .eml ist: nie eine Notiz, nie ein Anhang", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", "text");
+    await app.vault.createBinary("Anhaenge/a.pdf", new Uint8Array([1]).buffer);
+    await expect(trashEml(app)("Mail/2026/x.md")).rejects.toThrow(/\.eml/);
+    await expect(trashEml(app)("Anhaenge/a.pdf")).rejects.toThrow(/\.eml/);
+    expect(app.__trashed).toEqual([]);
+  });
+  it("eine schon fehlende Datei ist erledigt, kein Fehler", async () => {
+    const app = makeApp();
+    await expect(trashEml(app)("Mail/2026/_eml/weg.eml")).resolves.toBeUndefined();
+    expect(app.__trashed).toEqual([]);
   });
 });
