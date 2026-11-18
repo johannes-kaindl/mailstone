@@ -82,6 +82,20 @@ describe("settings", () => {
   });
 });
 
+describe("saveEml (A6)", () => {
+  it("eine alte data.json ohne saveEml ergibt true: bestehende Vaults behalten ihre .eml", () => {
+    expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail" } }).profile.saveEml).toBe(true);
+    expect(loadSettings(undefined).profile.saveEml).toBe(true);
+  });
+  it("ein gespeichertes false bleibt false, ein gespeichertes true bleibt true", () => {
+    expect(loadSettings({ profile: { saveEml: false } }).profile.saveEml).toBe(false);
+    expect(loadSettings({ profile: { saveEml: true } }).profile.saveEml).toBe(true);
+  });
+  it("ein Wert, der kein Boolean ist, faellt auf true zurueck (kein stilles Abschalten)", () => {
+    for (const v of ["false", 0, null, "nein", []]) expect(loadSettings({ profile: { saveEml: v } }).profile.saveEml, JSON.stringify(v)).toBe(true);
+  });
+});
+
 describe("Sent-Ordner", () => {
   it("neue Konten legen die Kopie im Ordner Sent ab", () => {
     expect(newAccount("privat").folders.sent).toBe("Sent");

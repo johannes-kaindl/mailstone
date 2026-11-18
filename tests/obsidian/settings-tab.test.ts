@@ -81,6 +81,19 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
     expect(desc(0)).toContain("0 Identitäten");
   });
 
+  it("bietet im Profil-Abschnitt einen Schalter fuer die .eml mit Beschreibung (A6)", async () => {
+    const tab = newTab({ accounts: [] });
+    const defs = tab.getSettingDefinitions() as { name?: string; desc?: string; control?: { key?: string } }[];
+    const i = defs.findIndex((d) => d.control?.key === "profile.saveEml");
+    expect(i).toBeGreaterThan(defs.findIndex((d) => d.control?.key === "profile.filename"));
+    expect(defs[i]?.name).toBe("Original als .eml speichern");
+    expect(defs[i]?.desc).toContain("vom Server");
+    // Standard an; ausgeschaltet landet der Wert im Profil.
+    expect(tab.getControlValue("profile.saveEml")).toBe(true);
+    await tab.setControlValue("profile.saveEml", false);
+    expect(tab.getControlValue("profile.saveEml")).toBe(false);
+  });
+
   it("bietet einen Schalter fuer das Debug-Protokoll", () => {
     const tab = newTab({ accounts: [] });
     const defs = tab.getSettingDefinitions() as { name?: string; control?: { key?: string } }[];

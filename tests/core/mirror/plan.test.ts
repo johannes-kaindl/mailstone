@@ -43,6 +43,33 @@ describe("planMailNote", () => {
     expect(p.kind === "create" && p.path).toBe("Mail/2026/2026-08-19-1432-hallo-welt-2.md");
     expect(p.kind === "create" && p.emlPath).toBe("Mail/2026/_eml/2026-08-19-1432-hallo-welt-2.eml");
   });
+  describe("saveEml: false (A6)", () => {
+    it("create: emlPath ist null, die Notiz entsteht wie bisher", async () => {
+      const c = await common();
+      const p = planMailNote({ ...c, profile: { ...c.profile, saveEml: false }, existing: null });
+      expect(p.kind).toBe("create");
+      if (p.kind !== "create") return;
+      expect(p.emlPath).toBeNull();
+      expect(p.path).toBe("Mail/2026/2026-08-19-1432-hallo-welt.md");
+      expect(p.content).toContain("mail_id: utf8-plain-001@mail.example.org");
+    });
+    it("create: der .eml-Pfad zaehlt bei der Kollisionspruefung weiter (verwaiste Datei)", async () => {
+      const c = await common();
+      c.takenPaths.add("Mail/2026/_eml/2026-08-19-1432-hallo-welt.eml");
+      const p = planMailNote({ ...c, profile: { ...c.profile, saveEml: false }, existing: null });
+      expect(p.kind === "create" && p.path).toBe("Mail/2026/2026-08-19-1432-hallo-welt-2.md");
+      expect(p.kind === "create" && p.emlPath).toBeNull();
+    });
+    it("create: eine Mail ohne Message-ID (noid-) behaelt die .eml, auf dem Server ist sie nicht auffindbar", async () => {
+      const c = await common();
+      const mail = { ...c.mail, id: "noid-0123456789abcdef0123456789abcdef" };
+      const p = planMailNote({ ...c, mail, profile: { ...c.profile, saveEml: false }, existing: null });
+      expect(p.kind === "create" && p.emlPath).toBe("Mail/2026/_eml/2026-08-19-1432-hallo-welt.eml");
+    });
+    it("Standard und Profil ohne das Feld: .eml wird gespeichert", async () => {
+      expect(defaultMailProfile().saveEml).toBe(true);
+    });
+  });
   it("update: bestehende Notiz mit bekanntem Hash → update/skip unchanged", async () => {
     const c = await common();
     const first = planMailNote({ ...c, existing: null });

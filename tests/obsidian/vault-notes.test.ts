@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { vaultPlanExecutor, findMailNotes, mailIndex } from "../../src/obsidian/vault-notes";
 import { makeApp } from "../helpers/memory-vault";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
@@ -14,6 +14,17 @@ describe("vaultPlanExecutor", () => {
     expect(await app.vault.adapter.exists("Mail/2026/x.md")).toBe(true);
     expect(await app.vault.adapter.exists("Mail/2026/_eml/x.eml")).toBe(true);
     expect(hashes.get("a@x")).toBe("h1");
+  });
+  it("create ohne emlPath legt nur die .md an: kein createBinary, kein _eml-Ordner (A6)", async () => {
+    const app = makeApp();
+    const spy = vi.spyOn(app.vault, "createBinary");
+    const ex = vaultPlanExecutor(app, { get: () => null, set: () => {} });
+    const r = await ex.execute([{ kind: "create", path: "Mail/2026/x.md", emlPath: null, content: "---\nmail_id: a@x\n---\nbody", eml: new Uint8Array([1, 2]), mailId: "a@x", zoneHash: "h1" }]);
+    expect(r.created).toBe(1);
+    expect(r.errors).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+    expect(await app.vault.adapter.exists("Mail/2026/x.md")).toBe(true);
+    expect(await app.vault.adapter.exists("Mail/2026/_eml")).toBe(false);
   });
   it("setState schreibt in das Profil-Feld (stateField), nicht in ein fest verdrahtetes", async () => {
     const app = makeApp();

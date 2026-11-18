@@ -70,6 +70,19 @@ describe("planSync", () => {
     expect(plans[0]).toMatchObject({ kind: "create", mailId: "doppelt@x" });
   });
 
+  it("saveEml: false: kein emlPath im Plan, die belegten .eml-Pfade tragen aber weiter zur Kollisionsfreiheit bei", () => {
+    const off = { ...profile, saveEml: false };
+    const a = mail("eins@x");
+    const b = { ...mail("zwei@x"), subject: a.subject, date: a.date };
+    const plans = planSync({ profile: off, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(), fetched: [{ mail: a, eml }, { mail: b, eml }], onServer: new Set(["eins@x", "zwei@x"]) });
+    expect(plans.every((p) => p.kind === "create" && p.emlPath === null)).toBe(true);
+    const base = `${mailFolder(profile, a)}/${mailFilename(profile, a)}`;
+    expect(plans.map((p) => p.path)).toEqual([`${base}.md`, `${base}-2.md`]);
+    // Eine verwaiste .eml am Konventionspfad schiebt die Notiz auf -2.
+    const verwaist = planSync({ profile: off, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set([`${mailFolder(profile, a)}/_eml/${mailFilename(profile, a)}.eml`]), fetched: [{ mail: a, eml }], onServer: new Set(["eins@x"]) });
+    expect(verwaist[0]?.path).toBe(`${base}-2.md`);
+  });
+
   it("vergibt kollisionsfreie Pfade fuer zwei Mails desselben Betreffs am selben Zeitpunkt", () => {
     const a = mail("eins@x");
     const b = { ...mail("zwei@x"), subject: a.subject, date: a.date };

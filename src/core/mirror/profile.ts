@@ -8,6 +8,10 @@ export interface MailProfile {
   folder: string; // Default "Mail"; Jahr wird als Unterordner angehaengt (yearSubfolder)
   yearSubfolder: boolean; // Default true
   emlSubfolder: string; // Default "_eml"
+  /** Die .eml neben der Notiz ablegen (Standard true; bestehende Vaults bleiben unveraendert).
+   *  false: Sync und Import legen keine an; Re-render und Anhang-Extraktion holen das Original
+   *  dann bei Bedarf vom Server. Mails ohne Message-ID (`noid-…`) behalten die .eml immer. */
+  saveEml: boolean;
   filename: string; // Default "{date}-{time}-{slug}"
   idField: string;
   sourceField: string;
@@ -42,6 +46,7 @@ export function defaultMailProfile(): MailProfile {
     folder: "Mail",
     yearSubfolder: true,
     emlSubfolder: "_eml",
+    saveEml: true,
     filename: "{date}-{time}-{slug}",
     idField: "mail_id",
     sourceField: "mail_source",

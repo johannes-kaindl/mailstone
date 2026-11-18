@@ -106,6 +106,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
         desc: t("settings.filename.desc"),
         control: { type: "text", key: "profile.filename" },
       },
+      {
+        name: t("settings.saveEml"),
+        desc: t("settings.saveEml.desc"),
+        control: { type: "toggle", key: "profile.saveEml" },
+      },
       this.accountsGroup(),
       // SettingDefinitionList kennt keinen eigenen `desc` (nur `heading`) — die Erklaerung
       // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
@@ -454,6 +459,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
       "profile.yearSubfolder": {
         get: () => s.profile.yearSubfolder,
         set: (value) => { s.profile.yearSubfolder = Boolean(value); },
+      },
+      "profile.saveEml": {
+        get: () => s.profile.saveEml,
+        set: (value) => { s.profile.saveEml = Boolean(value); },
       },
       "profile.filename": {
         get: () => s.profile.filename,

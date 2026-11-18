@@ -14,6 +14,8 @@ export const en = {
   "settings.help.openDocs": "Open documentation", "settings.help.reportIssue": "Report an issue",
   "settings.language": "Language", "settings.language.auto": "Automatic",
   "settings.yearSubfolder": "Subfolder per year",
+  "settings.saveEml": "Save original as .eml",
+  "settings.saveEml.desc": "Stores the original message as an .eml file next to each new note. With this off, the .eml (and the personal data in it) is not written a second time; Re-render and Extract attachment then fetch the original from the server when they need it (desktop only). Existing .eml files stay where they are.",
   "form.cancel": "Cancel",
   "form.submit": "OK",
 
@@ -259,6 +261,8 @@ export const de: typeof en = {
   "settings.help.openDocs": "Dokumentation öffnen", "settings.help.reportIssue": "Problem melden",
   "settings.language": "Sprache", "settings.language.auto": "Automatisch",
   "settings.yearSubfolder": "Unterordner je Jahr",
+  "settings.saveEml": "Original als .eml speichern",
+  "settings.saveEml.desc": "Legt das Original der Nachricht als .eml-Datei neben jede neue Notiz. Ausgeschaltet entsteht keine zweite Kopie (samt den personenbezogenen Daten darin); Neu aufbauen und Anhang extrahieren holen das Original dann bei Bedarf vom Server (nur am Desktop). Vorhandene .eml-Dateien bleiben, wo sie sind.",
   "form.cancel": "Abbrechen",
   "form.submit": "OK",
 

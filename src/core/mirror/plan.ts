@@ -6,7 +6,7 @@ import { DEFAULT_NOTE_HEADINGS, managedKeys, type MailProfile } from "./profile"
 import { blockHeadingOf, mergeNote, newNote } from "../merge/merge";
 
 export type NotePlan =
-  | { kind: "create"; path: string; emlPath: string; content: string; eml: Uint8Array; mailId: string; zoneHash: string }
+  | { kind: "create"; path: string; /** null = keine .eml schreiben (`profile.saveEml: false`). */ emlPath: string | null; content: string; eml: Uint8Array; mailId: string; zoneHash: string }
   | {
       kind: "update";
       path: string;
@@ -107,9 +107,14 @@ export function planMailNote(input: PlanInput): NotePlan {
   const block = renderMessageBlock(mail, { heading: (input.existing && blockHeadingOf(input.existing.content)) || headings.message });
 
   if (!input.existing) {
-    const { path, emlPath } = input.paths ?? freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
+    const assigned = input.paths ?? freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
     const { content, zoneHash } = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`);
-    return { kind: "create", path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash };
+    // Der .eml-Pfad wird in jedem Fall VERGEBEN (freePaths/assignRunPaths pruefen ihn weiter:
+    // eine verwaiste Datei am Konventionspfad bleibt eine Kollision), geschrieben wird er nur,
+    // wenn die .eml gebraucht wird. Eine Mail ohne Message-ID ist auf dem Server nicht
+    // auffindbar, ihr Original gibt es nur hier.
+    const emlPath = profile.saveEml || mail.id.startsWith("noid-") ? assigned.emlPath : null;
+    return { kind: "create", path: assigned.path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash };
   }
 
   if (!input.allowUpdate) return { kind: "skip", path: input.existing.path, mailId: mail.id, reason: "unchanged" };

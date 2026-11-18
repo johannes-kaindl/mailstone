@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Setting *Save original as .eml* (on by default, so existing vaults stay as they are). Switched off, sync and import no longer write the `.eml` next to each note; mails without a Message-ID keep theirs, because the server cannot find them again.
+
 ### Fixed
 
 - Replies and their original mail synced (or imported) in the same run now link to each other. Before, the link was only written for mails from earlier runs, so a reply that arrived together with its original kept the raw message id; the order of the mails in the run no longer matters.

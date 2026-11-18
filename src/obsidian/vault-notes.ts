@@ -47,8 +47,10 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
         try {
           if (p.kind === "create") {
             await ensureFolder(app, dirOf(p.path));
-            await ensureFolder(app, dirOf(p.emlPath));
-            await app.vault.createBinary(normalizePath(p.emlPath), new Uint8Array(p.eml).buffer);
+            if (p.emlPath !== null) {
+              await ensureFolder(app, dirOf(p.emlPath));
+              await app.vault.createBinary(normalizePath(p.emlPath), new Uint8Array(p.eml).buffer);
+            }
             await app.vault.create(normalizePath(p.path), p.content);
             hashes.set(p.mailId, p.zoneHash);
             created++;

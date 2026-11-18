@@ -87,4 +87,15 @@ describe("importEmlFolder", () => {
     expect(inhalt).not.toContain("[[");
     expect(inhalt.split("\n").find((l) => l.startsWith("in_reply_to:"))).toContain("s@example.org");
   });
+  it("saveEml: false: der Import legt Notizen, aber keine .eml neben ihnen an (A6)", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const profile = { ...defaultMailProfile(), saveEml: false };
+    const r = await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    expect(r.created).toBe(1);
+    expect(await app.vault.adapter.exists("Mail/2026/2026-08-19-1432-hallo-welt.md")).toBe(true);
+    expect(await app.vault.adapter.exists("Mail/2026/_eml")).toBe(false);
+    // Die Quelldatei im Importordner bleibt, wo sie war.
+    expect(await app.vault.adapter.exists("Import/a.eml")).toBe(true);
+  });
 });
