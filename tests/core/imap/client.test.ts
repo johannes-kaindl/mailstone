@@ -559,6 +559,85 @@ describe("uidMove", () => {
   });
 });
 
+// A1 (Welle 36, Uebernahme): UID COPY ist die erste Schreibstelle auf dem Server ausser APPEND/MOVE und nur
+// an der schreibenden Session. Kein SELECT noetig: COPY wirkt im ausgewaehlten Zustand, also auch nach EXAMINE.
+describe("uidCopy", () => {
+  async function writable(steps: DialogStep[], capabilities = "IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS MOVE") {
+    const fake = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: [`* CAPABILITY ${capabilities}`, "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+      ...steps,
+    ]);
+    const r = await imapConnectWritable(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    return { fake, session: r.session };
+  }
+
+  it("kopiert nach EXAMINE eine UID in den Zielordner und meldet Erfolg bei COPYUID, ohne SELECT", async () => {
+    const { session, fake } = await writable([
+      { expect: /^a003 EXAMINE "INBOX"$/, send: ["* 4 EXISTS", "* OK [UIDVALIDITY 99] .", "a003 OK [READ-ONLY] done"] },
+      { expect: /^a004 UID COPY 9 "Vault"$/, send: ["a004 OK [COPYUID 99 9 21] Copy completed"] },
+    ]);
+    await session.examine("INBOX");
+    expect(await session.uidCopy(9, "Vault")).toEqual({ ok: true });
+    expect(fake.written.some((l) => /\b(SELECT|STORE|EXPUNGE|MOVE)\b/.test(l))).toBe(false);
+  });
+
+  it("schreibt den Zielnamen modifiziertes UTF-7 (Umlaut)", async () => {
+    const { session, fake } = await writable([
+      { expect: /^a003 UID COPY 9 "Vault\/&AOQ-"$/, send: ["a003 OK [COPYUID 99 9 21] Copy completed"] },
+    ]);
+    expect(await session.uidCopy(9, "Vault/ä")).toEqual({ ok: true });
+    expect(fake.written).toContain("a003 UID COPY 9 \"Vault/&AOQ-\"");
+  });
+
+  it("meldet 'gone' bei OK ohne COPYUID, wenn der Server UIDPLUS kennt (eine UID ohne Treffer ergibt OK)", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID COPY 9 "Vault"$/, send: ["a003 OK Copy completed"] },
+    ]);
+    expect(await session.uidCopy(9, "Vault")).toMatchObject({ ok: false, code: "gone" });
+  });
+
+  it("nimmt OK ohne COPYUID an, wenn der Server UIDPLUS nicht kennt", async () => {
+    const { session } = await writable(
+      [{ expect: /^a003 UID COPY 9 "Vault"$/, send: ["a003 OK Copy completed"] }],
+      "IMAP4rev1 AUTH=PLAIN SASL-IR",
+    );
+    expect(await session.uidCopy(9, "Vault")).toEqual({ ok: true });
+  });
+
+  it("gibt NO als Wert zurueck: TRYCREATE heisst folder-missing, sonst protocol", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID COPY 9 "Fehlt"$/, send: ["a003 NO [TRYCREATE] Mailbox does not exist"] },
+      { expect: /^a004 UID COPY 9 "Voll"$/, send: ["a004 NO [OVERQUOTA] Quota exceeded"] },
+    ]);
+    expect(await session.uidCopy(9, "Fehlt")).toMatchObject({ ok: false, code: "folder-missing", detail: expect.stringContaining("Mailbox does not exist") as unknown });
+    expect(await session.uidCopy(9, "Voll")).toMatchObject({ ok: false, code: "protocol", detail: expect.stringContaining("Quota") as unknown });
+  });
+
+  it("gibt BAD als Wert zurueck (protocol), wirft nicht", async () => {
+    const { session } = await writable([
+      { expect: /^a003 UID COPY 9 "Vault"$/, send: ["a003 BAD Command not valid in this state"] },
+    ]);
+    expect(await session.uidCopy(9, "Vault")).toMatchObject({ ok: false, code: "protocol" });
+  });
+
+  it("sendet nichts bei einer UID, die keine positive ganze Zahl ist", async () => {
+    const { session, fake } = await writable([]);
+    expect(await session.uidCopy(0, "Vault")).toMatchObject({ ok: false, code: "gone" });
+    expect(await session.uidCopy(1.5, "Vault")).toMatchObject({ ok: false, code: "gone" });
+    expect(fake.written.some((l) => /COPY/.test(l))).toBe(false);
+  });
+
+  it("steht der lesenden Session nicht zur Verfuegung (Typ-Riegel)", async () => {
+    const fake = new FakeSocketTransport(["* OK ready"], greetingAndAuth);
+    const r = await imapConnect(fake, base);
+    if (!r.ok) throw new Error("unreachable");
+    // @ts-expect-error uidCopy gehoert nur zur ImapWriteSession
+    expect(r.session.uidCopy).toBeUndefined();
+  });
+});
+
 describe("uidFetchHeaders", () => {
   it("liefert Flags und Header-Bytes je UID", async () => {
     const header = "From: a@example.invalid\r\nSubject: Hallo\r\n\r\n";

@@ -70,7 +70,14 @@ export interface ImapWriteSession extends ImapReadSession {
    *  der Sync bekommt eine ImapReadSession und kann diese Methode nicht sehen. */
   select(mailbox: string): Promise<{ ok: true; uidValidity: number; exists: number } | { ok: false; code: ImapErrorCode; detail: string }>;
   uidMove(uid: number, target: string): Promise<UidMoveResult>;
+  /** `UID COPY <uid> "<ziel>"` (RFC 3501 § 6.4.7) aus dem gerade geoeffneten Ordner. Die Quelle bleibt unveraendert, die
+   *  Kopie behaelt die Flags. Die erste Schreibstelle, die ein Sync-Lauf ohne Klick des Nutzers ausloest (A1-Uebernahme, Vorgang-Folgen), siehe
+   *  `.claude/rules/imap-vertrag.md`. Kein SELECT noetig: COPY ist im ausgewaehlten Zustand erlaubt, auch nach `examine`. */
+  uidCopy(uid: number, target: string): Promise<UidCopyResult>;
 }
+
+/** `NO`/`BAD` kommen als Wert zurueck, nie als Wurf; `gone` heisst: die UID traf keine Nachricht. */
+export type UidCopyResult = { ok: true } | { ok: false; code: ImapErrorCode | "gone"; detail: string };
 
 export type UidMoveResult = { ok: true } | { ok: false; code: ImapErrorCode | "unsupported" | "gone"; detail: string };
 
@@ -542,6 +549,23 @@ function makeWriteSession(conn: Connection, capabilities: string[]): ImapWriteSe
       const expunged = r.untagged.some((u) => /^\d+\s+EXPUNGE\b/i.test(u.text));
       if (!copyUid && !expunged) {
         return { ok: false, code: "gone", detail: "UID nicht mehr vorhanden — erneut synchronisieren" };
+      }
+      return { ok: true };
+    },
+
+    async uidCopy(uid, target) {
+      // Eine UID, die kein Server-UID sein kann, sendet gar kein Kommando.
+      if (!Number.isSafeInteger(uid) || uid <= 0) return { ok: false, code: "gone", detail: "keine gueltige UID" };
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `UID COPY ${String(uid)} ${quoteArg(encodeMailbox(target))}`);
+      if (r.status !== "OK") {
+        const fehlt = r.status === "NO" && /TRYCREATE|does\s*n.?t exist|unknown mailbox/i.test(r.text);
+        return { ok: false, code: fehlt ? "folder-missing" : "protocol", detail: r.text };
+      }
+      // RFC 3501: eine UID ohne Treffer ergibt OK. Mit UIDPLUS (RFC 4315) belegt erst COPYUID, dass etwas kopiert wurde;
+      // ohne UIDPLUS gibt es keinen Beleg, dann gilt OK.
+      if (capabilities.includes("UIDPLUS") && !/\[COPYUID\s/i.test(r.text)) {
+        return { ok: false, code: "gone", detail: "UID nicht mehr vorhanden" };
       }
       return { ok: true };
     },

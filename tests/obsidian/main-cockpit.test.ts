@@ -22,7 +22,7 @@ const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, de
 function acc(id: string, enabled = true): Account {
   const a = newAccount(id);
   a.label = id;
-  a.sync = { enabled, intervalMin: 5 };
+  a.sync = { enabled, intervalMin: 5, followThreads: false };
   return a;
 }
 

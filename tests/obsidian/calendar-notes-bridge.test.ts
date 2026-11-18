@@ -29,7 +29,7 @@ function makeAccounts(): Account[] {
       identities: [{ id: "mail", address: "privat@example.com", name: "Privat" }],
       defaultIdentityId: "mail",
       folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" },
-      sync: { enabled: true, intervalMin: 5 },
+      sync: { enabled: true, intervalMin: 5, followThreads: false },
     },
     {
       id: "arbeit",
@@ -41,7 +41,7 @@ function makeAccounts(): Account[] {
       identities: [{ id: "mail", address: "arbeit@example.com", name: "Arbeit" }],
       defaultIdentityId: "mail",
       folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive" },
-      sync: { enabled: true, intervalMin: 5 },
+      sync: { enabled: true, intervalMin: 5, followThreads: false },
     },
   ];
 }

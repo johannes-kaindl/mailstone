@@ -46,6 +46,17 @@ describe("settings", () => {
     expect(s.accounts[0]?.folders.allowlist).toBe("Vault");
     expect(s.accounts[0]?.sync.intervalMin).toBe(5);
   });
+  // A1-Uebernahme: Vorgang-Folgen schreibt auf dem Server (UID COPY) und ist deshalb AUS, auch fuer bestehende Installationen.
+  it("Vorgang-Folgen ist je Konto standardmaessig aus: neues Konto, altes data.json ohne den Schluessel, Muell", () => {
+    expect(newAccount("a").sync.followThreads).toBe(false);
+    expect(loadSettings({ accounts: [{ id: "a", sync: { enabled: true, intervalMin: 5 } }] }).accounts[0]?.sync.followThreads).toBe(false);
+    for (const roh of ["true", 1, "ja", null, [], {}]) {
+      expect(loadSettings({ accounts: [{ id: "a", sync: { followThreads: roh } }] }).accounts[0]?.sync.followThreads, String(roh)).toBe(false);
+    }
+  });
+  it("Vorgang-Folgen: nur ein gespeichertes true schaltet ein", () => {
+    expect(loadSettings({ accounts: [{ id: "a", sync: { followThreads: true } }] }).accounts[0]?.sync.followThreads).toBe(true);
+  });
   it("loadSettings repariert Profil-Felder feldweise", () => {
     const s = loadSettings({ profile: { fields: { cc: null } } });
     expect(s.profile.fields.cc).toBeNull();

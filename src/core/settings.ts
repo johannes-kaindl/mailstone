@@ -15,7 +15,13 @@ export interface Account {
   // sent traegt den Default "Sent": eine gesendete Mail, die im Webmail nirgends auftaucht,
   // ist ein Verlust, den man erst bemerkt, wenn man sie sucht. Ein leerer Wert schaltet die
   // Kopie ab — das ist die Opt-out-Form, absichtlich statt Opt-in (Spec § 3.3, praezisiert 2026-08-30).
-  folders: { inbox: string; allowlist: string; archive: string; sent?: string }; sync: { enabled: boolean; intervalMin: number };
+  folders: { inbox: string; allowlist: string; archive: string; sent?: string }; sync: {
+    enabled: boolean; intervalMin: number;
+    /** Vorgang-Folgen (A1): der Sync KOPIERT Folge-Mails aktiver Vorgaenge per UID COPY aus Posteingang und Gesendet in den
+     *  Allowlist-Ordner auf dem Server. Die erste Schreibstelle eines Sync-Laufs ohne Klick des Nutzers, deshalb Standard
+     *  `false`, auch fuer bestehende Installationen (nur ein gespeichertes `true` gilt). */
+    followThreads: boolean;
+  };
 }
 // taskPreset traegt bewusst kein `boolean` (Fix-Runde 1, Task 7): toFm() (merge.ts) macht aus
 // JEDEM JS-Boolean per String(v) einen String, und needsQuoting() (vendor/kit/frontmatter.ts)
@@ -51,7 +57,7 @@ export function uniqueAccountId(label: string, existingIds: readonly string[]): 
 
 export function newAccount(id: string): Account {
   return { id, label: id, imap: { host: "", port: 993, tls: "implicit" }, smtp: { host: "", port: 465, tls: "implicit" }, username: "", secretId: secretIdFor(id),
-    identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "Sent" }, sync: { enabled: true, intervalMin: 5 } };
+    identities: [], defaultIdentityId: "", folders: { inbox: "INBOX", allowlist: "Vault", archive: "Archive", sent: "Sent" }, sync: { enabled: true, intervalMin: 5, followThreads: false } };
 }
 
 const IMAP_TLS_VALUES = ["implicit", "starttls"] as const;
@@ -91,7 +97,11 @@ function repairAccount(raw: unknown): Account {
     identities: Array.isArray(r.identities) ? r.identities.filter((i): i is Identity => isObj(i) && typeof i.id === "string" && typeof i.address === "string" && typeof i.name === "string") : base.identities,
     defaultIdentityId: typeof r.defaultIdentityId === "string" ? r.defaultIdentityId : base.defaultIdentityId,
     folders: { ...base.folders, ...(isObj(r.folders) ? r.folders : {}) },
-    sync: { ...base.sync, ...(isObj(r.sync) ? r.sync : {}) },
+    sync: {
+      ...base.sync, ...(isObj(r.sync) ? r.sync : {}),
+      // Nur ein Boolean true gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus.
+      followThreads: isObj(r.sync) && r.sync.followThreads === true,
+    },
   };
 }
 

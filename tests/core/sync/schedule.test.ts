@@ -7,7 +7,7 @@ const MIN = 60_000;
 function acc(id: string, intervalMin: number, enabled = true): Account {
   const a = newAccount(id);
   a.id = id;
-  a.sync = { enabled, intervalMin };
+  a.sync = { enabled, intervalMin, followThreads: false };
   return a;
 }
 

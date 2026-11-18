@@ -10,7 +10,7 @@ const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, de
 
 function acc(id: string, intervalMin: number, enabled = true): Account {
   const a = newAccount(id);
-  a.sync = { enabled, intervalMin };
+  a.sync = { enabled, intervalMin, followThreads: false };
   return a;
 }
 
