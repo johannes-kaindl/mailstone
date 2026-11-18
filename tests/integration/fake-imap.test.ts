@@ -13,6 +13,7 @@ import type { Readable } from "node:stream";
 type FakeImapChild = ChildProcessByStdio<null, Readable, Readable>;
 import { imapConnect, imapConnectWritable } from "../../src/core/imap/client";
 import { adoptMessage } from "../../src/core/inbox/actions";
+import { fetchOriginal, type OriginalAccount } from "../../src/core/originals/fetch-original";
 import { createSyncService } from "../../src/core/sync/service";
 import { createBusyGuard } from "../../src/vendor/code-kit/busy-guard";
 import { createEmitter } from "../../src/core/sync/events";
@@ -201,6 +202,44 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     // Das Protokoll selbst darf keine Zugangsdaten tragen — der Fake maskiert wie client.ts.
     expect(zeilen.some((z) => z.includes("geheim"))).toBe(false);
     expect(zeilen.some((z) => /^AUTHENTICATE \*+$/i.test(z))).toBe(true);
+  });
+
+  // A6 (Welle 36): das Original einer Mail per Message-ID holen. Auch dieser Weg liest nur: der
+  // ganze Dialog traegt EXAMINE, UID SEARCH HEADER und BODY.PEEK[], nie SELECT und nie BODY[.
+  it("holt ein Original per UID SEARCH HEADER ueber den echten Socket, nur lesend", async () => {
+    await starteServer();
+    const konto: OriginalAccount = { id: "acc", label: "Testkonto", folders: { allowlist: "INBOX", archive: "" } };
+    const bytes = await fetchOriginal(
+      {
+        accounts: () => [konto],
+        connect: (a) => imapConnect(nodeSocketTransport(), { ...verbindungsOptionen(), username: a.id }),
+        busy: createBusyGuard(),
+      },
+      { mailId: "zwei@example.net", source: "acc/INBOX" },
+    );
+    expect(bytes.ok).toBe(true);
+    if (!bytes.ok) throw new Error("unreachable");
+    expect(new TextDecoder().decode(bytes.bytes)).toContain("Subject: Zweite Testmail");
+    await warteAufKommando(/^LOGOUT$/i);
+
+    const zeilen = kommandos();
+    expect(zeilen.filter((z) => /^EXAMINE\b/i.test(z))).toHaveLength(1);
+    expect(zeilen).toContain('UID SEARCH HEADER Message-ID "zwei@example.net"');
+    expect(zeilen.filter((z) => /^UID FETCH \d+ \(BODY\.PEEK\[\]\)$/i.test(z))).toHaveLength(1);
+    expect(zeilen.filter((z) => /\bSELECT\b/i.test(z))).toEqual([]);
+    expect(zeilen.filter((z) => /BODY\[/i.test(z))).toEqual([]);
+  });
+
+  it("meldet eine unbekannte Message-ID als nicht gefunden, ohne Fetch", async () => {
+    await starteServer();
+    const konto: OriginalAccount = { id: "acc", label: "Testkonto", folders: { allowlist: "INBOX", archive: "" } };
+    const r = await fetchOriginal(
+      { accounts: () => [konto], connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()), busy: createBusyGuard() },
+      { mailId: "gibtsnicht@example.net", source: "acc/INBOX" },
+    );
+    expect(r).toMatchObject({ ok: false, code: "original-not-found", detail: "Testkonto: INBOX" });
+    await warteAufKommando(/^LOGOUT$/i);
+    expect(kommandos().filter((z) => /^UID FETCH/i.test(z))).toEqual([]);
   });
 
   // Die andere Haelfte des Vertrags, und zugleich der erste Test, der den SCHREIBENDEN Pfad

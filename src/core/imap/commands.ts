@@ -48,6 +48,18 @@ export function quoteArg(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+/** Darf dieser Wert als quoted string in ein SEARCH-Kommando? Nur druckbares ASCII ohne
+ *  Leerzeichen: CR und LF waeren eine zweite Kommandozeile, und ohne `CHARSET` laesst sich
+ *  Nicht-ASCII nicht sicher suchen (RFC 3501 § 6.4.4). Eine Message-ID hat nie Leerraum. */
+export function isSearchableValue(value: string): boolean {
+  if (value.length === 0) return false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if (c < 0x21 || c > 0x7e) return false;
+  }
+  return true;
+}
+
 export function buildUidSet(uids: readonly number[]): string {
   // Set vor dem Sortieren: doppelte UIDs ergaben sonst "1,1:3" statt "1:3" — semantisch dasselbe,
   // aber laenger und im Log irritierend. Sie entstehen, sobald eine Aufrufstelle zwei Quellen

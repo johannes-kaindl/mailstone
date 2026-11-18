@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fake-IMAP-Server fuer tests/integration — spricht nur das Subset, das core/imap/client.ts
-// benutzt: CAPABILITY, AUTHENTICATE PLAIN, EXAMINE, SELECT, UID SEARCH ALL, UID FETCH
+// benutzt: CAPABILITY, AUTHENTICATE PLAIN, EXAMINE, SELECT, UID SEARCH ALL, UID SEARCH HEADER MESSAGE-ID, UID FETCH
 // (Header/Body), UID MOVE, LOGOUT. Kein TLS, bindet ausschliesslich an 127.0.0.1. Nie fuer
 // echte Postfaecher gedacht.
 //
@@ -121,6 +121,17 @@ function handleLine(socket, line, sitzung) {
       MAILS.splice(index, 1);
       socket.write(`${tag} OK [COPYUID 1 ${String(uid)} 1] Move completed\r\n`);
     }
+  } else if (cmd.startsWith("UID SEARCH HEADER ")) {
+    // `UID SEARCH HEADER <feld> "<wert>"` (RFC 3501 § 6.4.4): Teilstring-Treffer ohne Beachtung der
+    // Gross-/Kleinschreibung. Unterstuetzt wird nur MESSAGE-ID, sonst eine leere Antwort. Der Wert
+    // kommt aus der ORIGINALzeile (cmd ist grossgeschrieben).
+    const treffer = /^UID SEARCH HEADER (\S+) "((?:[^"\\]|\\.)*)"$/i.exec(rest.join(" "));
+    const feld = treffer?.[1]?.toUpperCase();
+    const wert = treffer?.[2]?.replace(/\\(.)/g, "$1").toLowerCase();
+    const uids = feld === "MESSAGE-ID" && wert
+      ? MAILS.filter((m) => m.id.toLowerCase().includes(wert)).map((m) => String(m.uid))
+      : [];
+    socket.write(`* SEARCH${uids.length > 0 ? ` ${uids.join(" ")}` : ""}\r\n${tag} OK done\r\n`);
   } else if (cmd === "UID SEARCH ALL") {
     socket.write(`* SEARCH ${MAILS.map((m) => String(m.uid)).join(" ")}\r\n${tag} OK done\r\n`);
   } else if (cmd.startsWith("UID FETCH")) {

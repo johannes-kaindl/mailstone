@@ -166,6 +166,56 @@ describe("ImapReadSession", () => {
     expect(await s.uidSearchAll()).toEqual([4, 8, 15]);
   });
 
+  describe("uidSearchHeader", () => {
+    it("sendet UID SEARCH HEADER mit dem Wert als quoted string und liest die UIDs", async () => {
+      const { fake, s } = await session([
+        { expect: /^a003 EXAMINE /, send: ["* 3 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] },
+        { expect: /^a004 UID SEARCH HEADER Message-ID "abc@example\.net"$/, send: ["* SEARCH 4 15", "a004 OK done"] },
+      ]);
+      await s.examine("Vault");
+      expect(await s.uidSearchHeader("Message-ID", "abc@example.net")).toEqual([4, 15]);
+      expect(fake.written).toContain('a004 UID SEARCH HEADER Message-ID "abc@example.net"');
+    });
+
+    it("maskiert Backslash und Anfuehrungszeichen im Wert", async () => {
+      const { fake, s } = await session([
+        { expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] },
+        { expect: /^a004 UID SEARCH HEADER /, send: ["* SEARCH", "a004 OK done"] },
+      ]);
+      await s.examine("Vault");
+      await s.uidSearchHeader("Message-ID", 'a"b\\c@x');
+      expect(fake.written).toContain('a004 UID SEARCH HEADER Message-ID "a\\"b\\\\c@x"');
+    });
+
+    it.each([["CR", "a\rb@x"], ["LF", "a\nb@x"], ["Nicht-ASCII", "ä@x"], ["leer", ""], ["Leerzeichen", "a b@x"]])(
+      "sendet bei %s im Wert gar kein Kommando und liefert []",
+      async (_name, wert) => {
+        const { fake, s } = await session([{ expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] }]);
+        await s.examine("Vault");
+        const vorher = fake.written.length;
+        expect(await s.uidSearchHeader("Message-ID", wert)).toEqual([]);
+        expect(fake.written).toHaveLength(vorher);
+      },
+    );
+
+    it("sendet bei einem Feldnamen mit Sonderzeichen kein Kommando", async () => {
+      const { fake, s } = await session([{ expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] }]);
+      await s.examine("Vault");
+      const vorher = fake.written.length;
+      expect(await s.uidSearchHeader("Message-ID ALL", "a@x")).toEqual([]);
+      expect(fake.written).toHaveLength(vorher);
+    });
+
+    it("wirft bei abgelehntem SEARCH wie uidSearchAll", async () => {
+      const { s } = await session([
+        { expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] },
+        { expect: /^a004 UID SEARCH HEADER /, send: ["a004 BAD nope"] },
+      ]);
+      await s.examine("Vault");
+      await expect(s.uidSearchHeader("Message-ID", "a@x")).rejects.toThrow(/SEARCH/);
+    });
+  });
+
   it("uidSearchAll liefert [] bei leerer SEARCH-Antwort", async () => {
     const { s } = await session([
       { expect: /^a003 EXAMINE /, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 1] ok", "a003 OK done"] },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodeMailbox, quoteArg, assertNoCrlf, buildUidSet, chunk } from "../../../src/core/imap/commands";
+import { encodeMailbox, quoteArg, assertNoCrlf, buildUidSet, chunk, isSearchableValue } from "../../../src/core/imap/commands";
 
 describe("encodeMailbox (modified UTF-7)", () => {
   it("laesst reines ASCII unveraendert", () => {
@@ -47,5 +47,15 @@ describe("buildUidSet — Duplikate", () => {
   it("wirft Duplikate auch bei Einzelwerten weg", () => {
     expect(buildUidSet([5, 5, 5])).toBe("5");
     expect(buildUidSet([9, 3, 9, 3])).toBe("3,9");
+  });
+});
+
+describe("isSearchableValue", () => {
+  it("erlaubt druckbares ASCII ohne Leerzeichen, auch Anfuehrungszeichen und Backslash (die quoteArg maskiert)", () => {
+    expect(isSearchableValue("abc.123@example.net")).toBe(true);
+    expect(isSearchableValue('a"b\\c@x')).toBe(true);
+  });
+  it("lehnt leer, CR, LF, Leerzeichen, Steuerzeichen und Nicht-ASCII ab", () => {
+    for (const v of ["", "a\rb", "a\nb", "a b", "a\u0000b", "a\u007fb", "ä@x", "a@\u{1F680}"]) expect(isSearchableValue(v), JSON.stringify(v)).toBe(false);
   });
 });

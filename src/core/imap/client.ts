@@ -6,7 +6,7 @@ import type { SocketTransport, TlsMode } from "../net/types";
 import { NetError } from "../net/types";
 import { withTimeout, type TimeoutTimers } from "../../vendor/code-kit/timeout";
 import { normalizeMessageId } from "../mime/headers";
-import { assertNoCrlf, buildUidSet, chunk, encodeMailbox, quoteArg } from "./commands";
+import { assertNoCrlf, buildUidSet, chunk, encodeMailbox, isSearchableValue, quoteArg } from "./commands";
 import { findAtomValue, firstLiteral, parseResponse, readRawLine } from "./parser";
 import type { ImapErrorCode, ImapItem, ImapResponse } from "./types";
 import { MAX_UNTAGGED_PER_COMMAND } from "./types";
@@ -35,6 +35,11 @@ export interface ImapReadSession {
   readonly capabilities: string[];
   examine(mailbox: string): Promise<{ ok: true; uidValidity: number; exists: number } | { ok: false; code: ImapErrorCode; detail: string }>;
   uidSearchAll(): Promise<number[]>;
+  /** `UID SEARCH HEADER <feld> "<wert>"` (RFC 3501 § 6.4.4: Teilstring-Treffer, ohne Beachtung
+   *  der Gross-/Kleinschreibung). Liest nur und setzt keine Flags. Ein Wert mit CR, LF,
+   *  Nicht-ASCII oder Leerzeichen und ein Feldname mit Sonderzeichen ergeben `[]` OHNE Kommando
+   *  (kein `CHARSET`, keine zweite Kommandozeile). */
+  uidSearchHeader(field: string, value: string): Promise<number[]>;
   /** uid → normalisierte Message-ID; null, wenn die Mail keinen Message-ID-Header hat. */
   uidFetchMessageIds(uids: readonly number[]): Promise<Map<number, string | null>>;
   /** Flags plus ein schmaler Header-Block je UID — Rohmaterial fuer die Posteingangs-Liste.
@@ -242,6 +247,19 @@ function flagsFrom(items: ImapItem[]): string[] {
   return [];
 }
 
+/** Die UIDs aus den `* SEARCH …`-Zeilen einer Antwort. */
+function uidsFromSearch(untagged: ImapResponse[]): number[] {
+  const uids: number[] = [];
+  for (const resp of untagged) {
+    if (!/^SEARCH\b/i.test(resp.text)) continue;
+    for (const part of resp.text.split(/\s+/).slice(1)) {
+      const n = Number(part);
+      if (Number.isSafeInteger(n) && n > 0) uids.push(n);
+    }
+  }
+  return uids;
+}
+
 function messageIdFromHeader(bytes: Uint8Array): string | null {
   const text = new TextDecoder().decode(bytes);
   const m = /^message-id:\s*(.+)$/im.exec(text);
@@ -357,15 +375,15 @@ function makeReadSession(conn: Connection, capabilities: string[]): ImapReadSess
       const tag = conn.nextTag();
       const r = await conn.command(tag, "UID SEARCH ALL");
       if (r.status !== "OK") throw new NetError("protocol", `UID SEARCH abgelehnt: ${r.text}`);
-      const uids: number[] = [];
-      for (const resp of r.untagged) {
-        if (!/^SEARCH\b/i.test(resp.text)) continue;
-        for (const part of resp.text.split(/\s+/).slice(1)) {
-          const n = Number(part);
-          if (Number.isSafeInteger(n) && n > 0) uids.push(n);
-        }
-      }
-      return uids;
+      return uidsFromSearch(r.untagged);
+    },
+
+    async uidSearchHeader(field, value) {
+      if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(field) || !isSearchableValue(value)) return [];
+      const tag = conn.nextTag();
+      const r = await conn.command(tag, `UID SEARCH HEADER ${field} ${quoteArg(value)}`);
+      if (r.status !== "OK") throw new NetError("protocol", `UID SEARCH (Header) abgelehnt: ${r.text}`);
+      return uidsFromSearch(r.untagged);
     },
 
     async uidFetchMessageIds(uids) {
