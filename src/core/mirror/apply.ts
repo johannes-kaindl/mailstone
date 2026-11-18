@@ -2,7 +2,7 @@
 // rendert nie eine bestehende Notiz neu (Spec § 2.2, Merge-Regel 5) — deshalb geht hier
 // ausnahmslos allowUpdate: false an planMailNote.
 import type { ParsedMail } from "../mime/types";
-import { planMailNote, type NotePlan } from "./plan";
+import { assignRunPaths, planMailNote, type NotePlan } from "./plan";
 import type { MailProfile } from "./profile";
 
 /** Ein Eintrag des Vault-Index. `state: null` heisst "Notiz ohne Zustandsfeld" — zusammen mit
@@ -45,22 +45,32 @@ export function planSync(input: ApplyInput): NotePlan[] {
   // Mail-IDs geplant werden, die `index` NICHT kennt.
   const planned = new Set<string>();
 
-  for (const { mail, eml } of input.fetched) {
-    if (index.has(mail.id)) continue; // bekannt -> Zustand entscheidet unten, nie neu rendern
-    if (planned.has(mail.id)) continue; // dieselbe Mail-ID zweimal geliefert, s. o.
-    planned.add(mail.id);
-    const plan = planMailNote({
+  // Erster Durchgang: die neuen Mails auswaehlen (Riegel s. o.) und ihre Pfade VOR dem Rendern
+  // vergeben. Erst so kennt `linkFor` auch Mails desselben Laufs, unabhaengig von der Reihenfolge
+  // in `fetched` (B1, Welle 36).
+  const fresh: { mail: ParsedMail; eml: Uint8Array }[] = [];
+  for (const item of input.fetched) {
+    if (index.has(item.mail.id)) continue; // bekannt -> Zustand entscheidet unten, nie neu rendern
+    if (planned.has(item.mail.id)) continue; // dieselbe Mail-ID zweimal geliefert, s. o.
+    planned.add(item.mail.id);
+    fresh.push(item);
+  }
+  const run = assignRunPaths(profile, fresh.map((f) => f.mail), taken);
+  const linkFor = (id: string): string | null => run.targets.get(id) ?? input.linkFor?.(id) ?? null;
+
+  // Zweiter Durchgang: planen.
+  fresh.forEach(({ mail, eml }, i) => {
+    plans.push(planMailNote({
       mail, eml, profile,
       source: input.source,
       syncedAt: input.syncedAt,
       existing: null,
       takenPaths: taken,
       allowUpdate: false,
-      ...(input.linkFor ? { linkFor: input.linkFor } : {}),
-    });
-    if (plan.kind === "create") { taken.add(plan.path); taken.add(plan.emlPath); }
-    plans.push(plan);
-  }
+      paths: run.paths[i]!,
+      linkFor,
+    }));
+  });
 
   for (const [mailId, entry] of index) {
     // Fremde Notiz (anderes Konto/Ordner) oder Altbestand ohne Herkunft: nicht unsere Sache.

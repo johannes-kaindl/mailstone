@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Replies and their original mail synced (or imported) in the same run now link to each other. Before, the link was only written for mails from earlier runs, so a reply that arrived together with its original kept the raw message id; the order of the mails in the run no longer matters.
+- `References` headers without angle brackets (a bare `id@host`) are no longer dropped, and spaces inside the brackets are tolerated.
+
 ## [0.11.1] — 2026-11-15
 
 ### Fixed

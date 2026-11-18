@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { planSync, type MailIndex } from "../../../src/core/mirror/apply";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
 import type { ParsedMail } from "../../../src/core/mime/types";
+import { mailFilename, mailFolder } from "../../../src/core/render/filename";
 
 const profile = defaultMailProfile();
 const syncedAt = new Date("2026-08-30T09:00:00Z");
@@ -75,5 +76,61 @@ describe("planSync", () => {
     const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(), fetched: [{ mail: a, eml }, { mail: b, eml }], onServer: new Set(["eins@x", "zwei@x"]) });
     const paths = plans.flatMap((p) => (p.kind === "create" ? [p.path, p.emlPath] : []));
     expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  // B1 (Welle 36): Antwort und Bezugsmail im selben Lauf. Die Antwort steht in `fetched` VOR der
+  // Bezugsmail; der Link muss trotzdem auf den Pfad zeigen, den die Bezugsmail in diesem Lauf bekommt.
+  describe("Verweise innerhalb eines Laufs", () => {
+    const linkFor = (id: string): string | null => (id === "alt@example.org" ? "Mail/2026/alt-im-index" : null);
+    const A = (): ParsedMail => mail("a@example.org");
+    const B = (extra: Partial<ParsedMail>): ParsedMail => ({ ...mail("b@example.org"), subject: "Re: Betreff", ...extra });
+    const create = (plans: ReturnType<typeof planSync>, id: string) => {
+      const p = plans.find((x) => x.mailId === id);
+      if (!p || p.kind !== "create") throw new Error(`kein create-Plan fuer ${id}`);
+      return p;
+    };
+
+    it("References: die Antwort traegt den Wikilink auf die Bezugsmail, auch wenn sie vor ihr geliefert wird", () => {
+      const a = A(); const b = B({ references: ["a@example.org"] });
+      const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(),
+        fetched: [{ mail: b, eml }, { mail: a, eml }], onServer: new Set(["a@example.org", "b@example.org"]), linkFor });
+      const pa = create(plans, "a@example.org");
+      expect(create(plans, "b@example.org").content).toContain(`[[${pa.path.replace(/\.md$/, "")}]]`);
+    });
+
+    it("In-Reply-To: dasselbe", () => {
+      const a = A(); const b = B({ inReplyTo: "a@example.org" });
+      const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(),
+        fetched: [{ mail: b, eml }, { mail: a, eml }], onServer: new Set(["a@example.org", "b@example.org"]), linkFor });
+      const pa = create(plans, "a@example.org");
+      const zeile = create(plans, "b@example.org").content.split("\n").find((l) => l.startsWith("in_reply_to:"));
+      expect(zeile).toContain(`[[${pa.path.replace(/\.md$/, "")}]]`);
+    });
+
+    it("weicht die Bezugsmail auf -2 aus (Basisname belegt), zeigt der Link auf -2", () => {
+      const a = A(); const b = B({ inReplyTo: "a@example.org", references: ["a@example.org"] });
+      const base = `${mailFolder(profile, a)}/${mailFilename(profile, a)}`;
+      const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set([`${base}.md`]),
+        fetched: [{ mail: b, eml }, { mail: a, eml }], onServer: new Set(["a@example.org", "b@example.org"]), linkFor });
+      expect(create(plans, "a@example.org").path).toBe(`${base}-2.md`);
+      const body = create(plans, "b@example.org").content;
+      expect(body).toContain(`[[${base}-2]]`);
+      expect(body).not.toContain(`[[${base}]]`);
+    });
+
+    it("kennt weiter den Index: eine Bezugsmail von frueher wird verlinkt", () => {
+      const b = B({ inReplyTo: "alt@example.org" });
+      const index: MailIndex = new Map([["alt@example.org", { path: "Mail/2026/alt-im-index.md", state: "live", source: SOURCE }]]);
+      const plans = planSync({ profile, source: SOURCE, syncedAt, index, takenPaths: new Set(),
+        fetched: [{ mail: b, eml }], onServer: new Set(["alt@example.org", "b@example.org"]), linkFor });
+      expect(create(plans, "b@example.org").content).toContain("[[Mail/2026/alt-im-index]]");
+    });
+
+    it("haelt die Invariante: eine doppelt gelieferte Mail-ID bekommt einen Plan und einen Pfad", () => {
+      const a = A();
+      const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(),
+        fetched: [{ mail: a, eml }, { mail: { ...a, subject: "Anders" }, eml }], onServer: new Set(["a@example.org"]), linkFor });
+      expect(plans.filter((p) => p.mailId === "a@example.org")).toHaveLength(1);
+    });
   });
 });

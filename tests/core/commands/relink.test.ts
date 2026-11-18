@@ -52,6 +52,15 @@ describe("relinkValues", () => {
   it("liefert null, wenn sich nichts aendert", () => {
     expect(relinkValues({ in_reply_to: "[[Mail/2026/b@x]]" }, ["in_reply_to", "references"], linkFor)).toBeNull();
   });
+  // Charakterisierung (B1, Welle 36): sichert die Form aus dem Arbeits-Vault ab - Liste aus roher ID
+  // und Wikilinks gemischt, in_reply_to als rohe ID. Darf gruen starten; es ist kein Rot-Test.
+  it("loest eine gemischte Liste aus roher ID und Wikilinks auf und laesst die Wikilinks stehen", () => {
+    const out = relinkValues(
+      { in_reply_to: "b@x", references: ["[[Mail/2026/c@x]]", "b@x", "weg@x"] },
+      ["in_reply_to", "references"], linkFor,
+    );
+    expect(out).toEqual({ in_reply_to: "[[Mail/2026/b@x]]", references: ["[[Mail/2026/c@x]]", "[[Mail/2026/b@x]]", "weg@x"] });
+  });
   it("uebergeht Werte, die weder String noch String-Liste sind", () => {
     expect(relinkValues({ in_reply_to: 42 }, ["in_reply_to"], linkFor)).toBeNull();
   });
@@ -80,6 +89,16 @@ describe("mail.relink", () => {
     const ohne: MailNoteRef = { mailId: "a@x", path: "Mail/2026/a@x.md", zoneHash: null,
       frontmatter: { mail_id: "a@x", in_reply_to: "b@x" }, content: "---\nmail_id: a@x\nin_reply_to: b@x\n---\nnur Text" };
     expect(RELINK_COMMAND.plan({}, ctx([ohne]))).toEqual({ ok: false, code: "nothing-to-do" });
+  });
+
+  it("plant ein update fuer die gemischte Form (Charakterisierung, B1)", () => {
+    const n = note("a@x", { in_reply_to: "b@x", references: ["[[Mail/2026/c@x]]", "b@x"] });
+    const r = RELINK_COMMAND.plan({}, ctx([n]));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.notes).toHaveLength(1);
+    expect(r.plan.notes[0]).toMatchObject({ kind: "update", path: "Mail/2026/a@x.md", mailId: "a@x" });
+    expect(r.plan.diff.length).toBeGreaterThan(0);
   });
 
   it("meldet nothing-to-do, wenn alles schon verlinkt ist", () => {

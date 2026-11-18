@@ -46,6 +46,11 @@ export interface PlanInput {
   existing: ExistingNote | null;
   linkFor?: (id: string) => string | null;
   takenPaths: Set<string>; // Kollisionen → -2, -3
+  /** Vorab vergebene Pfade (`assignRunPaths`): nur fuer eine neue Notiz (`existing: null`) und
+   *  nur, wenn der Aufrufer die Pfade eines ganzen Laufs vorher vergibt, damit Verweise auf
+   *  Mails desselben Laufs schon beim Rendern ein Ziel haben. Ohne dieses Feld rechnet
+   *  `planMailNote` wie bisher aus `takenPaths`. */
+  paths?: AssignedPaths;
   /** false = bestehende Notizen werden nie neu gerendert (Merge-Regel 5 der Spec § 2.2:
    *  "Re-Render nie automatisch; Sync legt nur Neues an und setzt mail_state"). Der Sync
    *  uebergibt false, das Import-Kommando true. */
@@ -55,7 +60,9 @@ export interface PlanInput {
 /** Notiz und .eml gehoeren zusammen: beide Pfade werden gegen dieselbe Belegt-Menge geprueft
  *  und ruecken gemeinsam auf denselben Suffix. Sonst koennte eine freie .md auf eine bereits
  *  belegte .eml treffen — createBinary wuerfe, und der ganze Plan waere ein Fehlschlag. */
-function freePaths(folder: string, emlDir: string, base: string, taken: Set<string>): { path: string; emlPath: string } {
+export interface AssignedPaths { path: string; emlPath: string }
+
+function freePaths(folder: string, emlDir: string, base: string, taken: Set<string>): AssignedPaths {
   let n = 1;
   for (;;) {
     const suffix = n === 1 ? "" : `-${n}`;
@@ -64,6 +71,26 @@ function freePaths(folder: string, emlDir: string, base: string, taken: Set<stri
     if (!taken.has(path) && !taken.has(emlPath)) return { path, emlPath };
     n++;
   }
+}
+
+/** Vergibt die Pfade aller NEUEN Notizen eines Laufs vorab, in Eingabereihenfolge, und traegt
+ *  sie in `taken` ein. `paths[i]` gehoert zu `mails[i]`; `targets` bildet Mail-ID auf den
+ *  Notizpfad ohne `.md` ab (bei doppelter ID gewinnt die erste) und dient als Linkziel fuer
+ *  Verweise auf Mails desselben Laufs. */
+export function assignRunPaths(
+  profile: MailProfile,
+  mails: readonly ParsedMail[],
+  taken: Set<string>,
+): { paths: AssignedPaths[]; targets: Map<string, string> } {
+  const paths: AssignedPaths[] = [];
+  const targets = new Map<string, string>();
+  for (const mail of mails) {
+    const p = freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), taken);
+    taken.add(p.path); taken.add(p.emlPath);
+    paths.push(p);
+    if (!targets.has(mail.id)) targets.set(mail.id, p.path.replace(/\.md$/, ""));
+  }
+  return { paths, targets };
 }
 
 export function planMailNote(input: PlanInput): NotePlan {
@@ -80,7 +107,7 @@ export function planMailNote(input: PlanInput): NotePlan {
   const block = renderMessageBlock(mail, { heading: (input.existing && blockHeadingOf(input.existing.content)) || headings.message });
 
   if (!input.existing) {
-    const { path, emlPath } = freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
+    const { path, emlPath } = input.paths ?? freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
     const { content, zoneHash } = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`);
     return { kind: "create", path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash };
   }

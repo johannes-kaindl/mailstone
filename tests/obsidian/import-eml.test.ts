@@ -3,6 +3,12 @@ import { importEmlFolder } from "../../src/obsidian/import-eml";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import { makeApp } from "../helpers/memory-vault";
 import { loadFixture } from "../helpers/fixtures";
+import { parseEml } from "../../src/core/mime/parse";
+import { mailFilename, mailFolder } from "../../src/core/render/filename";
+
+const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s.replace(/\n/g, "\r\n")).buffer as ArrayBuffer;
+const eml = (id: string, extra: string): string =>
+  `From: a@example.org\nTo: b@example.org\nSubject: Betreff ${id}\nDate: Tue, 19 Aug 2026 16:00:00 +0200\nMessage-ID: <${id}>\n${extra}MIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\n\nText\n`;
 
 describe("importEmlFolder", () => {
   it("importiert alle .eml eines Vault-Ordners, zweiter Lauf ist idempotent", async () => {
@@ -48,5 +54,26 @@ describe("importEmlFolder", () => {
     await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
     const r = await importEmlFolder({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "");
     expect(r.created + r.errors.length).toBe(0);
+  });
+  // B1 (Welle 36): Antwort und Bezugsmail im selben Import. Die Antwort liegt zuerst im Ordner;
+  // die Bezugsmail weicht auf -2 aus, der Link der Antwort muss auf -2 zeigen.
+  it("verlinkt die Bezugsmail desselben Imports, auch wenn die Antwort vor ihr kommt und die Bezugsmail ausweicht", async () => {
+    const app = makeApp();
+    const profile = defaultMailProfile();
+    const aBytes = eml("a@example.org", "");
+    await app.vault.createBinary("Import/1-antwort.eml", enc(eml("b@example.org", "In-Reply-To: <a@example.org>\nReferences: <a@example.org>\n")));
+    await app.vault.createBinary("Import/2-bezug.eml", enc(aBytes));
+    const a = await parseEml(new Uint8Array(enc(aBytes)));
+    const base = `${mailFolder(profile, a)}/${mailFilename(profile, a)}`;
+    await app.vault.create(`${base}.md`, "belegt");
+    const r = await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    expect(r.errors).toEqual([]);
+    expect(r.created).toBe(2);
+    expect(await app.vault.adapter.exists(`${base}-2.md`)).toBe(true);
+    const antwort = (await app.vault.adapter.read(`${mailFolder(profile, a)}/${mailFilename(profile, { ...a, subject: "Betreff b@example.org" })}.md`)) as string;
+    expect(antwort).toContain(`[[${base}-2]]`);
+    const zeile = antwort.split("\n").find((l) => l.startsWith("in_reply_to:"));
+    expect(zeile).toContain(`[[${base}-2]]`);
+    expect(zeile).not.toContain(`[[${base}]]`);
   });
 });

@@ -22,6 +22,22 @@ describe("splitReferences", () => {
   it("gefaltete Header funktionieren weiterhin", () => {
     expect(splitReferences("<a@x>\r\n <b@x>")).toEqual(["a@x", "b@x"]);
   });
+  it("eine ID ohne spitze Klammern ergibt die ID statt []", () => {
+    expect(splitReferences("own-1@example.org")).toEqual(["own-1@example.org"]);
+  });
+  it("mehrere IDs ohne Klammern, durch Leerraum, Zeilenumbruch oder Komma getrennt, ohne Duplikate", () => {
+    expect(splitReferences("a@example.org, b@example.org\r\n a@example.org")).toEqual(["a@example.org", "b@example.org"]);
+  });
+  it("Rückfall nur ohne Klammer-Treffer: ein gemischter Header behält sein Verhalten", () => {
+    expect(splitReferences("<a@example.org> b@example.org")).toEqual(["a@example.org"]);
+  });
+  it("Rückfall nimmt nur Token mit @ und ohne Klammerreste", () => {
+    expect(splitReferences("kein-id <halb@example.org")).toEqual([]);
+    expect(splitReferences("wort own-1@example.org")).toEqual(["own-1@example.org"]);
+  });
+  it("Leerraum innerhalb der Klammern wird toleriert", () => {
+    expect(splitReferences("<  id@example.org  > <\r\n b@example.org>")).toEqual(["id@example.org", "b@example.org"]);
+  });
 });
 describe("formatAddress", () => {
   it("mit Name", () => { expect(formatAddress({ name: "Erika Beispiel", address: "e@example.org" })).toBe("Erika Beispiel <e@example.org>"); });

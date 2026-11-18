@@ -15,11 +15,15 @@ export function normalizeMessageId(raw: string | null | undefined): string | nul
 export function splitReferences(raw: string | null | undefined): string[] {
   if (!raw) return [];
   const out: string[] = [];
-  for (const m of raw.matchAll(/<([^<>\s]*)>/g)) {
-    // Kein .trim(): die Capture-Gruppe schliesst Whitespace bereits aus (M1-Nachlese Punkt 6).
-    const id = m[1]!;
-    if (id && !out.includes(id)) out.push(id);
-  }
+  const add = (id: string): void => { if (id && !out.includes(id)) out.push(id); };
+  // Leerraum innerhalb der Klammern (`<  id@x  >`, gefaltet mitten in der Klammer) wird toleriert;
+  // die Capture-Gruppe selbst schliesst Leerraum aus, braucht also kein .trim() (M1-Nachlese Punkt 6).
+  for (const m of raw.matchAll(/<\s*([^<>\s]*)\s*>/g)) add(m[1]!);
+  if (out.length > 0) return out;
+  // Rueckfall NUR ohne Klammer-Treffer (ein gemischter Header behaelt sein Verhalten): manche
+  // Absender schreiben die ID ohne spitze Klammern. Token durch Leerraum oder Komma getrennt;
+  // gilt nur mit `@` und ohne Klammerreste.
+  for (const t of raw.split(/[\s,]+/)) if (t.includes("@") && !/[<>]/.test(t)) add(t);
   return out;
 }
 
