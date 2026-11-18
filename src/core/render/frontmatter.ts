@@ -32,8 +32,10 @@ export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterIn
   const { mail, linkFor } = input;
   // Faellt auf die rohe Message-ID zurueck, wenn es kein Ziel gibt ODER der Zielpfad sich
   // nicht als Wikilink schreiben laesst (M3b-Nachlese, geparkter Befund 1).
+  // Eine Mail, die ihre eigene ID nennt (References/In-Reply-To), verlinkt nie auf sich selbst:
+  // die ID bleibt roh (Vorspann zu A6, Welle 36).
   const link = (id: string): string => {
-    const t = linkFor?.(id) ?? null;
+    const t = id === mail.id ? null : (linkFor?.(id) ?? null);
     return (t === null ? null : wikilinkOf(t)) ?? id;
   };
   const parts = mail.date ? { date: localDate(mail.date), time: localTime(mail.date) } : { date: "", time: "" };

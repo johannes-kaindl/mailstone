@@ -76,4 +76,15 @@ describe("importEmlFolder", () => {
     expect(zeile).toContain(`[[${base}-2]]`);
     expect(zeile).not.toContain(`[[${base}]]`);
   });
+  it("eine Mail, die ihre eigene ID in References traegt, verlinkt im Import nicht auf sich selbst", async () => {
+    const app = makeApp();
+    const profile = defaultMailProfile();
+    await app.vault.createBinary("Import/selbst.eml", enc(eml("s@example.org", "In-Reply-To: <s@example.org>\nReferences: <s@example.org>\n")));
+    const r = await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    expect(r.created).toBe(1);
+    const pfad = (await app.vault.getMarkdownFiles())[0]!.path;
+    const inhalt = (await app.vault.adapter.read(pfad)) as string;
+    expect(inhalt).not.toContain("[[");
+    expect(inhalt.split("\n").find((l) => l.startsWith("in_reply_to:"))).toContain("s@example.org");
+  });
 });

@@ -3,9 +3,11 @@ import type { MailAddress } from "./types";
 
 export function normalizeMessageId(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const m = /<([^<>\s]*)>/.exec(raw);
-  if (m) { const v = m[1]!.trim(); return v.length > 0 ? v : null; }
-  // Kein Match (z. B. Whitespace innerhalb der Klammern): Fallback ist raw.trim(), aber der
+  // Leerraum direkt innerhalb der Klammern (`<  id@x  >`) wird toleriert wie in splitReferences;
+  // die Capture-Gruppe selbst schliesst Leerraum aus, `<a@x\r\nBcc: ...>` bleibt also ohne Treffer.
+  const m = /<\s*([^<>\s]*)\s*>/.exec(raw);
+  if (m) { const v = m[1]!; return v.length > 0 ? v : null; }
+  // Kein Match (z. B. Leerraum mitten im Wert): Fallback ist raw.trim(), aber der
   // darf selbst keinen Whitespace oder Klammern enthalten — sonst waere er als Header-Wert
   // (z. B. Message-ID/In-Reply-To) eine Injection-Flaeche.
   const v = raw.trim();

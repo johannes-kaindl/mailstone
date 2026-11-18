@@ -10,6 +10,10 @@ describe("normalizeMessageId", () => {
     expect(normalizeMessageId(undefined)).toBeNull();
     expect(normalizeMessageId("<>")).toBeNull();
   });
+  it("toleriert Leerraum innerhalb der Klammern wie splitReferences", () => {
+    expect(normalizeMessageId("<  id@x  >")).toBe("id@x");
+    expect(normalizeMessageId("<\r\n id@x>")).toBe("id@x");
+  });
   it("lehnt Header-Injection ab (kein Match, Fallback verwirft Whitespace/Klammern)", () => {
     expect(normalizeMessageId("<a@x\r\nBcc: evil@example.org>")).toBeNull();
   });

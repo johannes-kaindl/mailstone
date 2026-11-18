@@ -126,6 +126,16 @@ describe("planSync", () => {
       expect(create(plans, "b@example.org").content).toContain("[[Mail/2026/alt-im-index]]");
     });
 
+    it("eine Mail, die ihre eigene ID in References und In-Reply-To traegt, verlinkt nicht auf sich selbst", () => {
+      const a = { ...A(), inReplyTo: "a@example.org", references: ["a@example.org", "alt@example.org"] };
+      const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(),
+        fetched: [{ mail: a, eml }], onServer: new Set(["a@example.org"]), linkFor });
+      const p = create(plans, "a@example.org");
+      expect(p.content).not.toContain(`[[${p.path.replace(/\.md$/, "")}]]`);
+      expect(p.content).toContain("a@example.org");
+      expect(p.content).toContain("[[Mail/2026/alt-im-index]]");
+    });
+
     it("haelt die Invariante: eine doppelt gelieferte Mail-ID bekommt einen Plan und einen Pfad", () => {
       const a = A();
       const plans = planSync({ profile, source: SOURCE, syncedAt, index: new Map(), takenPaths: new Set(),

@@ -74,7 +74,8 @@ export const RELINK_COMMAND: CommandDescriptor = {
     // Notiz, die es stillschweigend auslaesst, sieht fuer den Nutzer aus wie eine, die nichts
     // zu tun hatte. Der Executor zaehlt die Eintraege und die Meldung nennt sie.
     for (const ref of ctx.notes ?? []) {
-      const values = relinkValues(ref.frontmatter, keys, linkFor);
+      // Eine Notiz verlinkt nie auf sich selbst (Vorspann zu A6, Welle 36).
+      const values = relinkValues(ref.frontmatter, keys, (id) => (id === ref.mailId ? null : linkFor(id)));
       if (!values) continue; // wirklich nichts zu tun — kein Uebergehen, deshalb auch kein skip
       const hash = keepZoneHash(ref.content, ref.zoneHash);
       if (hash === null) {

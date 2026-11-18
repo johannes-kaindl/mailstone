@@ -101,6 +101,14 @@ describe("mail.relink", () => {
     expect(r.plan.diff.length).toBeGreaterThan(0);
   });
 
+  it("verlinkt eine Notiz nie auf sich selbst (eigene ID in references bleibt roh)", () => {
+    const c = { ...ctx([note("a@x", { references: ["a@x", "b@x"] })]), linkFor: (id: string) => (id === "a@x" ? "Mail/2026/a@x" : linkFor(id)) };
+    const r = RELINK_COMMAND.plan({}, c);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.diff[0]).toMatchObject({ after: "a@x, [[Mail/2026/b@x]]" });
+  });
+
   it("meldet nothing-to-do, wenn alles schon verlinkt ist", () => {
     expect(RELINK_COMMAND.plan({}, ctx([note("a@x", { in_reply_to: "[[Mail/2026/b@x]]" })]))).toEqual({ ok: false, code: "nothing-to-do" });
   });
