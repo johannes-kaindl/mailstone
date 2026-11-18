@@ -45,3 +45,21 @@ Wer diese Ausnahme erweitert (weitere Felder, IDs früherer Läufe, die Zone), �
 ## Ausnahmen von Dach-Regeln
 
 Zwei Abweichungen von der Dach-`REGISTRY.md` sind bewusst und mit Begründung in den Pfadregeln festgehalten: der Aufruf von `api.tasks.create` am Fremdplugin TaskNotes (`.claude/rules/tasknotes.md`, entschieden von Johannes 2026-09-05) und das Zustimmungs-Tor der Versand-API (`.claude/rules/versand-api.md`).
+
+## Erste Schreibstelle auf dem Server: COPY für Vorgang-Folgen (2026-11-18)
+
+Entschieden von Johannes selbst am 2026-11-18 (Klickfrage, Weg 1 der Entscheidungs-Task zu A1): Folge-Mails eines Vorgangs, den der Vault schon kennt, legt der Sync per IMAP `UID COPY` in den Allowlist-Ordner. Weg 2 (Folge-Mails direkt aus INBOX und Gesendet lesen und als zweite Quelle mit eigener `mail_source` führen) ist verworfen.
+
+**Grund.** Der ganze Sync hängt an der einen Ordnerwahrheit: Detach, Reattach, UID-Cache, Zählung. Eine zweite Quelle bräuchte für INBOX und Gesendet eigene Detach-Regeln, weil eine archivierte Antwort sonst als „detached“ erschiene, obwohl sie gewollt ist; sie wäre eine zweite Wahrheit. Mit COPY bleibt der Allowlist-Ordner die einzige: was dort liegt, ist Notiz, was ihn verlässt, wird abgelöst, und die Mail bleibt im Posteingang und in Gesendet sichtbar.
+
+**Was das kostet, und was dafür gilt.**
+
+- Es ist die erste Stelle, an der ein **Sync-Lauf ohne Klick** auf dem Server schreibt. (Geschrieben hat Mailstone schon vorher: `UID MOVE` der Posteingangs-Aktionen auf Klick, `APPEND` der Sent-Kopie beim Versand. Neu ist, dass es der automatische Lauf tut.) Der Eintrag steht in `.claude/rules/imap-vertrag.md`; README, README.de und der Einstellungstext sagen es deutlich.
+- **Standardmäßig aus, auch für bestehende Installationen:** `account.sync.followThreads` gilt nur, wenn `true` gespeichert ist (`loadSettings` liest alles andere als aus). Die Einstellung hängt am **Konto**, nicht am Profil: geschrieben wird auf einem bestimmten Server, und `sync.enabled`, Intervall und Ordner liegen ebenfalls am Konto.
+- Der Lese-Sync bleibt lesend (`imapConnect`, `ImapReadSession`, `EXAMINE`, `BODY.PEEK`). Die schreibende Verbindung entsteht nur im Schritt vor dem Lauf, nur bei eingeschalteter Einstellung und erst, wenn nach dem Abgleich etwas zu kopieren bleibt. `uidCopy` gehört zur `ImapWriteSession`; der Compiler hält es vom Lese-Sync fern.
+- Kein `SELECT`: COPY ist nach RFC 3501 § 6.4.7 im ausgewählten Zustand erlaubt, auch nach `EXAMINE`; die Quelle ändert sich nicht, `SELECT` würde `\Recent` für andere Sitzungen zurücksetzen. Das Muster der Posteingangs-Aktionen (`SELECT` + `UID MOVE`) passt dort, weil MOVE die Quelle verändert. Ob ein echter Server COPY nach EXAMINE annimmt, ist am Fake nicht zu messen und wird beim ersten Lauf am echten Postfach geprüft; lehnt er ab, zählt das als Fehler, und `SELECT` auf der kurzen Verbindung wäre der Ausweg.
+- Keine Doppelkopie: vor dem COPY sucht der Schritt die Message-ID im Allowlist-Ordner (`UID SEARCH HEADER`, Treffer genau geprüft, weil die Suche ein Teilstring-Treffer ist). Dieselbe Mail in INBOX und Gesendet zählt einmal; eine Mail ohne Message-ID oder mit einer ID, die SEARCH nicht tragen darf, wird nicht kopiert, weil sie sich nicht abgleichen ließe.
+- Höchstens 50 Kopien je Lauf und Konto (`MAX_FOLLOW_COPIES_PER_RUN`), älteste zuerst; ein COPY-Fehler hält den Lauf nicht an, er zählt als Fehler. Die `UIDVALIDITY` wird zwischen Lesen und Schreiben verglichen, weil sich die UIDs sonst auf andere Mails beziehen könnten.
+- Gebaut und getestet nur gegen den Fake-IMAP und Unit-Mocks. Der erste Lauf am echten Postfach geschieht mit Johannes (Handover, Vorher-nachher-Zählung des Ordners).
+
+**Folgen für Nutzer.** Die Mails liegen auf dem Server doppelt (Kontingent). Eine Kopie behält die Flags des Originals: Eine ungelesene Mail ist im Allowlist-Ordner ebenfalls ungelesen, und alles, was diesen Ordner sonst beobachtet (ein anderes Werkzeug, eine Mailregel), sieht die Kopien als neue Post. Das ist der Grund, warum der Schalter aus ist und die Einstellung es im Text sagt. Wer eine Kopie aus dem Ordner verschiebt, löst die Notiz ab wie gewohnt.

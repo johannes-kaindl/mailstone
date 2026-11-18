@@ -62,10 +62,11 @@ Grenze bewacht der Compiler, nicht die Aufmerksamkeit eines Reviewers:
 | Einstieg | Typ | Kann | Wer nimmt ihn |
 |---|---|---|---|
 | `imapConnect` | `ImapReadSession` | `examine`, `uidSearchAll`, `uidFetchMessageIds`, `uidFetchHeaders`, `uidFetchBody`, `append` | Sync, Inbox-Liste, Sent-Kopie (`src/core/send/service.ts`) |
-| `imapConnectWritable` | `ImapWriteSession` | zusätzlich `select`, `uidMove` | **nur** `src/core/inbox/actions.ts` |
+| `imapConnectWritable` | `ImapWriteSession` | zusätzlich `select`, `uidMove`, `uidCopy` | `src/core/inbox/actions.ts` (Klick) und `src/core/thread/follow-copy.ts` (Sync-Schritt „Vorgängen folgen“, Standard aus, nur `examine` + `uidCopy`) |
 
 Die Pfade, Typen und der Test dazu: `.claude/rules/imap-vertrag.md`.
 
+- **Die einzige Stelle, an der ein Sync-Lauf von selbst auf dem Server schreibt, ist „Vorgängen folgen“ (`UID COPY`, Konto-Einstellung, Standard aus).** Entschieden von Johannes 2026-11-18; Grund und Bedingungen: `docs/internal/decisions.md`, Vertrag: `.claude/rules/imap-vertrag.md`. Wer eine zweite Schreibstelle im Sync ergänzt, öffnet diesen Vertrag und trägt sie dort ein.
 - **`SecretComponent` bindet eine Schlüsselbund-ID, nie ein Passwort.** `onChange` liefert die ID des Eintrags; gespeichert wird `account.secretId`. Ein verwaister Eintrag nach „Abbrechen“ wird bewusst nicht aufgeräumt. Mehr: `.claude/rules/secrets.md`.
 - **Ein Fehlschlag der Sent-Kopie ist kein Fehlschlag des Versands:** `send()` bleibt `ok: true`, der Ausgang steht getrennt als `sentCopy`. Mehr: `.claude/rules/smtp-versand.md`.
 - **Anhänge werden nach Index adressiert, nicht nach Namen,** und ein zweiter Extrakt verlinkt eine byte-gleiche Datei statt zu kopieren. Mehr: `.claude/rules/anhaenge.md`.

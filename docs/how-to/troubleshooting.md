@@ -5,6 +5,7 @@
 - [Connecting and syncing](#connecting-and-syncing)
 - [The inbox tab](#the-inbox-tab)
 - [Commands on a mail note](#commands-on-a-mail-note)
+- [Follow threads (copies on the server)](#follow-threads-copies-on-the-server)
 - [Sending](#sending)
 - [No network](#no-network)
 - [Mobile](#mobile)
@@ -187,6 +188,28 @@
 **Cause:** Nothing in the last 60 days in the inbox or sent folder has a `In-Reply-To` or `References` header that points to a mail with a note in your vault, or every such thread is stopped. A mail only counts if its thread is already in the vault; mails of unrelated threads are not listed.
 
 **Fix:** Nothing is broken. To see a stopped thread again, run *Follow this thread again* on any note of it.
+
+## Follow threads (copies on the server)
+
+The account setting *Follow threads (copies mails on the server)* is the one place where a sync run writes on your mail server by itself: it copies follow-up mails of threads in your vault into the allowlist folder. It is off by default. Its problems show up as part of the normal sync summary.
+
+### "{0} new, {1} reattached, {2} detached ({3} errors)" with Follow threads switched on
+
+**Cause:** Besides the usual causes, each mail Mailstone could not copy counts as one error: the server refused the copy (mailbox quota exceeded, no right to add mails to the allowlist folder), the folder named under *Folders: Allowlist* does not exist, the connection broke while copying, or the folder's numbering changed between looking and copying (the server renumbers a folder only rarely; the next run starts again). A failed copy never stops the run: the notes that could be made are made.
+
+**Fix:** Switch on *Debug log* in the settings and restart Obsidian; the developer console (Ctrl/Cmd+Shift+I) then shows lines starting with `follow-copy:` with the server's reason, and the IMAP dialogue with passwords masked. Free up quota or fix the folder name, then synchronise again; mails that were not copied are tried again in the next run. If you would rather not have Mailstone write on the server, switch the setting off.
+
+### Mails I did not move appear in the allowlist folder
+
+**Cause:** That is what *Follow threads* does: it puts copies of follow-up mails there (the original stays in the inbox or sent folder). A copy keeps the flags of the original, so an unread mail is also unread in the allowlist folder, and anything else that watches the folder sees it as new mail.
+
+**Fix:** Switch the setting off to stop further copies (copies already made stay; delete them in your mail program if you do not want them). To keep a single thread from being followed, run *Stop following this thread* on one of its notes.
+
+### A follow-up mail is never copied
+
+**Cause:** Either its thread is not in your vault yet (a mail only counts if it answers a mail that has a note), the thread is stopped, the mail is older than 60 days, or it has no usable Message-ID (missing, or with characters an IMAP search cannot carry): such a mail cannot be checked for a copy that already exists, so Mailstone leaves it alone. At most 50 mails are copied per run; the rest follows in the next ones.
+
+**Fix:** *Show follow-up mails* lists what Mailstone sees. Move a mail into the allowlist folder by hand if it cannot be followed automatically.
 
 ## Sending
 
