@@ -14,6 +14,8 @@ type FakeImapChild = ChildProcessByStdio<null, Readable, Readable>;
 import { imapConnect, imapConnectWritable } from "../../src/core/imap/client";
 import { adoptMessage } from "../../src/core/inbox/actions";
 import { fetchOriginal, type OriginalAccount } from "../../src/core/originals/fetch-original";
+import { runFollowUps } from "../../src/core/thread/follow-run";
+import { groupThreads } from "../../src/core/thread/group";
 import { createSyncService } from "../../src/core/sync/service";
 import { createBusyGuard } from "../../src/vendor/code-kit/busy-guard";
 import { createEmitter } from "../../src/core/sync/events";
@@ -264,6 +266,50 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     expect(zeilen.filter((z) => /\bSELECT\b/i.test(z))).toEqual([]);
     expect(zeilen.filter((z) => /BODY\[/i.test(z))).toEqual([]);
     expect(zeilen.filter((z) => /\b(COPY|STORE|MOVE)\b/i.test(z))).toEqual([]);
+  });
+
+  // A1 (Welle 36): „Folge-Mails anzeigen“ ueber einen ganzen Lauf gegen INBOX und Sent. Der Vault kennt nur die
+  // Mail `eins` (Wurzel); gefunden werden die Antworten darauf in beiden Ordnern, nicht die Mail mit Notiz, nicht die
+  // zu alte (faellt aus SEARCH SINCE), nicht die ohne Bezug. Der Dialog bleibt lesend.
+  it("findet Folge-Mails in INBOX und Sent, nur lesend: kein SELECT, kein BODY[, kein COPY, STORE oder MOVE", async () => {
+    await starteServer();
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const r = await runFollowUps({
+      accounts: () => [{ id: "acc", label: "Testkonto", folders: { inbox: "INBOX", sent: "Sent" } }],
+      connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()),
+      busy: createBusyGuard(),
+      context: () => ({ index: vault, stopped: new Set<string>() }),
+      now: () => new Date(Date.UTC(2026, 8, 10)),
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.problems).toEqual([]);
+    expect(r.items.map((i) => [i.folder, i.uid, i.mailId, i.root, i.subject])).toEqual([
+      ["INBOX", 9, "zwei@example.net", "eins@example.net", "Zweite Testmail"],
+      ["Sent", 3, "antwort-eins@example.net", "eins@example.net", "Re: Erste Testmail"],
+    ]);
+    await warteAufKommando(/^LOGOUT$/i);
+
+    const zeilen = kommandos();
+    expect(zeilen.filter((z) => /^EXAMINE\b/i.test(z))).toHaveLength(2);
+    expect(zeilen.filter((z) => /^UID SEARCH SINCE 12-Jul-2026$/i.test(z))).toHaveLength(2);
+    expect(zeilen.filter((z) => /^UID FETCH .*BODY\.PEEK\[HEADER\.FIELDS \(FROM SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES\)\]/i.test(z))).toHaveLength(2);
+    expect(zeilen.filter((z) => /\bSELECT\b/i.test(z))).toEqual([]);
+    expect(zeilen.filter((z) => /BODY\[/i.test(z))).toEqual([]);
+    expect(zeilen.filter((z) => /\b(COPY|STORE|MOVE|APPEND|EXPUNGE)\b/i.test(z))).toEqual([]);
+  });
+
+  it("laesst einen beendeten Vorgang auch ueber den echten Socket aus", async () => {
+    await starteServer();
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const r = await runFollowUps({
+      accounts: () => [{ id: "acc", label: "Testkonto", folders: { inbox: "INBOX", sent: "Sent" } }],
+      connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()),
+      busy: createBusyGuard(),
+      context: () => ({ index: vault, stopped: new Set(["eins@example.net"]) }),
+      now: () => new Date(Date.UTC(2026, 8, 10)),
+    });
+    expect(r).toMatchObject({ ok: true, items: [], problems: [] });
   });
 
   // Die andere Haelfte des Vertrags, und zugleich der erste Test, der den SCHREIBENDEN Pfad

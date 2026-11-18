@@ -17,6 +17,10 @@ export interface MailProfile {
    *  neues Feld). Kein verwaltetes Feld: der Wert haengt am Vault-Stand, nicht an der Mail, Re-render rechnet
    *  ihn nicht neu. Wirksam ist nur ein brauchbarer Name (`effectiveThreadField`). */
   threadField: string;
+  /** Frontmatter-Feld der Wurzel-Notiz, das einen Vorgang beendet (A1): steht dort `false`, folgt Mailstone diesem Vorgang
+   *  nicht mehr (heute: „Folge-Mails anzeigen“ blendet ihn aus). Standard `mail_follow`; leer = die Befehle sind aus.
+   *  Kein verwaltetes Feld, am Vault-Stand wie `threadField`. Wirksam ist nur ein brauchbarer Name (`effectiveFollowField`). */
+  followField: string;
   filename: string; // Default "{date}-{time}-{slug}"
   idField: string;
   sourceField: string;
@@ -53,6 +57,7 @@ export function defaultMailProfile(): MailProfile {
     emlSubfolder: "_eml",
     saveEml: true,
     threadField: "",
+    followField: "mail_follow",
     filename: "{date}-{time}-{slug}",
     idField: "mail_id",
     sourceField: "mail_source",

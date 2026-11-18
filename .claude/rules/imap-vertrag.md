@@ -4,6 +4,7 @@ paths:
   - "src/core/sync/**"
   - "src/core/inbox/**"
   - "src/core/originals/**"
+  - "src/core/thread/follow*.ts"
   - "tests/integration/fake-imap.test.ts"
 ---
 
@@ -41,3 +42,5 @@ Der Message-ID-Abgleich läuft über `BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` sta
 ohne Ertrag.
 
 **`fetchOriginal` (`src/core/originals/`, A6) ist ein weiterer lesender Konsument:** `imapConnect` (nie `imapConnectWritable`), `EXAMINE`, `UID SEARCH HEADER Message-ID` (`uidSearchHeader`, Wert über `quoteArg`; CR, LF, Nicht-ASCII und Leerzeichen senden gar kein Kommando) und `uidFetchBody` (`BODY.PEEK[]`). Er belegt den Busy-Guard wie `fetch.ts`, holt je Ordner höchstens fünf Kandidaten und verwirft jeden, dessen geparste Message-ID nicht passt (`verifyEml`: die Suche ist ein Teilstring-Treffer). Der Dialogtest in `tests/integration/fake-imap.test.ts` prüft auch seinen Lauf auf Abwesenheit von `SELECT` und `BODY[`.
+
+**`runFollowUps` / `findFollowUps` (`src/core/thread/follow-run.ts`, `follow.ts`, A1) ist der dritte lesende Konsument:** `imapConnect` (nie `imapConnectWritable`), je Ordner `EXAMINE`, `UID SEARCH SINCE <dd-Mon-yyyy>` (`uidSearchSince`, Fenster `FOLLOW_WINDOW_DAYS` = 60) und `uidFetchThreadHeaders` (`BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)]`, ohne FLAGS, höchstens `MAX_FOLLOW_HEADERS` = 2000 je Ordner). Der Ablauf bekommt per Typ nur `examine`, `uidSearchSince` und `uidFetchThreadHeaders` (`FollowSession`), schreibt nichts in Vault oder Server und belegt den Busy-Guard wie `fetch.ts`. `uidFetchHeaders` und der Posteingang bleiben bei ihren vier Feldern (eigener Test). Der Dialogtest in `tests/integration/fake-imap.test.ts` prüft den Lauf gegen INBOX und Sent auf Abwesenheit von `SELECT`, `BODY[`, `COPY`, `STORE`, `MOVE`, `APPEND` und `EXPUNGE`.

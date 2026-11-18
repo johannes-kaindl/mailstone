@@ -250,3 +250,23 @@ describe("threadField (A3)", () => {
     expect(loadSettings({ profile: { threadField: "mail_id" } }).profile.threadField).toBe("mail_id");
   });
 });
+
+describe("followField (A1)", () => {
+  it("eine alte data.json ohne das Feld ergibt den Standard mail_follow", () => {
+    const alt = loadSettings({ schemaVersion: 1, profile: { folder: "Mail", saveEml: false } });
+    expect(alt.profile.followField).toBe("mail_follow");
+    expect(loadSettings(undefined).profile.followField).toBe("mail_follow");
+  });
+  it("ein gespeicherter Wert bleibt, auch ein leerer (aus)", () => {
+    expect(loadSettings({ profile: { followField: "folgen" } }).profile.followField).toBe("folgen");
+    expect(loadSettings({ profile: { followField: "" } }).profile.followField).toBe("");
+  });
+  it("ein Wert, der kein Text ist, faellt auf den Standard zurueck", () => {
+    for (const v of [5, true, null, [], {}]) {
+      expect(loadSettings({ profile: { followField: v } }).profile.followField, JSON.stringify(v)).toBe("mail_follow");
+    }
+  });
+  it("ein unbrauchbarer Feldname bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
+    expect(loadSettings({ profile: { followField: "mail_id" } }).profile.followField).toBe("mail_id");
+  });
+});

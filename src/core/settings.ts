@@ -182,6 +182,8 @@ export function loadSettings(raw: unknown): MailstoneSettings {
     saveEml: typeof rawProfile.saveEml === "boolean" ? rawProfile.saveEml : true,
     // Nur Text gilt; fehlt der Schluessel (alte data.json), bleibt der Vorgang aus.
     threadField: typeof rawProfile.threadField === "string" ? rawProfile.threadField : defaultMailProfile().threadField,
+    // Nur Text gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, gilt mail_follow. Ein leerer Text schaltet die Markierung aus.
+    followField: typeof rawProfile.followField === "string" ? rawProfile.followField : defaultMailProfile().followField,
     onCreate: onCreateRoh && onCreateUngueltig.length === 0 ? { ...(onCreateRoh as Record<string, FmVal>) } : { ...defaultMailProfile().onCreate },
   };
   return s;
