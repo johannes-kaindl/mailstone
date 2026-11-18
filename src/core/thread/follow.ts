@@ -61,7 +61,10 @@ export async function findFollowUps(
     for (const uid of newest) {
       const bytes = headers.get(uid);
       if (bytes === undefined) continue;
-      const mail = await parseEml(bytes);
+      // Ein Kopf, den der Parser nicht lesen kann, laesst sich keinem Vorgang zuordnen. Er wird ausgelassen und
+      // bricht den Lauf nicht ab; als Problem des Ordners zaehlt er nicht: der Nutzer kann daran nichts aendern.
+      const mail = await parseEml(bytes).catch(() => null);
+      if (mail === null) continue;
       if (req.index.rootOf.has(mail.id)) continue; // hat schon eine Notiz
       const root = threadOf({ mailId: mail.id, inReplyTo: mail.inReplyTo, references: mail.references }, req.index);
       if (root === null || req.stopped.has(root)) continue;

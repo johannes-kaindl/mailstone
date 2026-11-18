@@ -1,6 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { FOLLOW_WINDOW_DAYS, MAX_FOLLOW_HEADERS, findFollowUps, type FollowSession } from "../../../src/core/thread/follow";
 import { groupThreads, type ThreadEntry } from "../../../src/core/thread/group";
+
+// Ein Kopf mit dem Marker `UNLESBAR` laesst den Parser werfen, als haette ihn ein kaputter Header zerlegt. PostalMime
+// selbst ist so nachsichtig, dass sich so ein Kopf nicht ehrlich bauen laesst; die Ablaufregel ist, was hier gemessen wird.
+vi.mock("../../../src/core/mime/parse", async (orig) => {
+  const actual = await orig<typeof import("../../../src/core/mime/parse")>();
+  return {
+    ...actual,
+    parseEml: (bytes: Uint8Array) => {
+      if (new TextDecoder().decode(bytes).includes("UNLESBAR")) return Promise.reject(new Error("kaputter Header"));
+      return actual.parseEml(bytes);
+    },
+  };
+});
 
 const enc = new TextEncoder();
 
@@ -127,5 +140,21 @@ describe("findFollowUps — Ordner, Fenster, Grenzen", () => {
     const { session, log } = fakeSession({ INBOX: [] });
     await findFollowUps(session, req(["INBOX"]));
     expect(log.fetched).toEqual([]);
+  });
+});
+
+describe("findFollowUps — ein unlesbarer Kopf", () => {
+  it("ueberspringt die Zeile und ordnet die uebrigen Mails weiter zu", async () => {
+    const { session } = fakeSession({
+      INBOX: [
+        { uid: 1, id: "a@example.org", inReplyTo: "wurzel@example.org" },
+        { uid: 2, id: "b@example.org", inReplyTo: "wurzel@example.org", subject: "UNLESBAR" },
+        { uid: 3, id: "c@example.org", inReplyTo: "andere@example.org" },
+      ],
+      Sent: [{ uid: 4, id: "d@example.org", inReplyTo: "wurzel@example.org" }],
+    });
+    const r = await findFollowUps(session, req(["INBOX", "Sent"]));
+    expect(r.followUps.map((f) => f.mailId).sort()).toEqual(["a@example.org", "c@example.org", "d@example.org"]);
+    expect(r.problems).toEqual([]);
   });
 });
