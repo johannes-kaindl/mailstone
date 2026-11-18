@@ -36,7 +36,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { argv, cwd, exit } from "node:process";
 
-import { attachTo, Cdp, closeExtraLeaves, mitPlatzhalterSchluessel, openExisting, pollUntil, requireUntil, requireVisible } from "../../tools/obsidian-cdp/cdp.js";
+import { attachTo, bereiteInstanzVor, Cdp, closeExtraLeaves, mitPlatzhalterSchluessel, openExisting, pollUntil, requireUntil, requireVisible } from "../../tools/obsidian-cdp/cdp.js";
 import { boxOf, capture, setWindowSize, writeShot, type Rect, type ShotOptions } from "../../tools/obsidian-cdp/shot.js";
 import { buildVault, stagingVaultDir } from "../../tools/obsidian-cdp/vault.js";
 
@@ -277,6 +277,13 @@ async function main(): Promise<void> {
   const cdp = await attachTo("workspace", PORT, VAULT_NAME);
   if (!cdp) throw new Error(`Kein Fenster fuer Vault "${VAULT_NAME}" auf Port ${String(PORT)}.`);
   await requireVisible(cdp);
+  // Frisches Profil: Vertrauensdialog bestätigen, Restricted Mode aufheben, Plugin laden, Aufnahmesprache setzen. Ohne den Aufruf zeigt jedes Bild
+  // den Vertrauensdialog, und das Plugin fehlt im Renderer (Brücke README § Frisches Profil vorbereiten).
+  const vor = await bereiteInstanzVor(cdp, { pluginIds: [PLUGIN_ID], nurVault: VAULT_NAME, sprache: "en" });
+  console.log(`Instanz: ${vor.hinweis}`);
+  // Der Sprach-Guard unten liest nur `localStorage.language`, das `sprache: "en"` selbst setzt; die Oberfläche kommt vom Start (`--lang=en-US`).
+  if (vor.sprachePasst === false) throw new Error(`Oberfläche nicht Englisch: ${vor.hinweis}`);
+
   await pruefeSprache(cdp);
   // Der Platzhalter-Schlüssel des Demo-Kontos (zustandHerstellen legt das Konto an) wird nach dem Lauf entfernt, auch bei Fehler und Ctrl-C.
   await mitPlatzhalterSchluessel(cdp, { id: SECRET_ID, wert: "demo-not-a-real-password" }, async () => {
