@@ -73,7 +73,7 @@ Die Pfade, Typen und der Test dazu: `.claude/rules/imap-vertrag.md`.
 
 ## Context index
 
-- Bevor du IMAP-Client, Sync oder Posteingangs-Aktionen (`src/core/imap/`, `src/core/sync/`, `src/core/inbox/`) änderst: `.claude/rules/imap-vertrag.md`.
+- Bevor du IMAP-Client, Sync, Posteingangs-Aktionen oder den Original-Abruf (`src/core/imap/`, `src/core/sync/`, `src/core/inbox/`, `src/core/originals/`) änderst: `.claude/rules/imap-vertrag.md`.
 - Bevor du das Konten-Modal oder den Umgang mit Schlüsselbund-Einträgen änderst: `.claude/rules/secrets.md`.
 - Bevor du Versand oder Sent-Kopie (`src/core/send/`, `src/core/smtp/`) änderst: `.claude/rules/smtp-versand.md`.
 - Bevor du MIME oder Anhänge (`src/core/mime/`, `src/core/commands/extract.ts`) änderst: `.claude/rules/anhaenge.md`.

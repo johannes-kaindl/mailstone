@@ -96,15 +96,33 @@
 
 ### A command is missing from the command palette
 
-**Cause:** Commands on a note appear only when they apply to the note you have open. They need a mail note that Mailstone created, with its `.eml` beside it. **Mailstone: Create a TaskNotes task** additionally needs the [TaskNotes](https://github.com/callumalpass/tasknotes) plugin, enabled.
+**Cause:** Commands on a note appear only when they apply to the note you have open. They need a mail note that Mailstone created. *Re-render* and *Extract an attachment* also need the original message: the `.eml` beside the note or, on the desktop, the message on the server. **Mailstone: Remove stored .eml files** appears only while *Save original as .eml* is off. **Mailstone: Create a TaskNotes task** additionally needs the [TaskNotes](https://github.com/callumalpass/tasknotes) plugin, enabled.
 
 **Fix:** Open a mail note. For the task command, install and enable TaskNotes.
 
 ### "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link."
 
-**Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted.
+**Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted. Normally Mailstone then fetches the original from the server instead (desktop), so you see this message only in the rare case where no lookup was attempted.
 
 **Fix:** Move the note back next to its `_eml` folder, or restore the `.eml` there under its original name.
+
+### "The original of this mail is neither stored next to the note nor on the server (searched: {0})."
+
+**Cause:** There is no `.eml` beside the note (for example because *Save original as .eml* is off), and the server has no message with this Message-ID in the folders named in `{0}`: the folder from the note's `mail_source`, then the allowlist folder, then the archive folder (all accounts when the note came from an import). The message may have been deleted or moved elsewhere.
+
+**Fix:** Move the message back into the allowlist or archive folder on the server, or restore the `.eml` next to the note under the note's name in the `_eml` subfolder, then run the command again. Mailstone only reads from the server for this; it never marks anything as read.
+
+### "The original of this mail is not stored next to the note, and it cannot be looked up on the server: the mail has no Message-ID, or its Message-ID contains characters an IMAP search cannot carry."
+
+**Cause:** The server is searched by Message-ID. A mail without one (Mailstone gave it a `noid-…` id) or with non-ASCII characters in it cannot be found that way. Mails without a Message-ID always keep their `.eml` for this reason, so this appears for notes whose `.eml` was removed by hand.
+
+**Fix:** Restore the `.eml` next to the note.
+
+### "The original of this mail is not stored next to the note. Fetching it from the server works on the desktop only."
+
+**Cause:** You are on mobile Obsidian, which has no network layer for Mailstone, and the `.eml` is not stored in the vault.
+
+**Fix:** Run the command on the desktop.
 
 ### "The message section of this note was edited by hand. Re-rendering would discard those edits, so nothing was written."
 
@@ -120,9 +138,9 @@
 
 ### "The .eml next to this note belongs to a different message. Nothing was changed."
 
-**Cause:** The file in `_eml` has the same name but a different Message-ID than the note.
+**Cause:** The file in `_eml` has the same name but a different Message-ID than the note, and the server could not supply the right one.
 
-**Fix:** Restore the correct `.eml`.
+**Fix:** Restore the correct `.eml`, or remove the wrong one so Mailstone fetches the original from the server.
 
 ### "TaskNotes is not available, or its API does not have the expected shape." / "TaskNotes rejected or failed to create the task."
 
@@ -163,7 +181,7 @@ Mailstone needs the network only for syncing, the inbox tab and sending. Without
 - A manual run shows a notice with the reason (typically "Could not reach the server."), the status bar shows the same text, and the sidebar panel shows the error for that account.
 - **Nothing in the vault changes.** No note is deleted or detached because the server was unreachable. Mailstone never deletes notes at all: a message that leaves the folder is only marked `detached`.
 - The automatic run tries again after the account's sync interval (default five minutes) — or press **Synchronise now** once you are back online.
-- Everything you already have works offline: notes are ordinary Markdown files, and the commands that rebuild, relink or extract from a note only use the note and its `.eml`.
+- Everything you already have works offline: notes are ordinary Markdown files, and *Relink* uses only the notes. *Re-render* and *Extract an attachment* use the `.eml` beside the note; without one they need the server (see "The original of this mail is neither stored next to the note nor on the server" above).
 
 ## Mobile
 

@@ -3,6 +3,7 @@ paths:
   - "src/core/imap/**"
   - "src/core/sync/**"
   - "src/core/inbox/**"
+  - "src/core/originals/**"
   - "tests/integration/fake-imap.test.ts"
 ---
 
@@ -38,3 +39,5 @@ grün wäre dann die Zusage des *Servers*. Wer den Vertrag erweitert, erweitert 
 Der Message-ID-Abgleich läuft über `BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` statt `ENVELOPE`
 (Spec § 3.1): die Normalisierung dafür existiert seit M1, ein Adresslisten-Parser wäre Aufwand
 ohne Ertrag.
+
+**`fetchOriginal` (`src/core/originals/`, A6) ist ein weiterer lesender Konsument:** `imapConnect` (nie `imapConnectWritable`), `EXAMINE`, `UID SEARCH HEADER Message-ID` (`uidSearchHeader`, Wert über `quoteArg`; CR, LF, Nicht-ASCII und Leerzeichen senden gar kein Kommando) und `uidFetchBody` (`BODY.PEEK[]`). Er belegt den Busy-Guard wie `fetch.ts`, holt je Ordner höchstens fünf Kandidaten und verwirft jeden, dessen geparste Message-ID nicht passt (`verifyEml`: die Suche ist ein Teilstring-Treffer). Der Dialogtest in `tests/integration/fake-imap.test.ts` prüft auch seinen Lauf auf Abwesenheit von `SELECT` und `BODY[`.

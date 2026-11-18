@@ -18,6 +18,19 @@ Gemessen gegen TaskNotes 4.12.5 (die Version im Staging-Vault, am 2026-10-23 unv
 
 Der Naht-Lauf gegen ein echt installiertes TaskNotes setzt ein Nachbarplugin voraus, das nicht jeder Klon hat; eine Pflichtstrecke darf nicht daran scheitern. Wortlaut: `.claude/rules/gui-smoke.md`.
 
+## Der Aufräumbefehl löscht .eml, nie Notizen (2026-11-18)
+
+Die Spec (§ 5) sagte „Löschen gibt es nicht (auch nicht `trashFile`)“. Johannes wünscht ausdrücklich, die Doppelung loszuwerden: die `.eml` neben der Notiz enthält alle personenbezogenen Daten im Klartext und hebelt jede Pseudonymisierung der Notiz aus. Deshalb gibt es `mail.removeEml` („Gespeicherte .eml-Dateien entfernen“) als eng gefasste Ausnahme:
+
+- nur bei `saveEml: false` in der Palette (wer die `.eml` behalten will, findet den Befehl nicht);
+- nur der Konventionspfad (`emlPathFor`), nie die Quelldatei eines Imports; die Vorschau sagt das ausdrücklich;
+- nur eine `.eml`, deren Message-ID-Kopf zur `mail_id` ihrer Notiz passt (Probe je Datei in `src/obsidian/eml-probe.ts`, ohne vollen Parse); nicht passende oder unlesbare bleiben liegen, mit Grund in der Vorschau;
+- nie eine Notiz: `trashEml` (`vault-notes.ts`) verweigert alles, was nicht auf `.eml` endet;
+- über `app.fileManager.trashFile`, also nach der Papierkorb-Einstellung des Vaults (je nach Einstellung endgültig; die Vorschau sagt es);
+- immer mit Vorschau. Was schon in einer Git-Historie des Vaults liegt, ist damit nicht weg, das ist Sache des Vaults.
+
+Ohne `.eml` holt `buildContext` das Original bei Bedarf vom Server (`fetchOriginal`, nur lesend, nur Desktop) und schreibt es nie in den Vault. Mails ohne Message-ID (`noid-…`) behalten die `.eml` auch bei `saveEml: false`, weil sie auf dem Server nicht auffindbar sind.
+
 ## Ausnahmen von Dach-Regeln
 
 Zwei Abweichungen von der Dach-`REGISTRY.md` sind bewusst und mit Begründung in den Pfadregeln festgehalten: der Aufruf von `api.tasks.create` am Fremdplugin TaskNotes (`.claude/rules/tasknotes.md`, entschieden von Johannes 2026-09-05) und das Zustimmungs-Tor der Versand-API (`.claude/rules/versand-api.md`).

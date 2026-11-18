@@ -18,7 +18,7 @@ Triage stays where your mail already lives: move a message into one designated I
 - **Mail as notes.** A server-side folder decides what becomes a note. The Message-ID is the identity, and the original `.eml` stays next to the note, so everything derived from it can be rebuilt.
 - **A panel in the right sidebar.** Per account: what the last run did, when the next one is due, the counters that are not zero, the error in plain words — and a button to synchronise now, for one account or all of them. The last run survives a restart.
 - **An inbox tab.** The last 100 messages of your inbox, with a tick for everything that is already a note. Three actions per row: *Move to vault* and *Archive* (both server-side, both after a confirmation) and — once [TaskNotes](https://github.com/callumalpass/tasknotes) is installed — *Create task*.
-- **Commands on a mail note.** Re-render from the `.eml`, relink threads, extract an attachment, reply in your external mail client, create a TaskNotes task. Each shows a preview before it writes.
+- **Commands on a mail note.** Re-render from the original (the `.eml`, or the message fetched from the server), relink threads, extract an attachment, reply in your external mail client, create a TaskNotes task. Each shows a preview before it writes.
 - **Import without a server.** *Import .eml files from a vault folder* turns `.eml` files you already have into notes — no account needed.
 - **Sending.** SMTP through the same account, including iMIP invitations for `calendar-notes`. Other plugins can send through Mailstone too, after you confirm each one once.
 - **Reading never marks anything as read.** Listing, previewing and syncing use `EXAMINE` and `BODY.PEEK`; moving a message carries its flags along. Another tool that keys off "unread" is not disturbed.
@@ -76,7 +76,7 @@ cd mailstone && npm install && npm run build
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="A mail note: front matter with sender, recipients, date and Message-ID, in_reply_to and references as wikilinks to the earlier mail, and the message text below.">
 
 3. **Or work from the inbox tab.** Open the sidebar with the ribbon icon or the command *Mailstone: Open the sidebar panel*, switch to **Inbox**, and use *Move to vault* on anything worth keeping. The message moves into the allowlist folder on the server, and the following sync writes the note.
-4. **On a mail note**, the command palette offers *Re-render mail note from its .eml*, *Relink mail threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear. Each one shows what it would change before it writes:
+4. **On a mail note**, the command palette offers *Re-render mail note from its original*, *Relink mail threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear. Each one shows what it would change before it writes:
 
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/relink-preview.png" width="820" alt="The "Review before writing" dialog of the Relink mail threads command: one note gets a wikilink in in_reply_to, shown as Before and After, with Cancel and Apply.">
 
@@ -103,6 +103,7 @@ Global settings:
 |---|---|---|
 | Notes folder | Where mail notes are created, in a subfolder per year | `Mail` |
 | Subfolder per year | Turns the year subfolders off | on |
+| Save original as .eml | Writes the original next to each new note. Off: no second copy of the personal data in the vault; *Re-render* and *Extract an attachment* then fetch the original from the server by Message-ID (desktop only, read-only), and *Remove stored .eml files* trashes the ones you already have. Mails without a Message-ID keep their `.eml` | on |
 | Filename template | Placeholders `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
 | Extra fields for new mail notes | Fields written once into a note's front matter when it is first created, for example `status: open` | none |
 | Allowed note-creation values | Values accepted for the fields written at creation | `mail` |
@@ -123,6 +124,8 @@ Global settings:
 **The server decides, not the plugin.** A folder on the mail server is the allowlist. Sync reads it, and every message in it becomes a note — no rules engine, no filters in the plugin.
 
 **The Message-ID is the identity.** It survives re-downloads, folder moves and renamed files. The `.eml` next to each note is the fidelity surface: front matter, rendered body and attachments can be rebuilt from it, so a formatting change never costs you data.
+
+**The `.eml` is optional.** If you would rather not keep a second copy of the message (and the personal data in it) in the vault, switch off *Save original as .eml*. Notes are written as before; when *Re-render* or *Extract an attachment* then needs the original, Mailstone fetches it from the server by Message-ID, read-only and without marking anything as read, searching the note's folder, then the allowlist and archive folders. That works on the desktop only, and it needs the message to still be on the server; if it is not, the command says which folders it searched. *Remove stored .eml files* moves the ones you already have to the trash (after a preview, never touching a note).
 
 **Notes are merged, not overwritten.** Your own text lives outside a marked zone (`%% mailstone:begin %%` … `%% mailstone:end %%`) and is compared by hash before any write. If you edited the managed zone, the write is refused rather than silently applied. Mailstone never deletes a note: a message that leaves the folder is marked `detached`, and putting it back reattaches it.
 
