@@ -106,6 +106,12 @@
 
 **Fix:** Enter a plain field name such as `vorgang` under Settings → Mailstone → Thread field, then run the command again.
 
+### "Following is off. Enter a field name under Settings → Follow field first."
+
+**Cause:** *Stop following this thread* and *Follow this thread again* write a marker into the front matter field named in *Follow field*. That setting is empty, or it holds a name Mailstone cannot use: one of the fields it manages itself (such as `mail_id`), the same name as the *Thread field*, or a name with accents or special characters. The settings row says which.
+
+**Fix:** Enter a plain field name such as `mail_follow` under Settings → Mailstone → Follow field, then run the command again.
+
 ### "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link."
 
 **Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted. Normally Mailstone then fetches the original from the server instead (desktop), so you see this message only in the rare case where no lookup was attempted.
@@ -153,6 +159,34 @@
 **Cause:** TaskNotes is disabled or missing, or its version differs from what Mailstone expects.
 
 **Fix:** Enable TaskNotes; update both plugins. Mailstone hands the task over once and does not manage it afterwards.
+
+## Follow-up mails
+
+*Show follow-up mails* reads the inbox and the sent folder of every account and writes nothing. Its messages:
+
+### "Another operation is running. Try again when it has finished."
+
+**Cause:** A synchronisation or another command holds the one shared lock, so the dialog does not start a second mailbox connection next to it.
+
+**Fix:** Wait for the run to finish (the sidebar panel shows it), then open *Show follow-up mails* again.
+
+### "{account}, folder “{folder}”: The folder does not exist on the server."
+
+**Cause:** The inbox or sent folder named for that account under Settings → Mailstone → Accounts → Folders does not exist on the server (typical for *Sent*: some providers call it `Sent Items` or `Gesendet`).
+
+**Fix:** Correct the folder name in the account settings. The other folders and accounts are still listed.
+
+### "{account}: …" with a connection or login reason
+
+**Cause:** The dialog reuses the texts of a failed synchronisation for the account (for example “The server rejected the login. Check username and app password.”); the causes are the ones described under [Connecting and syncing](#connecting-and-syncing). The dialog shows the problem next to the results of the accounts that did work.
+
+**Fix:** See the matching entry above.
+
+### "No follow-up mails found."
+
+**Cause:** Nothing in the last 60 days in the inbox or sent folder has a `In-Reply-To` or `References` header that points to a mail with a note in your vault, or every such thread is stopped. A mail only counts if its thread is already in the vault; mails of unrelated threads are not listed.
+
+**Fix:** Nothing is broken. To see a stopped thread again, run *Follow this thread again* on any note of it.
 
 ## Sending
 
