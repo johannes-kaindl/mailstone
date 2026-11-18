@@ -1,0 +1,94 @@
+// Gruppierung der Mail-Notizen eines Vaults zu Vorgaengen (A3/A1, Welle 36) — rein, ohne Vault.
+//
+// Verbunden sind zwei Mails, wenn eine die andere in `in_reply_to` oder `references` nennt. Die Wurzel eines Vorgangs ist seine fruehste Mail. Der Aufrufer
+// (die Obsidian-Schicht) hat Wikilinks schon zu Mail-IDs aufgeloest (E6): hier werden IDs verglichen,
+// nie Linktexte.
+import { compareDated, dateKey } from "./order";
+
+export interface ThreadEntry {
+  mailId: string;
+  /** Pfad der Notiz ohne `.md`. */
+  path: string;
+  date: string;
+  time: string;
+  /** Aufgeloeste Mail-IDs aus `in_reply_to` (Wikilinks und rohe IDs). */
+  inReplyTo: readonly string[];
+  /** Aufgeloeste Mail-IDs aus `references`. */
+  references: readonly string[];
+}
+
+export interface ThreadIndex {
+  /** Mail-ID -> Mail-ID der Wurzel ihres Vorgangs (die Wurzel nennt sich selbst). */
+  rootOf: ReadonlyMap<string, string>;
+}
+
+const namesOf = (e: ThreadEntry): string[] => [...e.inReplyTo, ...e.references];
+
+/** Die Wurzel einer Gruppe: die fruehste Mail. Bei Gleichstand von Datum und Minute ist die Mail
+ *  spaeter, die eine andere der Gleichstandsgruppe nennt (eine Antwort steht nach dem, worauf sie
+ *  antwortet); erst unter den uebrigen entscheidet die mailId. */
+function pickRoot(members: readonly ThreadEntry[]): string {
+  const dated = members.filter((m) => dateKey(m) !== null);
+  const pool = dated.length > 0 ? dated : members;
+  const earliest = pool.reduce((best, m) => (compareDated({ ...m, mailId: "" }, { ...best, mailId: "" }) < 0 ? m : best));
+  const key = dateKey(earliest);
+  const tie = pool.filter((m) => dateKey(m) === key);
+  const ids = new Set(tie.map((m) => m.mailId));
+  const heads = tie.filter((m) => !namesOf(m).some((n) => n !== m.mailId && ids.has(n)));
+  return (heads.length > 0 ? heads : tie).reduce((best, m) => (compareDated(m, best) < 0 ? m : best)).mailId;
+}
+
+export function groupThreads(entries: readonly ThreadEntry[]): ThreadIndex {
+  const byId = new Map<string, ThreadEntry>();
+  for (const e of entries) if (!byId.has(e.mailId)) byId.set(e.mailId, e);
+
+  const parent = new Map<string, string>([...byId.keys()].map((id) => [id, id]));
+  const find = (id: string): string => {
+    let r = id;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    for (let c = id; c !== r;) { const next = parent.get(c)!; parent.set(c, r); c = next; }
+    return r;
+  };
+  const union = (a: string, b: string): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  for (const e of byId.values()) {
+    for (const n of namesOf(e)) if (n !== e.mailId && byId.has(n)) union(e.mailId, n);
+  }
+
+  const groups = new Map<string, ThreadEntry[]>();
+  for (const e of byId.values()) {
+    const g = groups.get(find(e.mailId));
+    if (g) g.push(e); else groups.set(find(e.mailId), [e]);
+  }
+  const rootOf = new Map<string, string>();
+  for (const members of groups.values()) {
+    const root = pickRoot(members);
+    for (const m of members) rootOf.set(m.mailId, root);
+  }
+  return { rootOf };
+}
+
+export interface ThreadCandidate {
+  mailId: string;
+  inReplyTo: string | null;
+  references: readonly string[];
+}
+
+/**
+ * Die Wurzel des Vorgangs im Vault, dem eine Kandidaten-Mail angehoert — oder `null`. In der
+ * Reihenfolge der Quelle: In-Reply-To, dann References, die zuletzt genannte zuerst. Der gemeinsame
+ * Kern fuer das Folgen eines Vorgangs auf dem Server (A1).
+ */
+export function threadOf(candidate: ThreadCandidate, index: ThreadIndex): string | null {
+  const headers = [...(candidate.inReplyTo ? [candidate.inReplyTo] : []), ...[...candidate.references].reverse()];
+  for (const id of headers) {
+    if (id === candidate.mailId) continue;
+    const root = index.rootOf.get(id);
+    if (root !== undefined) return root;
+  }
+  return null;
+}
