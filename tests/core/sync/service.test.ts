@@ -10,6 +10,7 @@ import { newAccount, type Account } from "../../../src/core/settings";
 import type { MailIndex } from "../../../src/core/mirror/apply";
 import type { NotePlan } from "../../../src/core/mirror/plan";
 import type { PlanExecutor } from "../../../src/core/mirror/execute";
+import { groupThreads } from "../../../src/core/thread/group";
 
 const EML = "From: a@example.net\r\nTo: b@example.net\r\nSubject: Testmail\r\nMessage-ID: <neu@example.net>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n";
 
@@ -589,5 +590,89 @@ describe("createSyncService — verlinkt aeltere Notizen nach", () => {
     });
     expect((await svc.syncAccount("acc")).ok).toBe(true);
     expect(gelesen).toBe(0);
+  });
+});
+
+// A1 (Uebernahme): der Schritt "Folge-Mails kopieren" vor dem Allowlist-Lauf. Ausgeschaltet (Standard) entsteht keine zweite
+// Verbindung, keine Vault-Abfrage und kein COPY; eingeschaltet laeuft er vor dem Lauf, und sein Fehler haelt den Lauf nicht an.
+describe("createSyncService — Vorgang-Folgen (A1)", () => {
+  const leeresPostfach = [
+    { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH", "a004 OK done"] },
+    { expect: /^a005 LOGOUT$/, send: ["* BYE", "a005 OK done"] },
+  ];
+  /** Eine Verbindung des Follow-Schritts ohne Kandidaten: INBOX und Sent sind leer. */
+  const folgeSchrittOhneKandidaten: DialogStep[] = [
+    { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS", "a001 OK done"] },
+    { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+    { expect: /^a003 EXAMINE "INBOX"$/, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 5] ok", "a003 OK done"] },
+    { expect: /^a004 UID SEARCH SINCE /, send: ["* SEARCH", "a004 OK done"] },
+    { expect: /^a005 EXAMINE "Sent"$/, send: ["* 0 EXISTS", "* OK [UIDVALIDITY 6] ok", "a005 OK done"] },
+    { expect: /^a006 UID SEARCH SINCE /, send: ["* SEARCH", "a006 OK done"] },
+    { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
+  ];
+
+  function mitFolgen(an: boolean, fakes: FakeSocketTransport[], contextAufrufe: { n: number }) {
+    const acc = account();
+    acc.sync.followThreads = an;
+    const verbindungen = { n: 0 };
+    const exec = recordingExecutor();
+    const svc = createSyncService({
+      accounts: () => [acc], profile: () => defaultMailProfile(), secret: () => "geheim",
+      transport: () => { const f = fakes[verbindungen.n]; verbindungen.n += 1; if (!f) throw new Error("mehr Verbindungen als erwartet"); return f; },
+      index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => exec.executor,
+      uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
+      now: () => new Date("2026-08-30T09:00:00Z"),
+      follow: { context: () => { contextAufrufe.n += 1; return { index: groupThreads([]), stopped: new Set<string>() }; } },
+    });
+    return { svc, verbindungen };
+  }
+
+  it("ausgeschaltet (Standard): genau eine Verbindung, kein Zugriff auf den Vault-Stand der Vorgaenge, kein COPY", async () => {
+    const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+    const context = { n: 0 };
+    const { svc, verbindungen } = mitFolgen(false, [main], context);
+    expect((await svc.syncAccount("acc")).ok).toBe(true);
+    expect(verbindungen.n).toBe(1);
+    expect(context.n).toBe(0);
+    expect(main.written.some((l) => /COPY/.test(l))).toBe(false);
+  });
+
+  it("ein neues Konto hat Vorgang-Folgen aus", () => {
+    expect(account().sync.followThreads).toBe(false);
+  });
+
+  it("eingeschaltet: der Schritt laeuft vor dem Allowlist-Lauf, ohne Kandidaten bleibt es bei lesenden Verbindungen", async () => {
+    const folgen = new FakeSocketTransport(["* OK ready"], folgeSchrittOhneKandidaten);
+    const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+    const context = { n: 0 };
+    const { svc, verbindungen } = mitFolgen(true, [folgen, main], context);
+    expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { errors: 0 } });
+    expect(verbindungen.n).toBe(2);
+    expect(context.n).toBe(1);
+    expect([...folgen.written, ...main.written].some((l) => /COPY|SELECT|STORE|EXPUNGE|APPEND|MOVE/.test(l))).toBe(false);
+  });
+
+  it("ein Fehler des Schritts (hier: Anmeldung) zaehlt als Fehler und haelt den Lauf nicht an", async () => {
+    const kaputt = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 NO [AUTHENTICATIONFAILED] nein"] },
+    ]);
+    const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+    const { svc } = mitFolgen(true, [kaputt, main], { n: 0 });
+    expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { errors: 1 } });
+  });
+
+  it("ohne Dep `follow` bleibt die Einstellung wirkungslos (kein Schritt, eine Verbindung)", async () => {
+    const acc = account();
+    acc.sync.followThreads = true;
+    const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+    let n = 0;
+    const svc = createSyncService({
+      accounts: () => [acc], profile: () => defaultMailProfile(), secret: () => "geheim", transport: () => { n += 1; return main; },
+      index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => recordingExecutor().executor,
+      uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers, now: () => new Date("2026-08-30T09:00:00Z"),
+    });
+    expect((await svc.syncAccount("acc")).ok).toBe(true);
+    expect(n).toBe(1);
   });
 });

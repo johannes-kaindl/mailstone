@@ -97,6 +97,10 @@ export class AccountModal extends Modal {
         if (Number.isFinite(n) && n > 0) this.draft.sync.intervalMin = n;
       }),
     );
+    // Vorgang-Folgen schreibt auf dem Server (UID COPY): Standard aus, der Text sagt es.
+    new Setting(this.contentEl).setName(t("settings.account.sync.follow")).setDesc(t("settings.account.sync.follow.desc")).addToggle((c) =>
+      c.setValue(this.draft.sync.followThreads).onChange((v) => { this.draft.sync.followThreads = v; }),
+    );
 
     const btns = this.contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(btns).setButtonText(t("form.cancel")).onClick(() => this.close());

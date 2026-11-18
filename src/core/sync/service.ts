@@ -12,7 +12,9 @@ import type { KnownThreadNote } from "../thread/create-links";
 import { planRunRelinks, type RelinkRunDeps } from "../mirror/relink-run";
 import { parseEml } from "../mime/parse";
 import type { ParsedMail } from "../mime/types";
-import { imapConnect, type ImapReadSession } from "../imap/client";
+import { imapConnect, type ImapConnectOptions, type ImapReadSession } from "../imap/client";
+import { copyFollowUps, followCopyConnections } from "../thread/follow-copy";
+import type { FollowContext } from "../thread/follow-run";
 import { isLoopback } from "../send/service";
 import type { UidCacheStore } from "./uid-cache";
 import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
@@ -43,6 +45,10 @@ export interface SyncDeps {
   log?: (line: string) => void;
   /** Nachverlinken nach dem Anlegen (Vorspann zu A3): ohne diese Dep bleiben aeltere Notizen, wie sie sind. */
   relink?: RelinkRunDeps;
+  /** Vorgang-Folgen (A1, Uebernahme): der Vault-Stand der Vorgaenge fuer den Schritt, der Folge-Mails per UID COPY in den
+   *  Allowlist-Ordner legt. Wird nur gerufen, wenn `account.sync.followThreads` gilt; ohne diese Dep bleibt die Einstellung
+   *  wirkungslos. */
+  follow?: { context: () => FollowContext };
 }
 
 export interface SyncService {
@@ -72,14 +78,8 @@ export const MAX_FETCH_PER_RUN = 200;
 export const MAX_HEADER_FETCH_PER_RUN = 2000;
 
 export function createSyncService(deps: SyncDeps): SyncService {
-  async function run(account: Account): Promise<SyncRunResult> {
-    const profile = deps.profile();
-    const folder = account.folders.allowlist;
-    const source = `${account.id}/${folder}`;
-    const password = deps.secret(account.secretId);
-    if (password === null) return { ok: false, accountId: account.id, code: "no-secret" };
-
-    const connected = await imapConnect(deps.transport(), {
+  function connectOptions(account: Account, password: string): ImapConnectOptions {
+    return {
       host: account.imap.host, port: account.imap.port, tls: account.imap.tls,
       username: account.username, password, timers: deps.timers,
       // Der IMAP-Client verweigert Klartext-Auth ohne TLS (code: "tls-required"). Der Settings-Typ
@@ -89,7 +89,33 @@ export function createSyncService(deps: SyncDeps): SyncService {
       // das Ventil oeffnet sich nur fuer einen lokalen Fake-IMAP-Server (Integrationstest).
       ...(isLoopback(account.imap.host) ? { allowInsecureAuth: true } : {}),
       ...(deps.log ? { log: deps.log } : {}),
-    });
+    };
+  }
+
+  async function run(account: Account): Promise<SyncRunResult> {
+    const profile = deps.profile();
+    const folder = account.folders.allowlist;
+    const source = `${account.id}/${folder}`;
+    const password = deps.secret(account.secretId);
+    if (password === null) return { ok: false, accountId: account.id, code: "no-secret" };
+
+    // Vorgang-Folgen (A1): zuerst die Folge-Mails in den Allowlist-Ordner kopieren, damit sie in DIESEM Lauf als Notiz ankommen.
+    // Nur bei eingeschalteter Einstellung; der Lese-Sync unten bekommt davon nichts (er haelt nur eine ImapReadSession).
+    // Ein Fehler des Schritts haelt den Lauf nicht an, er zaehlt als Fehler.
+    let followErrors = 0;
+    if (account.sync.followThreads && deps.follow) {
+      const follow = deps.follow;
+      const r = await copyFollowUps(
+        {
+          ...followCopyConnections(() => deps.transport(), connectOptions(account, password)),
+          context: follow.context, now: deps.now, ...(deps.log ? { log: deps.log } : {}),
+        },
+        { inbox: account.folders.inbox, sent: account.folders.sent ?? "", allowlist: folder },
+      );
+      followErrors = r.errors;
+    }
+
+    const connected = await imapConnect(deps.transport(), connectOptions(account, password));
     if (!connected.ok) return { ok: false, accountId: account.id, code: connected.code, detail: connected.detail };
     const session: ImapReadSession = connected.session;
 
@@ -214,7 +240,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         detached: executedPlans.filter(isDetach).length,
         skipped: result.skipped.length + relinked.skipped,
         detachSkipped,
-        errors: errors + result.errors.length + relinked.errors,
+        errors: errors + followErrors + result.errors.length + relinked.errors,
       };
       for (const p of [...executedPlans, ...relinked.executed]) {
         deps.events.emit("changed", { path: p.path, kind: p.kind, mailId: p.mailId });

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Fake-IMAP-Server fuer tests/integration — spricht nur das Subset, das core/imap/client.ts
 // benutzt: CAPABILITY, AUTHENTICATE PLAIN, EXAMINE, SELECT, UID SEARCH ALL, UID SEARCH HEADER MESSAGE-ID, UID FETCH
-// (Header/Body), UID MOVE, LOGOUT. Kein TLS, bindet ausschliesslich an 127.0.0.1. Nie fuer
+// (Header/Body), UID MOVE, UID COPY, LOGOUT. Kein TLS, bindet ausschliesslich an 127.0.0.1. Nie fuer
 // echte Postfaecher gedacht.
 //
 // Start: `node scripts/fake-imap.mjs` (Port 11143, override per PORT env fuer parallele Laeufe
 // im Integrationstest). Ordner: `Sent` hat seine eigene Mail-Liste (SENT_MAILS), `Leer` ist
-// leer; JEDER ANDERE Name (INBOX, Vault, Vault/Belege, …) liefert dieselbe gemeinsame Liste
+// leer, `Ziel` hat eine eigene Liste (ZIEL_MAILS, der Allowlist-Ordner des Kopier-Tests); JEDER ANDERE Name (INBOX, Vault, Vault/Belege, …) liefert dieselbe gemeinsame Liste
 // MAILS — so laufen die aelteren Tests, die den Ordnernamen beliebig waehlen, unveraendert.
 //
 // SELECT und UID MOVE sind absichtlich NUR fuer den schreibenden Pfad da (client.ts
@@ -73,12 +73,28 @@ const SENT_MAILS = [
   },
 ];
 
+// Der Ordner `Ziel` (A1, Uebernahme): ein Allowlist-Ordner mit einer eigenen, fremden Mail. `UID COPY` legt hier Kopien ab.
+const ZIEL_MAILS = [
+  {
+    uid: 2,
+    seen: true,
+    id: "<vorhanden@example.net>",
+    raw: "From: c@example.net\r\nTo: b@example.net\r\nSubject: Schon im Ziel\r\nMessage-ID: <vorhanden@example.net>\r\nDate: Fri, 28 Aug 2026 08:00:00 +0000\r\n\r\nSchon da\r\n",
+  },
+];
+const LEER_MAILS = [];
+
 /** Die Mail-Liste eines Ordnernamens (`EXAMINE "Sent"` -> SENT_MAILS). Unbekannte Namen: MAILS. */
+function listeFuer(name) {
+  if (name.toLowerCase() === "sent") return SENT_MAILS;
+  if (name.toLowerCase() === "leer") return LEER_MAILS;
+  if (name.toLowerCase() === "ziel") return ZIEL_MAILS;
+  return MAILS;
+}
+
 function mailsOf(rest) {
   const name = /^(?:EXAMINE|SELECT)\s+"?([^"]*)"?$/i.exec(rest.join(" "))?.[1] ?? "";
-  if (name.toLowerCase() === "sent") return SENT_MAILS;
-  if (name.toLowerCase() === "leer") return [];
-  return MAILS;
+  return listeFuer(name);
 }
 
 /** Der Tag einer Mail (UTC), `YYYYMMDD`, aus ihrem Date-Header. */
@@ -109,7 +125,7 @@ function handleConnection(socket) {
   let buf = "";
   // Pro Verbindung, nicht global: EXAMINE oeffnet nur-lesend, SELECT schreibbar. Genau daran
   // haengt unten, ob ein Fetch ohne .PEEK ueberhaupt \Seen setzen darf.
-  const sitzung = { schreibbar: false, mails: MAILS };
+  const sitzung = { schreibbar: false, mails: MAILS, offen: false };
 
   socket.on("data", (chunk) => {
     buf += chunk.toString("utf8");
@@ -140,12 +156,14 @@ function handleLine(socket, line, sitzung) {
     socket.write(`${tag} OK [CAPABILITY IMAP4rev1 UIDPLUS MOVE] authenticated\r\n`);
   } else if (cmd.startsWith("EXAMINE")) {
     sitzung.schreibbar = false;
+    sitzung.offen = true;
     sitzung.mails = mailsOf(rest);
     socket.write(`* ${String(sitzung.mails.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-ONLY] done\r\n`);
   } else if (cmd.startsWith("SELECT")) {
     // Wie EXAMINE, aber [READ-WRITE] — das ist die einzige Antwort, die den Ordner fuer
     // client.ts als schreibbar ausweist (imapConnectWritable liest genau dieses Flag).
     sitzung.schreibbar = true;
+    sitzung.offen = true;
     sitzung.mails = mailsOf(rest);
     socket.write(`* ${String(sitzung.mails.length)} EXISTS\r\n* OK [UIDVALIDITY 4242] UIDs valid\r\n${tag} OK [READ-WRITE] done\r\n`);
   } else if (cmd.startsWith("UID MOVE")) {
@@ -161,6 +179,32 @@ function handleLine(socket, line, sitzung) {
     } else {
       sitzung.mails.splice(index, 1);
       socket.write(`${tag} OK [COPYUID 1 ${String(uid)} 1] Move completed\r\n`);
+    }
+  } else if (cmd.startsWith("UID COPY ")) {
+    // `UID COPY <uid> "<ziel>"` (RFC 3501 § 6.4.7) im ausgewaehlten Zustand, auch nach EXAMINE: die Quelle bleibt, die Kopie
+    // behaelt die Flags und bekommt im Ziel eine neue UID. Eine UID ohne Treffer ergibt OK ohne COPYUID (RFC 4315).
+    // Ohne geoeffneten Ordner: BAD, wie bei einem echten Server. Die Ziele `Fehlt` und `Voll` lehnt der Fake mit NO ab.
+    const t = /^UID COPY (\d+) "((?:[^"\\]|\\.)*)"$/i.exec(rest.join(" "));
+    const ziel = t?.[2]?.replace(/\\(.)/g, "$1");
+    if (!sitzung.offen) {
+      socket.write(`${tag} BAD Kein Ordner ausgewaehlt\r\n`);
+    } else if (!t || ziel === undefined) {
+      socket.write(`${tag} BAD Argumente nicht lesbar\r\n`);
+    } else if (ziel.toLowerCase() === "fehlt") {
+      socket.write(`${tag} NO [TRYCREATE] Mailbox does not exist\r\n`);
+    } else if (ziel.toLowerCase() === "voll") {
+      socket.write(`${tag} NO [OVERQUOTA] Quota exceeded\r\n`);
+    } else {
+      const uid = Number(t[1]);
+      const quelle = sitzung.mails.find((m) => m.uid === uid);
+      if (!quelle) {
+        socket.write(`${tag} OK Copy completed\r\n`);
+      } else {
+        const liste = listeFuer(ziel);
+        const neu = liste.reduce((hoechste, m) => Math.max(hoechste, m.uid), 0) + 1;
+        liste.push({ ...quelle, uid: neu });
+        socket.write(`${tag} OK [COPYUID 4242 ${String(uid)} ${String(neu)}] Copy completed\r\n`);
+      }
     }
   } else if (cmd.startsWith("UID SEARCH HEADER ")) {
     // `UID SEARCH HEADER <feld> "<wert>"` (RFC 3501 § 6.4.4): Teilstring-Treffer ohne Beachtung der

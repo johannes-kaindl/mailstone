@@ -39,9 +39,12 @@ export interface FollowRequest {
 export async function findFollowUps(
   session: FollowSession,
   req: FollowRequest,
-): Promise<{ followUps: FollowUp[]; problems: FollowProblem[] }> {
+): Promise<{ followUps: FollowUp[]; problems: FollowProblem[]; validity: Map<string, number> }> {
   const followUps: FollowUp[] = [];
   const problems: FollowProblem[] = [];
+  /** UIDVALIDITY je geoeffnetem Ordner: wer die UIDs spaeter in einer anderen Sitzung benutzt (Uebernahme per COPY),
+   *  prueft damit, dass sie noch zu denselben Mails gehoeren. */
+  const validity = new Map<string, number>();
   const since = new Date(req.now.getTime() - FOLLOW_WINDOW_DAYS * 86_400_000);
   const seen = new Set<string>();
 
@@ -53,6 +56,7 @@ export async function findFollowUps(
     const opened = await session.examine(folder);
     if (!opened.ok) { problems.push({ folder, code: opened.code, detail: opened.detail }); continue; }
 
+    validity.set(folder, opened.uidValidity);
     const found = await session.uidSearchSince(since);
     const newest = [...found].sort((a, b) => b - a).slice(0, MAX_FOLLOW_HEADERS);
     if (newest.length === 0) continue;
@@ -77,5 +81,5 @@ export async function findFollowUps(
     if (a.date !== b.date) return a.date === "" ? 1 : b.date === "" ? -1 : a.date < b.date ? -1 : 1;
     return a.folder !== b.folder ? (a.folder < b.folder ? -1 : 1) : a.uid - b.uid;
   });
-  return { followUps, problems };
+  return { followUps, problems, validity };
 }

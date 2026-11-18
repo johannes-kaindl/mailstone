@@ -27,6 +27,7 @@ import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
 import { vaultRelinkDeps } from "./obsidian/relink-run";
 import { threadNotes } from "./obsidian/thread-index";
 import { openFollowUps } from "./obsidian/follow-ups";
+import { followContext } from "./obsidian/follow-context";
 import { findNotePathForMailId, mailIndex, trashEml, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
@@ -362,6 +363,8 @@ export default class MailstonePlugin extends Plugin {
       threadNotes: () => threadNotes(this.app, this.settings.profile),
       executor: () => vaultPlanExecutor(this.app, hashes),
       relink: vaultRelinkDeps(this.app, () => this.settings.profile, hashes),
+      // Vorgang-Folgen (A1): nur gerufen, wenn das Konto die Einstellung eingeschaltet hat (Standard aus).
+      follow: { context: () => followContext(this.app, this.settings.profile) },
       uidCache: this.uidCache,
       busy: this.busy,
       events: this.syncEvents,

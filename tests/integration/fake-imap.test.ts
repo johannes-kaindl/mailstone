@@ -312,6 +312,127 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     expect(r).toMatchObject({ ok: true, items: [], problems: [] });
   });
 
+  // A1 (Welle 36, Uebernahme; Entscheidung Johannes 2026-11-18): Vorgang-Folgen kopiert Folge-Mails per UID COPY in den
+  // Allowlist-Ordner (`Ziel`). Der Vault kennt nur die Wurzel `eins`; Folge-Mails sind `zwei` (INBOX) und `antwort-eins`
+  // (Sent). Das Index-Verzeichnis waechst mit jedem Lauf wie im Plugin: Notizen entstehen im selben Lauf, der Vorgang im
+  // Vault (die Wurzel) bleibt aber derselbe, damit der zweite Lauf die Folge-Mails wieder FINDET und nur der Abgleich
+  // gegen den Allowlist-Ordner die Doppelkopie verhindert.
+  function folgeService(opts: { an: boolean; allowlist?: string; stopped?: string[] }) {
+    const account = newAccount("acc");
+    account.imap = { host: "127.0.0.1", port: PORT, tls: "none" as never };
+    account.username = "u@example.net";
+    account.folders.allowlist = opts.allowlist ?? "Ziel";
+    account.sync.followThreads = opts.an;
+    const angelegt = new Map<string, { path: string; state: "live"; source: string }>();
+    const plaene: NotePlan[] = [];
+    let contextAufrufe = 0;
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const svc = createSyncService({
+      accounts: () => [account],
+      profile: () => defaultMailProfile(),
+      secret: () => "geheim",
+      transport: () => nodeSocketTransport(),
+      index: () => angelegt,
+      takenPaths: () => new Set<string>(),
+      executor: () => ({
+        execute: (ps) => {
+          plaene.push(...ps);
+          for (const p of ps) if (p.kind === "create") angelegt.set(p.mailId, { path: p.path, state: "live", source: `acc/${account.folders.allowlist}` });
+          return Promise.resolve({ created: ps.filter((p) => p.kind === "create").length, updated: 0, stateChanged: 0, skipped: [], errors: [] });
+        },
+      }),
+      uidCache: createUidCache(undefined),
+      busy: createBusyGuard(),
+      events: createEmitter(),
+      timers: testTimers,
+      now: () => new Date(Date.UTC(2026, 8, 10)),
+      follow: { context: () => { contextAufrufe += 1; return { index: vault, stopped: new Set(opts.stopped ?? []) }; } },
+    });
+    return { lauf: () => svc.syncAccount("acc"), plaene, contextAufrufe: () => contextAufrufe };
+  }
+
+  /** Wartet, bis das Protokoll `n` passende Zeilen hat (jede Verbindung endet mit einem LOGOUT, das erst nach der Antwort ankommt). */
+  async function warteAufAnzahl(muster: RegExp, n: number, ms = 5000): Promise<void> {
+    const ende = Date.now() + ms;
+    while (Date.now() < ende) {
+      if (kommandos().filter((z) => muster.test(z)).length >= n) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error(`${String(n)}x ${muster.source} blieb aus. Protokoll:\n${kommandos().join("\n")}`);
+  }
+
+  it("kopiert mit eingeschaltetem Folgen die Folge-Mails aus INBOX und Sent in den Allowlist-Ordner, die Notizen entstehen im selben Lauf, ein zweiter Lauf kopiert nichts doppelt", async () => {
+    await starteServer();
+    const { lauf, plaene } = folgeService({ an: true });
+
+    expect(await lauf()).toMatchObject({ ok: true, counts: { created: 3, errors: 0 } });
+    // Im Ziel lag `vorhanden`; dazu kamen die beiden Kopien, und alle drei sind im selben Lauf Notizen geworden.
+    expect(plaene.map((p) => p.mailId).sort()).toEqual(["antwort-eins@example.net", "vorhanden@example.net", "zwei@example.net"]);
+    await warteAufAnzahl(/^LOGOUT$/i, 3); // Lesen, Schreiben, Sync
+    const erste = kommandos();
+    expect(erste.filter((z) => /^UID COPY\b/i.test(z)).sort()).toEqual(['UID COPY 3 "Ziel"', 'UID COPY 9 "Ziel"']);
+
+    expect(await lauf()).toMatchObject({ ok: true, counts: { created: 0, errors: 0 } });
+    await warteAufAnzahl(/^LOGOUT$/i, 5); // dazu Lesen und Sync (keine schreibende Verbindung)
+    const alle = kommandos();
+    expect(alle.filter((z) => /^UID COPY\b/i.test(z))).toHaveLength(2);
+    expect(alle.filter((z) => /^AUTHENTICATE\b/i.test(z))).toHaveLength(5);
+
+    // Der Dialog beider Laeufe: nichts ausser Lesen und COPY. Kein SELECT (COPY wirkt nach EXAMINE), kein STORE/EXPUNGE/MOVE/APPEND,
+    // kein BODY[ ohne PEEK.
+    expect(alle.filter((z) => /\bSELECT\b/i.test(z))).toEqual([]);
+    expect(alle.filter((z) => /\b(STORE|EXPUNGE|MOVE|APPEND)\b/i.test(z))).toEqual([]);
+    expect(alle.filter((z) => /BODY\[/i.test(z))).toEqual([]);
+    expect(alle.some((z) => z.includes("geheim"))).toBe(false);
+  });
+
+  it("laesst die Quelle unberuehrt: nach dem Kopieren liegt die Mail weiter in INBOX und Sent, ungelesen bleibt ungelesen", async () => {
+    await starteServer();
+    await folgeService({ an: true }).lauf();
+    const lesend = await imapConnect(nodeSocketTransport(), verbindungsOptionen());
+    if (!lesend.ok) throw new Error("unreachable");
+    try {
+      expect(await lesend.session.examine("INBOX")).toMatchObject({ ok: true, exists: 3 });
+      expect((await lesend.session.uidFetchHeaders([9])).get(9)?.flags).toEqual([]); // \Seen war nie gesetzt
+      expect(await lesend.session.examine("Sent")).toMatchObject({ ok: true, exists: 3 });
+      expect(await lesend.session.examine("Ziel")).toMatchObject({ ok: true, exists: 3 });
+    } finally {
+      await lesend.session.logout();
+    }
+  });
+
+  it("ausgeschaltet (Standard): keine zweite Verbindung, kein COPY, kein Zugriff auf die Vorgaenge", async () => {
+    await starteServer();
+    const { lauf, contextAufrufe } = folgeService({ an: false });
+    expect(await lauf()).toMatchObject({ ok: true, counts: { created: 1 } });
+    await warteAufAnzahl(/^LOGOUT$/i, 1);
+    const zeilen = kommandos();
+    expect(zeilen.filter((z) => /^AUTHENTICATE\b/i.test(z))).toHaveLength(1);
+    expect(zeilen.filter((z) => /\bCOPY\b/i.test(z))).toEqual([]);
+    expect(contextAufrufe()).toBe(0);
+  });
+
+  it("kopiert einen beendeten Vorgang nicht", async () => {
+    await starteServer();
+    const { lauf } = folgeService({ an: true, stopped: ["eins@example.net"] });
+    expect(await lauf()).toMatchObject({ ok: true, counts: { created: 1, errors: 0 } });
+    await warteAufAnzahl(/^LOGOUT$/i, 2); // Lesen, Sync
+    expect(kommandos().filter((z) => /\bCOPY\b/i.test(z))).toEqual([]);
+  });
+
+  it("zaehlt ein vom Server abgelehntes COPY als Fehler, ohne den Lauf anzuhalten", async () => {
+    await starteServer();
+    // Ein Kopierziel, das der Server mit NO ablehnt (`Voll`, [OVERQUOTA]): der Lauf laeuft weiter, die Fehler stehen im Zaehler.
+    const { lauf } = folgeService({ an: true, allowlist: "Voll" });
+    const r = await lauf();
+    // `Voll` gibt es als Ordner fuer EXAMINE (der Fake liefert die gemeinsame Liste), COPY dorthin lehnt er ab.
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.counts.errors).toBeGreaterThanOrEqual(1);
+    await warteAufAnzahl(/^LOGOUT$/i, 3);
+    expect(kommandos().filter((z) => /^UID COPY\b/i.test(z)).length).toBeGreaterThanOrEqual(1);
+  });
+
   // Die andere Haelfte des Vertrags, und zugleich der erste Test, der den SCHREIBENDEN Pfad
   // ueber einen echten Socket faehrt: `scripts/fake-imap.mjs` kann SELECT und UID MOVE seit
   // M4 (c728b6b), benutzt hat das bis heute kein Test — nur Unit-Tests mit Fake-Transport.

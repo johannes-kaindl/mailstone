@@ -53,6 +53,14 @@ const NOW = new Date(Date.UTC(2026, 10, 18, 12, 0));
 const vault = groupThreads([entry("wurzel@example.org"), entry("antwort@example.org", { date: "2026-11-02", inReplyTo: ["wurzel@example.org"] }), entry("andere@example.org")]);
 const req = (folders: string[], over: Partial<Parameters<typeof findFollowUps>[1]> = {}) => ({ folders, now: NOW, index: vault, stopped: new Set<string>(), ...over });
 
+describe("findFollowUps — UIDVALIDITY je Ordner", () => {
+  it("meldet die UIDVALIDITY jedes geoeffneten Ordners, damit eine spaetere Schreib-Sitzung pruefen kann, dass die UIDs noch gelten", async () => {
+    const { session } = fakeSession({ INBOX: [], Sent: [] });
+    const r = await findFollowUps(session, req(["INBOX", "Sent", "Fehlt"]));
+    expect([...r.validity]).toEqual([["INBOX", 1], ["Sent", 1]]);
+  });
+});
+
 describe("findFollowUps — Zuordnung ueber Header", () => {
   it("ordnet eine Mail ohne Notiz ueber In-Reply-To dem Vorgang zu", async () => {
     const { session } = fakeSession({ INBOX: [{ uid: 5, id: "neu@example.org", inReplyTo: "antwort@example.org", subject: "Re: Hallo" }] });
