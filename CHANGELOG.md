@@ -16,10 +16,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Shared building blocks updated to obsidian-kit 0.97.0 (from 0.94.0; code-kit stays at 0.73.0). 0.95.0 and 0.97.0 change nothing in the modules mailstone uses (the 0.96.0 number-field limits of the fallback settings walker do not apply, mailstone has no number settings); the user-visible effects of 0.96.0 are listed under Fixed.
 - When a sync run creates a note, it now also replaces the raw message id in `in_reply_to` and `references` of **existing** mail notes with a link to that new note (before, those stayed raw until *Relink threads* was run by hand, for example when a ticket confirmation arrived days before your own original). Only ids of notes created in that run, only those two fields; the message section and its checksum stay untouched, and a note that cannot be updated counts as an error without stopping the run.
 
 ### Fixed
 
+- Kit 0.96.0: Frontmatter values with `]`, a comma or a line break are written validly. A subject, address or message id containing a line break no longer stops a note from being written or relinked (before, such a value made the note count as unreadable); it is stored as a quoted escape (`"a\nb"`) and read back unchanged.
+- Kit 0.96.0: Text that YAML would read as a number or an inline-list break (`1e3`, `0x1`, `.inf`, an empty list entry, `}` at the start, `:` before a tab) is quoted when a mail note's front matter is written, so it comes back as the same text in any YAML reader. Values that were already valid stay as they are, except digit strings with an underscore (`1_0`), which are now quoted.
+- Kit 0.96.0: Reading front matter decodes the escapes of double-quoted values (`\n`, `\xNN`, `\uNNNN`), and a quote in the middle of an inline-list entry (`don't`) is text, as in YAML.
 - Replies and their original mail synced (or imported) in the same run now link to each other. Before, the link was only written for mails from earlier runs, so a reply that arrived together with its original kept the raw message id; the order of the mails in the run no longer matters.
 - `References` headers without angle brackets (a bare `id@host`) are no longer dropped, and spaces inside the brackets are tolerated.
 - A mail that lists its own message id in `References` or `In-Reply-To` no longer links to itself; the id stays raw. A message id with spaces inside the angle brackets (`<  id@host  >`) is read like in `References`.

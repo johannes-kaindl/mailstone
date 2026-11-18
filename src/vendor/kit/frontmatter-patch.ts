@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.94.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.97.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // frontmatter-patch.ts — eigene Frontmatter-Felder setzen, fremde Zeilen byte-gleich lassen. Kein obsidian-Import.
 //
 // Zusammengeführt aus zwei unabhängigen Fassungen desselben Vorgangs (Diachronic wäre die dritte):
@@ -19,8 +19,8 @@
 //   · Beim Anhängen an einen CRLF-Block bleibt das Zeilenende CRLF; finance-ledger schrieb dort `\n` vor die angehängte Zeile und
 //     ein doppeltes `\r` dahinter (`neu: x\r\r\n---`, gemessen 2026-10-21 an der Referenzkopie).
 //   · Ein leerer Block (`---` / `---`) ist ein Block; mailstone meldete ihn als nicht lesbar.
-//   · Zusätzlich verweigert: ein Wert mit Zeilenumbruch (er bräche den Block, `serializeFrontmatter` quotet ihn nicht) und
-//     ein Schlüssel, den der Block-Leser nicht als Schlüssel erkennt (`invalid-key`).
+//   · Zusätzlich verweigert: eine Zahl, die keine endliche ist (`invalid-value`), und ein Schlüssel, den der Block-Leser nicht als Schlüssel erkennt (`invalid-key`).
+//     Ein Text mit Zeilenumbruch wird geschrieben, als Escape in doppelten Anführungszeichen (`a: "x\ny"`); bis 0.95.0 war das `invalid-value` (Welle 36, k9b).
 //   · Ein Literal (`{ literal: "53240.00" }`) wird unverändert geschrieben, nie gequotet — für Aufrufer, die fertige Skalare haben
 //     (finance-ledger: `saldo_eur` aus `Money.toFixed(2)`, `anfangssaldo_eur: null`). `FmValue` kann das nicht: ein `number` verliert
 //     die endende Null (`12.50` → `12.5`), ein `string` bekommt Anführungszeichen (`"null"`, `"53240.00"`). Zugelassen sind genau diese
@@ -382,8 +382,7 @@ function keyLines(key: string, value: FmValue | FmLiteral, listStyle: "flow" | "
 function badValue(v: FmValue | FmLiteral): boolean {
   if (isLiteral(v)) return !isFmLiteralText(v.literal);
   if (typeof v === "number") return !Number.isFinite(v);
-  const parts = Array.isArray(v) ? v : [v];
-  return parts.some((s) => /[\r\n]/.test(s));
+  return false; // ein Text mit Zeilenumbruch bricht den Block nicht mehr: `serializeFrontmatter` und `quoteScalar` schreiben ihn als Escape in doppelten Anführungszeichen
 }
 
 /**
@@ -392,7 +391,7 @@ function badValue(v: FmValue | FmLiteral): boolean {
  * `set` ersetzt den Schlüssel (samt Fortsetzungszeilen) oder hängt ihn an, `ensure` hängt nur an, wenn er fehlt. Jede nicht
  * betroffene Zeile, der Body und das Zeilenende bleiben byte-gleich; `changed` ist `false`, wenn der Text danach derselbe ist.
  * Verweigert wird mit einem Grund statt zu raten: Schlüssel in `protect` (`protected`), ein Block-Skalar am Zielschlüssel
- * (`block-scalar`), ein Block, der nicht schließt oder den Obsidian nicht liest (`unparseable`, siehe Kopf der Datei), ein Wert mit Zeilenumbruch (`invalid-value`) und ein Schlüssel,
+ * (`block-scalar`), ein Block, der nicht schließt oder den Obsidian nicht liest (`unparseable`, siehe Kopf der Datei), ein Schlüssel,
  * den der Block-Leser nicht erkennt (`invalid-key`).
  *
  * Ein fertiger Skalar geht als `{ literal }` unquotet in die Zeile (`null`, `true`, `false`, Dezimalzahl); ein anderer Wert ist `invalid-value`.

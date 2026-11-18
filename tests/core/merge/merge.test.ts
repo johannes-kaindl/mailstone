@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { mergeFrontmatterOnly, mergeNote, newNote, setFrontmatterField, setFrontmatterFields } from "../../../src/core/merge/merge";
 import { zoneHash } from "../../../src/core/merge/fences";
+import { parseFrontmatter } from "../../../src/vendor/kit/frontmatter";
 
 const derived = { mail_id: "a@x", mail_source: "s", mail_state: "live", mail_synced: "2026-08-23T15:00:00+02:00", title: "Hi", from: "a@x" };
 const managed = Object.keys(derived);
@@ -254,8 +255,23 @@ describe("mergeFrontmatterOnly", () => {
     expect(mergeFrontmatterOnly({ existing: note, values: { "zustand-ä": "x" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
   });
 
-  it("meldet einen Wert mit Zeilenumbruch als frontmatter-unparseable", () => {
-    expect(mergeFrontmatterOnly({ existing: note, values: { in_reply_to: "a\nb" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  // Verhaltenswechsel (Kit 0.96.0): ein Text mit Zeilenumbruch bricht den Block nicht mehr, `serializeFrontmatter` schreibt ihn
+  // als Escape in doppelten Anführungszeichen. Vorher lehnte `patchFrontmatter` ihn als `invalid-value` ab (mailstone fuehrte die Notiz als unlesbar).
+  it("schreibt einen Wert mit Zeilenumbruch als Escape in Anfuehrungszeichen, der Block bleibt gueltig und liest sich zurueck", () => {
+    const r = mergeFrontmatterOnly({ existing: note, values: { in_reply_to: "a\nb" } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.changed).toBe(true);
+    expect(r.content).toContain('in_reply_to: "a\\nb"');
+    expect(parseFrontmatter(r.content).data.in_reply_to).toBe("a\nb");
+  });
+
+  // Verhaltenswechsel (Kit 0.96.0): Werte mit `]`, `}` oder Komma in einer Flow-Liste werden gueltig gequotet.
+  it("quotet Listeneintraege mit ], Komma oder Umbruch, sodass die Liste eine Liste bleibt", () => {
+    const r = mergeFrontmatterOnly({ existing: note, values: { in_reply_to: ["a]b", "c,d", "e\nf"] } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(parseFrontmatter(r.content).data.in_reply_to).toEqual(["a]b", "c,d", "e\nf"]);
   });
 });
 
@@ -430,10 +446,13 @@ describe("mergeNote: Frontmatter ueber das Kit", () => {
     expect(r).toEqual({ ok: false, code: "frontmatter-unparseable" });
   });
 
-  it("ein Wert mit Zeilenumbruch → frontmatter-unparseable, kein kaputtes YAML in der Notiz", () => {
+  it("ein Wert mit Zeilenumbruch wird als Escape gequotet geschrieben, kein kaputtes YAML in der Notiz (Kit 0.96.0; frueher frontmatter-unparseable)", () => {
     const existing = koerper("---\ntype: mail\n---\n");
     const r = run(existing, { derived: { ...derived, title: "eins\nzwei" } });
-    expect(r).toEqual({ ok: false, code: "frontmatter-unparseable" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.content).toContain('title: "eins\\nzwei"');
+    expect(parseFrontmatter(r.content).data.title).toBe("eins\nzwei");
   });
 
   it("fehlende verwaltete Keys werden in der Reihenfolge von managed angehaengt, nicht in der von derived", () => {

@@ -79,7 +79,7 @@ export function mergeNote(input: MergeInput): MergeResult {
   // `create`: eine Notiz ohne Frontmatter bekommt einen Block; `protect: []`: `created` ist hier kein geschuetzter Schluessel.
   const patched = patchFrontmatter(input.existing, { set, create: true, protect: [] });
   // Rangfolge der Fehler wie bisher: ein nie geschlossener Block gewinnt gegen alles; erst danach Zone, und was das Kit sonst am
-  // Frontmatter ablehnt (Block-Skalar am verwalteten Key, unlesbarer Schluessel, Wert mit Zeilenumbruch) zuletzt. Das Kit prueft
+  // Frontmatter ablehnt (Block-Skalar am verwalteten Key, unlesbarer Schluessel) zuletzt. Das Kit prueft
   // Schluessel und Werte VOR dem Block und nennt dann `invalid-*`, auch bei einem nie geschlossenen Block: den fragt eine Anfrage
   // ohne Schreibauftrag allein.
   if (!patchFrontmatter(input.existing, {}).ok) return { ok: false, code: "frontmatter-unparseable" };
@@ -139,7 +139,8 @@ function toFmValues(values: Record<string, FmVal>): Record<string, FmValue> {
  *
  * `frontmatter-unparseable` heisst hier: der Block schliesst nicht, der Key selbst liegt als
  * Block-Skalar vor (den koennte nur eine echte YAML-Implementierung ersetzen), oder der Key ist
- * keiner, den der Zeilenleser erkennt (etwa mit Umlaut), oder der Wert enthaelt einen Zeilenumbruch.
+ * keiner, den der Zeilenleser erkennt (etwa mit Umlaut). Ein Wert mit Zeilenumbruch ist seit Kit 0.96.0 kein Grund mehr:
+ * er wird als Escape in doppelten Anfuehrungszeichen geschrieben.
  * Der Aufrufer darf in diesem Fall auf die API zurueckfallen — sie kann es, um den Preis der
  * Re-Serialisierung.
  */
@@ -169,7 +170,7 @@ export function setFrontmatterFields(input: { existing: string; values: Record<s
  * Keys, die im Frontmatter nicht vorkommen, werden ignoriert statt angelegt: ein Kommando,
  * das `in_reply_to` setzt, soll es dort, wo es die Mail nie gab, auch nicht erfinden.
  *
- * Ein Key, den der Zeilenleser nicht erkennt (Nicht-ASCII-Zeichen), oder ein Wert mit Zeilenumbruch
+ * Ein Key, den der Zeilenleser nicht erkennt (Nicht-ASCII-Zeichen)
  * heisst `frontmatter-unparseable`, auch wenn der Key im Frontmatter gar nicht vorkommt: das Kit prueft
  * vor dem Lesen. Der Relink fuehrt die Notiz dann als uebersprungen.
  */

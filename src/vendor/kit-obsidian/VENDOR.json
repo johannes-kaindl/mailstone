@@ -1,7 +1,7 @@
 {
   "source": "obsidian-kit",
-  "version": "0.94.0",
-  "sha": "bf78d8b",
+  "version": "0.97.0",
+  "sha": "f02c998",
   "vendored": "settings_walker.ts, folder-suggest.ts, confirm.ts, hub.ts, secrets.ts, help-setting.ts, status-bar-item.ts, setting-body-host.ts",
   "license": "AGPL-3.0-or-later"
 }
