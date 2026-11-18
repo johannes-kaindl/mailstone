@@ -4,6 +4,8 @@ import { parseEml } from "../core/mime/parse";
 import type { ParsedMail } from "../core/mime/types";
 import { assignRunPaths, planMailNote, type ExistingNote, type NotePlan } from "../core/mirror/plan";
 import type { MailProfile } from "../core/mirror/profile";
+import { threadNotes } from "./thread-index";
+import { threadExtrasForRun } from "../core/thread/for-run";
 import { findMailNotes, vaultPlanExecutor, type ZoneHashStore } from "./vault-notes";
 
 export interface ImportDeps { app: App; profile: MailProfile; hashes: ZoneHashStore; now: () => Date }
@@ -32,13 +34,14 @@ export async function importEmlFolder(deps: ImportDeps, folder: string): Promise
   const run = assignRunPaths(profile, fresh.map((i) => i.mail), taken);
   const pathsOf = new Map(fresh.map((item, i) => [item, run.paths[i]!]));
   const linkFor = (id: string): string | null => run.targets.get(id) ?? index.get(id)?.path.replace(/\.md$/, "") ?? null;
+  const extras = threadExtrasForRun(profile, fresh.map((i) => i.mail), run.targets, () => threadNotes(app, profile));
   const plans: NotePlan[] = [];
   for (const item of items) {
     const { mail, eml, existing } = item;
     // Der Import ist der ausdrueckliche Wunsch des Nutzers — hier darf eine bestehende
     // Notiz aktualisiert werden (der Sync in M3 uebergibt allowUpdate: false).
     const paths = pathsOf.get(item);
-    plans.push(planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, allowUpdate: true, linkFor, ...(paths ? { paths } : {}) }));
+    plans.push(planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, allowUpdate: true, linkFor, ...(paths ? { paths } : {}), ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}) }));
   }
   const r = await vaultPlanExecutor(app, deps.hashes).execute(plans);
   return { created: r.created, updated: r.updated, skipped: r.skipped, errors: [...errors, ...r.errors.map((x) => ({ path: x.plan.path, message: x.message }))] };

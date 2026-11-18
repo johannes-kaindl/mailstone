@@ -353,3 +353,62 @@ describe("Hilfe-Zeile (UI-STANDARD §8)", () => {
     ]);
   });
 });
+
+describe("MailstoneSettingTab — Vorgang (A3, E7)", () => {
+  type Def = { name?: string; desc?: string; control?: { key?: string } };
+  const defs = (tab: MailstoneSettingTab): Def[] => tab.getSettingDefinitions() as Def[];
+  const field = (tab: MailstoneSettingTab) => defs(tab).find((d) => d.control?.key === "profile.threadField");
+
+  it("zeigt die Zeile im Profil-Abschnitt, nach dem Schalter fuer die .eml", () => {
+    const tab = newTab();
+    const keys = defs(tab).map((d) => d.control?.key);
+    expect(keys.indexOf("profile.saveEml")).toBeLessThan(keys.indexOf("profile.threadField"));
+    expect(field(tab)?.name).toBe(t("settings.threadField"));
+  });
+
+  it("der Wert steht im Profil: Vorgabe aus", () => {
+    const tab = newTab();
+    expect(tab.getControlValue("profile.threadField")).toBe("");
+  });
+
+  it("speichert den Wert getrimmt im Profil", async () => {
+    const tab = newTab();
+    await tab.setControlValue("profile.threadField", "  vorgang ");
+    expect(tab["host"].settings.profile.threadField).toBe("vorgang");
+  });
+
+  it("kein Hinweis bei brauchbaren Werten", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadField = "vorgang";
+    expect(defs(tab).some((d) => d.name === t("settings.threadHint"))).toBe(false);
+  });
+
+  it("ein verwalteter Schluessel zeigt einen Hinweis unter der Zeile, der Wert bleibt sichtbar", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadField = "mail_id";
+    const list = defs(tab);
+    const i = list.findIndex((d) => d.control?.key === "profile.threadField");
+    expect(list[i + 1]?.desc).toBe(t("settings.threadField.problem.managed", "mail_id"));
+    expect(tab.getControlValue("profile.threadField")).toBe("mail_id");
+  });
+
+  it("ein Name mit Umlaut zeigt den Hinweis zu nicht lesbaren Namen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadField = "vorgäng";
+    const list = defs(tab);
+    const i = list.findIndex((d) => d.control?.key === "profile.threadField");
+    expect(list[i + 1]?.desc).toBe(t("settings.threadField.problem.unreadable", "vorgäng"));
+  });
+
+  it("nach einer Aenderung, die den Hinweis ein- oder ausblendet, zeichnet der Tab neu", async () => {
+    const tab = newTab();
+    let neu = 0;
+    (tab as unknown as { update: () => void }).update = () => { neu++; };
+    await tab.setControlValue("profile.threadField", "vorgang");
+    expect(neu).toBe(0);
+    await tab.setControlValue("profile.threadField", "mail_id");
+    expect(neu).toBe(1);
+    await tab.setControlValue("profile.threadField", "mail_id2");
+    expect(neu).toBe(2);
+  });
+});

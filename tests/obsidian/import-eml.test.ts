@@ -98,4 +98,25 @@ describe("importEmlFolder", () => {
     // Die Quelldatei im Importordner bleibt, wo sie war.
     expect(await app.vault.adapter.exists("Import/a.eml")).toBe(true);
   });
+  // A3 (Welle 36): der Vorgangswert beim Import, auch fuer eine Vorgaengerin desselben Imports.
+  it("traegt bei gesetztem threadField den Vorgang ein: Antwort vor Bezugsmail im selben Import, beide zeigen auf die Wurzel", async () => {
+    const app = makeApp();
+    const profile = { ...defaultMailProfile(), threadField: "vorgang" };
+    await app.vault.createBinary("Import/1-antwort.eml", enc(eml("b@example.org", "In-Reply-To: <a@example.org>\n").replace("16:00:00", "17:00:00")));
+    await app.vault.createBinary("Import/2-bezug.eml", enc(eml("a@example.org", "")));
+    const r = await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    expect(r.errors).toEqual([]);
+    const notes = [...app.__files.keys()].filter((p: string) => p.endsWith(".md"));
+    expect(notes).toHaveLength(2);
+    const werte = (await Promise.all(notes.map((p: string) => app.vault.adapter.read(p)))).map((c: string) => c.split("\n").find((l) => l.startsWith("vorgang:")));
+    expect(werte[0]).toBeDefined();
+    expect(werte[0]).toBe(werte[1]);
+  });
+  it("legt ohne threadField kein Vorgangsfeld an", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", enc(eml("a@example.org", "")));
+    await importEmlFolder({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    const note = [...app.__files.keys()].find((p: string) => p.endsWith(".md"))!;
+    expect(await app.vault.adapter.read(note)).not.toContain("vorgang");
+  });
 });

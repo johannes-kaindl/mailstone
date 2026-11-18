@@ -1,5 +1,6 @@
 import { CREATE_TASK_COMMAND } from "./create-task";
 import { EXTRACT_ATTACHMENT_COMMAND } from "./extract";
+import { RECOMPUTE_THREADS_COMMAND } from "./recompute-threads";
 import { RELINK_COMMAND } from "./relink";
 import { REMOVE_EML_COMMAND } from "./remove-eml";
 import { REPLY_EXTERNAL_COMMAND } from "./reply";
@@ -10,6 +11,7 @@ import type { CommandDescriptor } from "./types";
 export const MAIL_COMMANDS: CommandDescriptor[] = [
   RERENDER_COMMAND,
   RELINK_COMMAND,
+  RECOMPUTE_THREADS_COMMAND,
   EXTRACT_ATTACHMENT_COMMAND,
   REPLY_EXTERNAL_COMMAND,
   CREATE_TASK_COMMAND,

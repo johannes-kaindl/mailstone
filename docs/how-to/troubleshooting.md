@@ -100,6 +100,12 @@
 
 **Fix:** Open a mail note. For the task command, install and enable TaskNotes.
 
+### "Threads are off. Enter a field name under Settings → Thread field first."
+
+**Cause:** *Recompute threads* writes into the front matter field named in *Thread field*. That setting is empty, or it holds a name Mailstone cannot use: one of the fields it manages itself (such as `mail_id`), or a name with accents or special characters. The settings row says which.
+
+**Fix:** Enter a plain field name such as `vorgang` under Settings → Mailstone → Thread field, then run the command again.
+
 ### "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link."
 
 **Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted. Normally Mailstone then fetches the original from the server instead (desktop), so you see this message only in the rare case where no lookup was attempted.

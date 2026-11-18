@@ -25,6 +25,7 @@ import { createEmitter, type Emitter, type SyncEmitter } from "./core/sync/event
 import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sync/uid-cache";
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
 import { vaultRelinkDeps } from "./obsidian/relink-run";
+import { threadNotes } from "./obsidian/thread-index";
 import { findNotePathForMailId, mailIndex, trashEml, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
@@ -357,6 +358,7 @@ export default class MailstonePlugin extends Plugin {
       transport: () => nodeSocketTransport(),
       index: () => mailIndex(this.app, this.settings.profile),
       takenPaths: () => new Set(this.app.vault.getFiles().map((f) => f.path)),
+      threadNotes: () => threadNotes(this.app, this.settings.profile),
       executor: () => vaultPlanExecutor(this.app, hashes),
       relink: vaultRelinkDeps(this.app, () => this.settings.profile, hashes),
       uidCache: this.uidCache,

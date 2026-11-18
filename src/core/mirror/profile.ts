@@ -12,6 +12,11 @@ export interface MailProfile {
    *  false: Sync und Import legen keine an; Re-render und Anhang-Extraktion holen das Original
    *  dann bei Bedarf vom Server. Mails ohne Message-ID (`noid-…`) behalten die .eml immer. */
   saveEml: boolean;
+  /** Frontmatter-Feld fuer den Vorgang (A3): jede Mail-Notiz traegt dort einen Wikilink auf die fruehste
+   *  Notiz ihres Vorgangs, die Wurzel auf sich selbst. Standard `""` = aus (kein Vault bekommt ungefragt ein
+   *  neues Feld). Kein verwaltetes Feld: der Wert haengt am Vault-Stand, nicht an der Mail, Re-render rechnet
+   *  ihn nicht neu. Wirksam ist nur ein brauchbarer Name (`effectiveThreadField`). */
+  threadField: string;
   filename: string; // Default "{date}-{time}-{slug}"
   idField: string;
   sourceField: string;
@@ -47,6 +52,7 @@ export function defaultMailProfile(): MailProfile {
     yearSubfolder: true,
     emlSubfolder: "_eml",
     saveEml: true,
+    threadField: "",
     filename: "{date}-{time}-{slug}",
     idField: "mail_id",
     sourceField: "mail_source",

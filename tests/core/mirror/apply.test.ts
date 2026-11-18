@@ -157,3 +157,75 @@ describe("planSync", () => {
     });
   });
 });
+
+// A3 (Welle 36): der Vorgangswert beim Anlegen (E24).
+describe("planSync — Vorgangswert beim Anlegen", () => {
+  const on = { ...profile, threadField: "vorgang" };
+  const base = { source: SOURCE, syncedAt, index: new Map() as MailIndex, takenPaths: new Set<string>() };
+  const at = (id: string, day: string, extra: Partial<ParsedMail> = {}): ParsedMail => ({ ...mail(id), date: new Date(`2026-08-${day}T08:00:00Z`), ...extra });
+  const create = (plans: ReturnType<typeof planSync>, id: string) => {
+    const p = plans.find((x) => x.mailId === id);
+    if (!p || p.kind !== "create") throw new Error(`kein create-Plan fuer ${id}`);
+    return p;
+  };
+  const vorgang = (p: { content: string }): string | undefined => p.content.split("\n").find((l) => l.startsWith("vorgang:"));
+
+  it("ohne threadField traegt keine neue Notiz ein Vorgangsfeld und der Index wird nicht gebaut", () => {
+    let gebaut = 0;
+    const plans = planSync({ ...base, profile, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]), threadNotes: () => { gebaut++; return []; } });
+    expect(create(plans, "a@x").content).not.toContain("vorgang");
+    expect(gebaut).toBe(0);
+  });
+
+  it("ein unbrauchbarer Feldname (verwalteter Schluessel) gilt als aus", () => {
+    const plans = planSync({ ...base, profile: { ...profile, threadField: "mail_id" }, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]) });
+    expect(create(plans, "a@x").content.match(/^mail_id:/gm)).toHaveLength(1);
+  });
+
+  it("baut den Index nur, wenn der Lauf neue Mails hat", () => {
+    let gebaut = 0;
+    const index: MailIndex = new Map([["da@x", { path: "Mail/2026/d.md", state: "live", source: SOURCE }]]);
+    planSync({ ...base, index, profile: on, fetched: [], onServer: new Set(["da@x"]), threadNotes: () => { gebaut++; return []; } });
+    expect(gebaut).toBe(0);
+    planSync({ ...base, profile: on, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]), threadNotes: () => { gebaut++; return []; } });
+    expect(gebaut).toBe(1);
+  });
+
+  it("eine Mail ohne Vorgaengerin ist ihre eigene Wurzel", () => {
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]) });
+    const p = create(plans, "a@x");
+    expect(vorgang(p)).toBe(`vorgang: "[[${p.path.replace(/\.md$/, "")}]]"`);
+  });
+
+  it("uebernimmt den Wert der Vorgaengerin im Vault", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]),
+      threadNotes: () => [{ mailId: "p@x", path: "Mail/2026/p", value: "[[Mail/2026/wurzel]]" }] });
+    expect(vorgang(create(plans, "b@x"))).toBe('vorgang: "[[Mail/2026/wurzel]]"');
+  });
+
+  it("die Vorgaengerin darf eine Notiz desselben Laufs sein, auch wenn die Antwort zuerst geliefert wird", () => {
+    const a = at("a@x", "01");
+    const b = at("b@x", "02", { inReplyTo: "a@x", references: ["a@x"] });
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }, { mail: a, eml }], onServer: new Set(["a@x", "b@x"]) });
+    const pa = create(plans, "a@x");
+    const erwartet = `vorgang: "[[${pa.path.replace(/\.md$/, "")}]]"`;
+    expect(vorgang(pa)).toBe(erwartet);
+    expect(vorgang(create(plans, "b@x"))).toBe(erwartet);
+  });
+
+  it("der Wert zeigt auf -2, wenn die Wurzel auf einen belegten Namen ausweicht", () => {
+    const a = at("a@x", "01");
+    const b = at("b@x", "02", { inReplyTo: "a@x" });
+    const stamm = `${mailFolder(profile, a)}/${mailFilename(profile, a)}`;
+    const plans = planSync({ ...base, takenPaths: new Set([`${stamm}.md`]), profile: on, fetched: [{ mail: b, eml }, { mail: a, eml }], onServer: new Set(["a@x", "b@x"]) });
+    expect(vorgang(create(plans, "b@x"))).toBe(`vorgang: "[[${stamm}-2]]"`);
+  });
+
+  it("ein Preset mit demselben Namen verliert gegen den Vorgangswert", () => {
+    const preset = { ...on, onCreate: { type: "mail", vorgang: "preset" } };
+    const plans = planSync({ ...base, profile: preset, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]) });
+    expect(create(plans, "a@x").content).not.toContain("preset");
+  });
+});
+

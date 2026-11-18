@@ -180,6 +180,8 @@ export function loadSettings(raw: unknown): MailstoneSettings {
     fields: { ...defaultMailProfile().fields, ...(isObj(rawProfile.fields) ? rawProfile.fields : {}) },
     // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt die .eml (an).
     saveEml: typeof rawProfile.saveEml === "boolean" ? rawProfile.saveEml : true,
+    // Nur Text gilt; fehlt der Schluessel (alte data.json), bleibt der Vorgang aus.
+    threadField: typeof rawProfile.threadField === "string" ? rawProfile.threadField : defaultMailProfile().threadField,
     onCreate: onCreateRoh && onCreateUngueltig.length === 0 ? { ...(onCreateRoh as Record<string, FmVal>) } : { ...defaultMailProfile().onCreate },
   };
   return s;

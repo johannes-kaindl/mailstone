@@ -4,6 +4,8 @@
 import type { ParsedMail } from "../mime/types";
 import { assignRunPaths, planMailNote, type NotePlan } from "./plan";
 import type { MailProfile } from "./profile";
+import type { KnownThreadNote } from "../thread/create-links";
+import { threadExtrasForRun } from "../thread/for-run";
 
 /** Ein Eintrag des Vault-Index. `state: null` heisst "Notiz ohne Zustandsfeld" — zusammen mit
  *  einer zu diesem Lauf passenden `source` ergibt das einen detach-Plan, sobald die Mail nicht
@@ -27,6 +29,9 @@ export interface ApplyInput {
   /** Alle mailIds, die JETZT im Allowlist-Ordner liegen (auch die laengst bekannten). */
   onServer: Set<string>;
   linkFor?: (id: string) => string | null;
+  /** Die Notizen im Vault fuer den Vorgangswert (A3). Wird nur gerufen, wenn `threadField` gilt und der
+   *  Lauf neue Mails hat. */
+  threadNotes?: () => readonly KnownThreadNote[];
 }
 
 export function planSync(input: ApplyInput): NotePlan[] {
@@ -58,6 +63,8 @@ export function planSync(input: ApplyInput): NotePlan[] {
   const run = assignRunPaths(profile, fresh.map((f) => f.mail), taken);
   const linkFor = (id: string): string | null => run.targets.get(id) ?? input.linkFor?.(id) ?? null;
 
+  const extras = threadExtrasForRun(profile, fresh.map((f) => f.mail), run.targets, input.threadNotes);
+
   // Zweiter Durchgang: planen.
   fresh.forEach(({ mail, eml }, i) => {
     plans.push(planMailNote({
@@ -69,6 +76,7 @@ export function planSync(input: ApplyInput): NotePlan[] {
       allowUpdate: false,
       paths: run.paths[i]!,
       linkFor,
+      ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}),
     }));
   });
 

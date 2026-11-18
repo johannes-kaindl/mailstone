@@ -10,6 +10,7 @@ import { SchemaFormModal } from "./modals/schema-form-modal";
 import { PlanPreviewModal } from "./modals/plan-preview-modal";
 import { trTitle } from "./command-i18n";
 import { probeEml } from "./eml-probe";
+import { threadRefsFor } from "./thread-index";
 import { findMailNotes, type ZoneHashStore } from "./vault-notes";
 
 export interface CommandFlowDeps {
@@ -55,14 +56,14 @@ export function probeFor(app: App, profile: MailProfile): CommandProbe | null {
   return target ? { profile, target, frontmatter } : null;
 }
 
-async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore, withEmlProbe: boolean): Promise<MailNoteRef[]> {
+async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore, withEmlProbe: boolean, withThreads: boolean): Promise<MailNoteRef[]> {
   const out: MailNoteRef[] = [];
   for (const f of app.vault.getMarkdownFiles()) {
     const frontmatter = app.metadataCache.getFileCache(f)?.frontmatter ?? {};
     const id: unknown = frontmatter[profile.idField];
     if (typeof id !== "string" || id === "") continue;
     const eml = withEmlProbe ? await probeEml(app, profile, f.path, id) : undefined;
-    out.push({ mailId: id, path: f.path, content: await app.vault.cachedRead(f), frontmatter, zoneHash: hashes.get(id), ...(eml ? { eml } : {}) });
+    out.push({ mailId: id, path: f.path, content: await app.vault.cachedRead(f), frontmatter, zoneHash: hashes.get(id), ...(eml ? { eml } : {}), ...(withThreads ? { thread: threadRefsFor(app, profile, f.path, frontmatter) } : {}) });
   }
   return out;
 }
@@ -163,7 +164,7 @@ export async function buildContext(
     }
   }
 
-  const notes = descriptor.needs?.allNotes ? await loadNotes(app, profile, deps.hashes, descriptor.needs.emlProbe === true) : undefined;
+  const notes = descriptor.needs?.allNotes ? await loadNotes(app, profile, deps.hashes, descriptor.needs.emlProbe === true, descriptor.needs.threads === true) : undefined;
 
   return {
     ok: true,
@@ -236,7 +237,7 @@ export async function runCommand(
   }
 
   const planned = descriptor.plan(input, ctx);
-  if (!planned.ok) return { kind: "error", code: planned.code };
+  if (!planned.ok) return { kind: "error", code: planned.hintKey ?? planned.code };
 
   const go = await new PlanPreviewModal(deps.app, planned.plan).confirm();
   if (!go) return { kind: "cancelled" };

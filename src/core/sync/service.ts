@@ -8,6 +8,7 @@ import { NetError } from "../net/types";
 import type { PlanExecutionResult, PlanExecutor } from "../mirror/execute";
 import type { NotePlan } from "../mirror/plan";
 import { planSync, type MailIndex } from "../mirror/apply";
+import type { KnownThreadNote } from "../thread/create-links";
 import { planRunRelinks, type RelinkRunDeps } from "../mirror/relink-run";
 import { parseEml } from "../mime/parse";
 import type { ParsedMail } from "../mime/types";
@@ -30,6 +31,8 @@ export interface SyncDeps {
   transport: () => SocketTransport;
   index: () => MailIndex;
   takenPaths: () => Set<string>;
+  /** Die Notizen im Vault fuer den Vorgangswert (A3); nur gerufen, wenn `threadField` gilt und der Lauf neue Mails hat. */
+  threadNotes?: () => readonly KnownThreadNote[];
   executor: () => PlanExecutor;
   uidCache: UidCacheStore;
   busy: BusyGuard;
@@ -184,6 +187,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
       const rawPlans = planSync({
         profile, source, syncedAt: deps.now(), index,
         takenPaths: deps.takenPaths(), fetched, onServer,
+        ...(deps.threadNotes ? { threadNotes: deps.threadNotes } : {}),
         linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null,
       });
 

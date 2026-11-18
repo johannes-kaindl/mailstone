@@ -32,7 +32,7 @@ export type CommandErrorCode =
 export type QualifiedErrorKey = `error.sync.${string}`;
 
 /** Was ein Fehler beim Aufbau des Kontexts tragen kann: ein Kommando-Code oder ein Sync-Schluessel. */
-export type ContextErrorCode = CommandErrorCode | QualifiedErrorKey;
+export type ContextErrorCode = CommandErrorCode | QualifiedErrorKey | `error.command.${string}`;
 
 /** Die Notiz, auf die ein Kommando wirkt. */
 export interface MailTarget {
@@ -59,6 +59,10 @@ export interface MailNoteRef {
    *  Parse: `match` = gehoert zu dieser Notiz, `mismatch` = andere Message-ID, `unreadable` =
    *  kein Message-ID-Kopf lesbar. */
   eml?: { path: string; status: "match" | "mismatch" | "unreadable" };
+  /** Nur gefuellt bei `needs.threads`: Verweise und Vorgangswert der Notiz, von der Obsidian-Schicht zu
+   *  Mail-IDs aufgeloest (Wikilinks ueber die Linkaufloesung, E6). `valueId` ist die Mail-ID, auf die der
+   *  Vorgangswert zeigt, `null` ohne Wert oder bei einem Link ins Leere. */
+  thread?: { inReplyTo: string[]; references: string[]; valueId: string | null };
 }
 
 /**
@@ -121,7 +125,10 @@ export interface MailCommandPlan {
   createTask?: { title: string; due: string | null; noteLink: string };
 }
 
-export type PlanResult = { ok: true; plan: MailCommandPlan } | { ok: false; code: CommandErrorCode };
+export type PlanResult =
+  | { ok: true; plan: MailCommandPlan }
+  /** `hintKey`: ein genauerer Text (`error.command.*`) fuer denselben Code, etwa „Vorgang ist aus“ zu `nothing-to-do`. */
+  | { ok: false; code: CommandErrorCode; hintKey?: `error.command.${string}` };
 
 export interface CommandDescriptor {
   id: string;
@@ -140,7 +147,7 @@ export interface CommandDescriptor {
    *  nicht-inline Anhang einen Vault-Zugriff; wer es nicht deklariert, bekommt
    *  `attachmentPathFor`/`existingAttachment` als WERFENDE Attrappen statt stiller
    *  Fehlwerte. */
-  needs?: { eml?: true; allNotes?: true; attachments?: true; /** Setzt `allNotes` voraus: liest je Notiz nur den Message-ID-Kopf der .eml am Konventionspfad. */ emlProbe?: true };
+  needs?: { eml?: true; allNotes?: true; attachments?: true; /** Setzt `allNotes` voraus: liest je Notiz nur den Message-ID-Kopf der .eml am Konventionspfad. */ emlProbe?: true; /** Setzt `allNotes` voraus: loest je Notiz Verweise und Vorgangswert zu Mail-IDs auf (`MailNoteRef.thread`). */ threads?: true };
   /** Bekommt bewusst nur den `CommandProbe`, nicht den vollen Kontext — s. dort. */
   appliesTo(probe: CommandProbe): boolean;
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult;

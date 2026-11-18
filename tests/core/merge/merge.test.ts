@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeFrontmatterOnly, mergeNote, newNote, setFrontmatterField } from "../../../src/core/merge/merge";
+import { mergeFrontmatterOnly, mergeNote, newNote, setFrontmatterField, setFrontmatterFields } from "../../../src/core/merge/merge";
 import { zoneHash } from "../../../src/core/merge/fences";
 
 const derived = { mail_id: "a@x", mail_source: "s", mail_state: "live", mail_synced: "2026-08-23T15:00:00+02:00", title: "Hi", from: "a@x" };
@@ -13,6 +13,26 @@ describe("newNote", () => {
     expect(content).toContain("mail_id: a@x");
     expect(content).toContain("## Notizen\n\n%% mailstone:begin %%\n## Nachricht\n\nText\n%% mailstone:end %%");
     expect(h).toBe(zoneHash("## Nachricht\n\nText"));
+  });
+});
+describe("newNote — Anlage-Werte zwischen onCreate und derived (A3)", () => {
+  it("die zusaetzlichen Werte kommen ins Frontmatter", () => {
+    const { content } = newNote(derived, { type: "mail" }, "## Nachricht\n\nText", "## Notizen\n\n", { vorgang: "[[Mail/a]]" });
+    expect(content).toContain('vorgang: "[[Mail/a]]"');
+  });
+  it("sie gewinnen gegen onCreate", () => {
+    const { content } = newNote(derived, { vorgang: "preset" }, "## Nachricht\n\nText", "## Notizen\n\n", { vorgang: "[[Mail/a]]" });
+    expect(content).toContain('vorgang: "[[Mail/a]]"');
+    expect(content).not.toContain("preset");
+  });
+  it("derived gewinnt auch gegen sie: ein verwalteter Schluessel wird nie ueberschrieben", () => {
+    const { content } = newNote(derived, { type: "mail" }, "## Nachricht\n\nText", "## Notizen\n\n", { mail_id: "evil-override", title: "evil" });
+    expect(content).toContain("mail_id: a@x");
+    expect(content).toContain("title: Hi");
+    expect(content).not.toContain("evil");
+  });
+  it("ohne Anlage-Werte bleibt die Notiz Byte fuer Byte wie bisher", () => {
+    expect(newNote(derived, { type: "mail" }, "## Nachricht\n\nText", "## Notizen\n\n", {}).content).toBe(newNote(derived, { type: "mail" }, "## Nachricht\n\nText").content);
   });
 });
 describe("mergeNote", () => {
@@ -483,5 +503,22 @@ describe("mergeNote: Frontmatter ueber das Kit", () => {
     const r = run(ohne, { derived: spaeter, volatileKeys: ["mail_synced"] });
     expect(r).toMatchObject({ ok: true, changed: true });
     if (r.ok) expect(r.content).toContain("mail_synced: 2026-08-23T16:30:00+02:00");
+  });
+});
+
+describe("setFrontmatterFields (E1)", () => {
+  const note = "---\nmail_id: a@x\nup: \"[[P]]\"\n---\n\n%% mailstone:begin %%\nZone\n%% mailstone:end %%\n";
+  it("legt einen fehlenden Schluessel an (mergeFrontmatterOnly taete es nicht)", () => {
+    const r = setFrontmatterFields({ existing: note, values: { vorgang: "[[Mail/a]]" } });
+    expect(r.ok && r.changed).toBe(true);
+    expect(r.ok && r.content).toContain('vorgang: "[[Mail/a]]"');
+    expect(mergeFrontmatterOnly({ existing: note, values: { vorgang: "[[Mail/a]]" } })).toMatchObject({ ok: true, changed: false });
+  });
+  it("ersetzt einen vorhandenen Wert und laesst alles andere Byte fuer Byte stehen", () => {
+    const r = setFrontmatterFields({ existing: note.replace("up:", "vorgang: alt\nup:"), values: { vorgang: "[[Mail/a]]" } });
+    expect(r.ok && r.content).toBe(note.replace("up:", 'vorgang: "[[Mail/a]]"\nup:'));
+  });
+  it("meldet frontmatter-unparseable fuer einen Schluessel, den der Zeilenleser nicht kennt", () => {
+    expect(setFrontmatterFields({ existing: note, values: { "vorgäng": "x" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
   });
 });

@@ -78,7 +78,7 @@ cd mailstone && npm install && npm run build
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="Eine Mail-Notiz: Frontmatter mit Absender, Empfängern, Datum und Message-ID, in_reply_to und references als Wikilinks auf die frühere Mail, darunter der Nachrichtentext.">
 
 3. **Oder im Posteingangs-Tab arbeiten.** Seitenleiste über das Ribbon-Symbol oder den Befehl *Mailstone: Seitenleiste öffnen* öffnen, zu **Posteingang** wechseln und bei allem Aufhebenswerten *Ins Vault übernehmen* nutzen. Die Nachricht wandert auf dem Server in den Allowlist-Ordner, und der folgende Sync schreibt die Notiz.
-4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus dem Original neu aufbauen*, *Mail-Threads neu verknüpfen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen. Jedes zeigt vor dem Schreiben, was es ändern würde:
+4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus dem Original neu aufbauen*, *Mail-Threads neu verknüpfen*, *Vorgänge neu berechnen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen. Jedes zeigt vor dem Schreiben, was es ändern würde:
 
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/relink-preview.png" width="820" alt="Der Dialog „Review before writing“ des Kommandos Mail-Threads neu verknüpfen: Eine Notiz bekommt einen Wikilink in in_reply_to, dargestellt als Vorher und Nachher, mit Cancel und Apply.">
 
@@ -106,6 +106,7 @@ Globale Einstellungen:
 | Notiz-Ordner | Wo Mail-Notizen entstehen, je Jahr ein Unterordner | `Mail` |
 | Unterordner je Jahr | Schaltet die Jahres-Unterordner ab | an |
 | Original als .eml speichern | Legt das Original neben jede neue Notiz. Aus: keine zweite Kopie der personenbezogenen Daten im Vault; *Neu aufbauen* und *Anhang extrahieren* holen das Original dann per Message-ID vom Server (nur Desktop, nur lesend), und *Gespeicherte .eml-Dateien entfernen* legt die vorhandenen in den Papierkorb. Mails ohne Message-ID behalten ihre `.eml` | an |
+| Vorgangsfeld | Frontmatter-Feld, das jede Mail-Notiz mit der frühesten Mail ihres Vorgangs verknüpft, die erste Mail mit sich selbst. Wird beim Anlegen gefüllt; *Vorgänge neu berechnen* trägt es in bestehenden Notizen nach. Leer schaltet Vorgänge aus | leer |
 | Dateinamen-Vorlage | Platzhalter `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
 | Zusatzfelder für neue Mail-Notizen | Felder, die beim ersten Anlegen einmalig ins Frontmatter geschrieben werden, etwa `status: open` | keine |
 | Erlaubte Werte bei Neuanlage | Werte, die für die beim Anlegen geschriebenen Felder zulässig sind | `mail` |
@@ -128,6 +129,8 @@ Globale Einstellungen:
 **Die Message-ID ist die Identität.** Sie überlebt erneutes Herunterladen, Ordnerwechsel und umbenannte Dateien. Die `.eml` neben jeder Notiz ist die Treuefläche: Frontmatter, gerenderter Text und Anhänge lassen sich daraus neu aufbauen, eine Formatänderung kostet also nie Daten.
 
 **Die `.eml` ist optional.** Wer keine zweite Kopie der Nachricht (samt den personenbezogenen Daten darin) im Vault will, schaltet *Original als .eml speichern* aus. Notizen entstehen wie bisher; braucht *Neu aufbauen* oder *Anhang extrahieren* dann das Original, holt Mailstone es per Message-ID vom Server, nur lesend und ohne etwas als gelesen zu markieren, und sucht im Ordner der Notiz, dann im Allowlist- und im Archivordner. Das geht nur am Desktop und nur, solange die Nachricht noch auf dem Server liegt; sonst nennt der Befehl die durchsuchten Ordner. *Gespeicherte .eml-Dateien entfernen* legt die vorhandenen in den Papierkorb (nach einer Vorschau, nie eine Notiz).
+
+**Vorgänge sind Links, keine Ordner.** Ist ein *Vorgangsfeld* gesetzt (etwa `vorgang`), bekommt jede neue Notiz einen Link auf die früheste Mail ihres Vorgangs, gefunden über `In-Reply-To` und `References`. Eine neue Notiz übernimmt den Wert der Mail, auf die sie antwortet; beim Sync wird also nichts neu gruppiert. *Vorgänge neu berechnen* gruppiert den ganzen Vault neu, wenn du es willst (nach einer Vorschau, und es ändert nur dieses eine Feld). Weil der Wert ein gewöhnlicher Link ist, kann eine Base danach gruppieren.
 
 **Notizen werden zusammengeführt, nicht überschrieben.** Dein eigener Text steht außerhalb einer markierten Zone (`%% mailstone:begin %%` … `%% mailstone:end %%`) und wird vor jedem Schreiben per Hash verglichen. Hast du den verwalteten Abschnitt von Hand bearbeitet, wird das Schreiben verweigert, statt es still anzuwenden. Mailstone löscht nie eine Notiz: Eine Nachricht, die den Ordner verlässt, wird als `detached` markiert, und beim Zurücklegen wird sie wieder verbunden.
 

@@ -61,3 +61,10 @@ describe("i18n-Paritaet der Kommandos", () => {
     expect(Object.keys(de).sort()).toEqual(Object.keys(en).sort());
   });
 });
+
+describe("Hinweis-Schluessel der Kommandos", () => {
+  it.each(dicts)("%s kennt den Hinweis, den mail.recomputeThreads bei ausgeschaltetem Vorgang gibt", (_lang, dict) => {
+    expect(dict["error.command.thread-field-off"]).toBeTruthy();
+    expect(errorKey("error.command.thread-field-off")).toBe("error.command.thread-field-off");
+  });
+});

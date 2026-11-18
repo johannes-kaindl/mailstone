@@ -16,6 +16,7 @@ import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
+import { threadFieldProblem } from "../core/thread/field";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
 import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
@@ -111,6 +112,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
         desc: t("settings.saveEml.desc"),
         control: { type: "toggle", key: "profile.saveEml" },
       },
+      {
+        name: t("settings.threadField"),
+        desc: t("settings.threadField.desc"),
+        control: { type: "text", key: "profile.threadField" },
+      },
+      ...this.threadHint(this.threadFieldHint()),
       this.accountsGroup(),
       // SettingDefinitionList kennt keinen eigenen `desc` (nur `heading`) — die Erklaerung
       // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
@@ -434,6 +441,19 @@ export class MailstoneSettingTab extends PluginSettingTab {
     this.update();
   }
 
+  // ── Vorgang (A3, E7): Hinweis unter der Zeile ───────────────────────────────────────────
+  // Ein Wert, der nicht taugt, wird gespeichert (der Nutzer sieht, was er getippt hat) und wirkt nicht:
+  // `effectiveThreadField` schaltet den Vorgang dann ab. Die Zeile darunter sagt warum.
+  private threadFieldHint(): string | null {
+    const profile = this.host.settings.profile;
+    const problem = threadFieldProblem(profile);
+    return problem === null ? null : t(`settings.threadField.problem.${problem}`, profile.threadField.trim());
+  }
+
+  private threadHint(text: string | null): SettingDefinitionItem[] {
+    return text === null ? [] : [{ name: t("settings.threadHint"), desc: text }];
+  }
+
   // ── Kontroll-Werte für den nativen 1.13-Renderer ────────────────────────
   // Lookup-Tabelle statt if/else-Kette (Nachlese-Punkt aus der Task-Review): jeder Key traegt
   // seinen eigenen get/set, neu aufgebaut je Aufruf (billig, `s` bleibt dieselbe Objektreferenz
@@ -464,6 +484,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         get: () => s.profile.saveEml,
         set: (value) => { s.profile.saveEml = Boolean(value); },
       },
+      "profile.threadField": {
+        get: () => s.profile.threadField,
+        set: (value) => { s.profile.threadField = typeof value === "string" ? value.trim() : ""; },
+      },
       "profile.filename": {
         get: () => s.profile.filename,
         set: (value) => {
@@ -488,7 +512,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
   async setControlValue(key: string, value: unknown): Promise<void> {
     const entry = this.controls()[key];
     if (!entry) return;
+    // Nur wenn sich der Hinweis ein- oder ausblendet oder aendert, zeichnet der Tab neu: ein Neuzeichnen
+    // bei jedem Tastendruck risse dem Nutzer den Fokus aus dem Textfeld.
+    const hinweisVorher = key === "profile.threadField" ? String(this.threadFieldHint()) : null;
     entry.set(value);
     await this.host.saveSettings();
+    if (hinweisVorher !== null && hinweisVorher !== String(this.threadFieldHint())) this.update();
   }
 }

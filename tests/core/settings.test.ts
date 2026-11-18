@@ -231,3 +231,22 @@ describe("showStatusBar (UI-STANDARD § 8 Statusleisten-Eintrag)", () => {
     expect(loadSettings({ showStatusBar: null }).showStatusBar).toBe(true);
   });
 });
+
+describe("threadField (A3)", () => {
+  it("eine alte data.json ohne das Feld ergibt: Vorgang aus", () => {
+    const alt = loadSettings({ schemaVersion: 1, profile: { folder: "Mail", saveEml: false } });
+    expect(alt.profile.threadField).toBe("");
+    expect(loadSettings(undefined).profile.threadField).toBe("");
+  });
+  it("ein gespeicherter Wert bleibt", () => {
+    expect(loadSettings({ profile: { threadField: "vorgang" } }).profile.threadField).toBe("vorgang");
+  });
+  it("ein Wert, der kein Text ist, faellt auf die Vorgabe zurueck", () => {
+    for (const v of [5, true, null, [], {}]) {
+      expect(loadSettings({ profile: { threadField: v } }).profile.threadField, JSON.stringify(v)).toBe("");
+    }
+  });
+  it("ein unbrauchbarer Feldname bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
+    expect(loadSettings({ profile: { threadField: "mail_id" } }).profile.threadField).toBe("mail_id");
+  });
+});

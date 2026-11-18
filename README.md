@@ -76,7 +76,7 @@ cd mailstone && npm install && npm run build
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="A mail note: front matter with sender, recipients, date and Message-ID, in_reply_to and references as wikilinks to the earlier mail, and the message text below.">
 
 3. **Or work from the inbox tab.** Open the sidebar with the ribbon icon or the command *Mailstone: Open the sidebar panel*, switch to **Inbox**, and use *Move to vault* on anything worth keeping. The message moves into the allowlist folder on the server, and the following sync writes the note.
-4. **On a mail note**, the command palette offers *Re-render mail note from its original*, *Relink mail threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear. Each one shows what it would change before it writes:
+4. **On a mail note**, the command palette offers *Re-render mail note from its original*, *Relink mail threads*, *Recompute threads*, *Extract an attachment from a mail note*, *Reply to a mail in the external mail client* and *Create a TaskNotes task*. Only the ones that apply to the open note appear. Each one shows what it would change before it writes:
 
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/relink-preview.png" width="820" alt="The "Review before writing" dialog of the Relink mail threads command: one note gets a wikilink in in_reply_to, shown as Before and After, with Cancel and Apply.">
 
@@ -104,6 +104,7 @@ Global settings:
 | Notes folder | Where mail notes are created, in a subfolder per year | `Mail` |
 | Subfolder per year | Turns the year subfolders off | on |
 | Save original as .eml | Writes the original next to each new note. Off: no second copy of the personal data in the vault; *Re-render* and *Extract an attachment* then fetch the original from the server by Message-ID (desktop only, read-only), and *Remove stored .eml files* trashes the ones you already have. Mails without a Message-ID keep their `.eml` | on |
+| Thread field | Front matter field that links every mail note to the earliest mail of its thread, the first mail to itself. Filled in when a note is created; *Recompute threads* fills it in for existing notes. Empty switches threads off | empty |
 | Filename template | Placeholders `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
 | Extra fields for new mail notes | Fields written once into a note's front matter when it is first created, for example `status: open` | none |
 | Allowed note-creation values | Values accepted for the fields written at creation | `mail` |
@@ -126,6 +127,8 @@ Global settings:
 **The Message-ID is the identity.** It survives re-downloads, folder moves and renamed files. The `.eml` next to each note is the fidelity surface: front matter, rendered body and attachments can be rebuilt from it, so a formatting change never costs you data.
 
 **The `.eml` is optional.** If you would rather not keep a second copy of the message (and the personal data in it) in the vault, switch off *Save original as .eml*. Notes are written as before; when *Re-render* or *Extract an attachment* then needs the original, Mailstone fetches it from the server by Message-ID, read-only and without marking anything as read, searching the note's folder, then the allowlist and archive folders. That works on the desktop only, and it needs the message to still be on the server; if it is not, the command says which folders it searched. *Remove stored .eml files* moves the ones you already have to the trash (after a preview, never touching a note).
+
+**Threads are links, not folders.** With a *Thread field* set (say `vorgang`), every new note gets a link to the earliest mail of its thread, found through `In-Reply-To` and `References`. A new note takes the value of the mail it replies to, so nothing is regrouped at sync time; *Recompute threads* regroups the whole vault when you want it (after a preview, and it changes nothing but that one field). Because the value is an ordinary link, a Base can group by it.
 
 **Notes are merged, not overwritten.** Your own text lives outside a marked zone (`%% mailstone:begin %%` … `%% mailstone:end %%`) and is compared by hash before any write. If you edited the managed zone, the write is refused rather than silently applied. Mailstone never deletes a note: a message that leaves the folder is marked `detached`, and putting it back reattaches it.
 

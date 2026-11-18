@@ -41,10 +41,13 @@ export function newNote(
   onCreate: Record<string, FmVal>,
   block: string,
   userHead = "## Notizen\n\n",
+  /** Werte, die nur beim Anlegen entstehen und am Vault-Stand haengen (Vorgang, spaeter geerbte Felder):
+   *  zwischen `onCreate` und `derived`. `derived` gewinnt immer, ein verwalteter Schluessel bleibt unantastbar. */
+  extra: Record<string, FmVal> = {},
 ): { content: string; zoneHash: string } {
   const data: Record<string, FmValue> = {};
   const order: string[] = [];
-  for (const [k, v] of Object.entries({ ...onCreate, ...derived })) {
+  for (const [k, v] of Object.entries({ ...onCreate, ...extra, ...derived })) {
     data[k] = toFm(v);
     order.push(k);
   }
@@ -144,6 +147,17 @@ export function setFrontmatterField(input: { existing: string; key: string; valu
   | { ok: true; content: string; changed: boolean }
   | { ok: false; code: MergeErrorCode } {
   return fromPatch(patchFrontmatter(input.existing, { set: toFmValues({ [input.key]: input.value }), create: true, protect: [] }));
+}
+
+/**
+ * Setzt MEHRERE Frontmatter-Keys zeilenweise und LEGT fehlende an (E1, Welle 36): der Weg fuer Kommandos,
+ * deren Feld im Bestand fehlen darf (Vorgang). Anders als `mergeFrontmatterOnly` (nur Bestehendes) und wie
+ * `setFrontmatterField`; die Zone und alles andere bleibt Byte fuer Byte stehen.
+ */
+export function setFrontmatterFields(input: { existing: string; values: Record<string, FmVal> }):
+  | { ok: true; content: string; changed: boolean }
+  | { ok: false; code: MergeErrorCode } {
+  return fromPatch(patchFrontmatter(input.existing, { set: toFmValues(input.values), create: true, protect: [] }));
 }
 
 /**

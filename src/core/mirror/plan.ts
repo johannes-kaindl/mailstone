@@ -2,7 +2,7 @@ import type { ParsedMail } from "../mime/types";
 import { buildDerivedFrontmatter } from "../render/frontmatter";
 import { renderMessageBlock } from "../render/body";
 import { mailFilename, mailFolder, emlFolder } from "../render/filename";
-import { DEFAULT_NOTE_HEADINGS, managedKeys, type MailProfile } from "./profile";
+import { DEFAULT_NOTE_HEADINGS, managedKeys, type FmVal, type MailProfile } from "./profile";
 import { blockHeadingOf, mergeNote, newNote } from "../merge/merge";
 
 export type NotePlan =
@@ -51,6 +51,9 @@ export interface PlanInput {
    *  Mails desselben Laufs schon beim Rendern ein Ziel haben. Ohne dieses Feld rechnet
    *  `planMailNote` wie bisher aus `takenPaths`. */
   paths?: AssignedPaths;
+  /** Werte nur fuer eine NEUE Notiz, die am Vault-Stand haengen (Vorgangswert); sie stehen zwischen
+   *  `onCreate` und den verwalteten Feldern, die immer gewinnen. */
+  createExtra?: Record<string, FmVal>;
   /** false = bestehende Notizen werden nie neu gerendert (Merge-Regel 5 der Spec § 2.2:
    *  "Re-Render nie automatisch; Sync legt nur Neues an und setzt mail_state"). Der Sync
    *  uebergibt false, das Import-Kommando true. */
@@ -108,7 +111,7 @@ export function planMailNote(input: PlanInput): NotePlan {
 
   if (!input.existing) {
     const assigned = input.paths ?? freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
-    const { content, zoneHash } = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`);
+    const { content, zoneHash } = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`, input.createExtra);
     // Der .eml-Pfad wird in jedem Fall VERGEBEN (freePaths/assignRunPaths pruefen ihn weiter:
     // eine verwaiste Datei am Konventionspfad bleibt eine Kollision), geschrieben wird er nur,
     // wenn die .eml gebraucht wird. Eine Mail ohne Message-ID ist auf dem Server nicht
