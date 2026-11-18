@@ -1,32 +1,15 @@
 import { setFrontmatterFields } from "../merge/merge";
 import { wikilinkOf } from "../../vendor/kit/frontmatter";
-import { fmKeyFor } from "../mirror/profile";
 import type { NotePlan } from "../mirror/plan";
 import { effectiveThreadField } from "../thread/field";
-import { groupThreads, type ThreadEntry } from "../thread/group";
+import { groupThreads } from "../thread/group";
 import { show } from "./diff";
 import { validateInput } from "./schema";
+import { threadEntryOf } from "./thread-entry";
 import { keepZoneHash } from "./zone";
-import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type MailNoteRef, type PlanResult } from "./types";
+import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type PlanResult } from "./types";
 
 const MAX_DIFF_ROWS = 20;
-
-const text = (v: unknown): string => (typeof v === "string" ? v : "");
-
-function entryOf(ctx: CommandContext, ref: MailNoteRef): ThreadEntry {
-  const f = (name: "date" | "time"): string => {
-    const key = fmKeyFor(ctx.profile, name);
-    return key === null ? "" : text(ref.frontmatter[key]);
-  };
-  return {
-    mailId: ref.mailId,
-    path: ref.path.replace(/\.md$/, ""),
-    date: f("date"),
-    time: f("time"),
-    inReplyTo: ref.thread?.inReplyTo ?? [],
-    references: ref.thread?.references ?? [],
-  };
-}
 
 /**
  * „Vorgaenge neu berechnen“ (A3, Welle 36): setzt `threadField` in allen Mail-Notizen des Vaults auf den
@@ -55,7 +38,7 @@ export const RECOMPUTE_THREADS_COMMAND: CommandDescriptor = {
     if (field === "") return { ok: false, code: "nothing-to-do", hintKey: "error.command.thread-field-off" };
 
     const refs = ctx.notes ?? [];
-    const entries = refs.map((r) => entryOf(ctx, r));
+    const entries = refs.map((r) => threadEntryOf(ctx.profile, r));
     const index = groupThreads(entries);
     const pathOf = new Map(entries.map((e) => [e.mailId, e.path]));
 

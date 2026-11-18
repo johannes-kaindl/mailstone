@@ -47,6 +47,19 @@
   color: var(--text-error); font-size: var(--font-ui-small); }
 .mailstone-inbox-badge { color: var(--text-success); display: inline-flex; }
 
+/* Folge-Mails anzeigen (A1) — Listen-Zeile vertikal wie im Posteingang (UI-STANDARD §8), Empty-State mit Praefix-Klasse */
+.mailstone-follow-status { display: flex; align-items: center; gap: var(--size-4-2); color: var(--text-muted); }
+.mailstone-follow-group { margin-bottom: var(--size-4-3); }
+.mailstone-follow-title { margin: 0 0 var(--size-4-1); font-size: var(--font-ui-medium); overflow-wrap: anywhere; }
+.mailstone-follow-row { padding: var(--size-4-2) 0; border-bottom: 1px solid var(--background-modifier-border); }
+.mailstone-follow-subject { font-size: var(--font-ui-small); overflow-wrap: anywhere; }
+.mailstone-follow-meta { display: flex; justify-content: space-between; gap: var(--size-4-2);
+  color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.mailstone-follow-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); margin: 0 0 var(--size-4-2); }
+.mailstone-follow-empty { text-align: center; color: var(--text-muted); padding: var(--size-4-4) 0; }
+.mailstone-follow-problem { display: flex; align-items: center; gap: var(--size-4-1);
+  color: var(--text-error); font-size: var(--font-ui-small); margin-top: var(--size-4-2); }
+
 /* Status-Indikator: dieselbe Vokabel wie beim Cockpit — Form UND Farbe UND Klasse UND
  * aria-label (WCAG 1.4.1). Der Brief listet fuer diesen Baustein keine Farbregeln; ohne sie
  * bliebe is-error/is-checking optisch wirkungslos, deshalb ergaenzt wie beim Cockpit-Vorbild. */

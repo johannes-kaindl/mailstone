@@ -16,7 +16,7 @@ import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
-import { threadFieldProblem } from "../core/thread/field";
+import { followFieldProblem, threadFieldProblem } from "../core/thread/field";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
 import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
@@ -118,6 +118,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
         control: { type: "text", key: "profile.threadField" },
       },
       ...this.threadHint(this.threadFieldHint()),
+      {
+        name: t("settings.followField"),
+        desc: t("settings.followField.desc"),
+        control: { type: "text", key: "profile.followField" },
+      },
+      ...this.threadHint(this.followFieldHint()),
       this.accountsGroup(),
       // SettingDefinitionList kennt keinen eigenen `desc` (nur `heading`) — die Erklaerung
       // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
@@ -450,6 +456,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return problem === null ? null : t(`settings.threadField.problem.${problem}`, profile.threadField.trim());
   }
 
+  private followFieldHint(): string | null {
+    const profile = this.host.settings.profile;
+    const problem = followFieldProblem(profile);
+    return problem === null ? null : t(`settings.followField.problem.${problem}`, profile.followField.trim());
+  }
+
   private threadHint(text: string | null): SettingDefinitionItem[] {
     return text === null ? [] : [{ name: t("settings.threadHint"), desc: text }];
   }
@@ -488,6 +500,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         get: () => s.profile.threadField,
         set: (value) => { s.profile.threadField = typeof value === "string" ? value.trim() : ""; },
       },
+      "profile.followField": {
+        get: () => s.profile.followField,
+        set: (value) => { s.profile.followField = typeof value === "string" ? value.trim() : ""; },
+      },
       "profile.filename": {
         get: () => s.profile.filename,
         set: (value) => {
@@ -514,9 +530,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
     if (!entry) return;
     // Nur wenn sich der Hinweis ein- oder ausblendet oder aendert, zeichnet der Tab neu: ein Neuzeichnen
     // bei jedem Tastendruck risse dem Nutzer den Fokus aus dem Textfeld.
-    const hinweisVorher = key === "profile.threadField" ? String(this.threadFieldHint()) : null;
+    // Beide Feldnamen teilen sich die Kollisionsprobe: eine Aenderung des einen kann den Hinweis des anderen aendern.
+    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}`;
+    const hinweisVorher = key === "profile.threadField" || key === "profile.followField" ? hinweise() : null;
     entry.set(value);
     await this.host.saveSettings();
-    if (hinweisVorher !== null && hinweisVorher !== String(this.threadFieldHint())) this.update();
+    if (hinweisVorher !== null && hinweisVorher !== hinweise()) this.update();
   }
 }

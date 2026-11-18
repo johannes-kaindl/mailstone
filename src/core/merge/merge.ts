@@ -1,5 +1,5 @@
 import { parseFrontmatter, serializeFrontmatter, type FmValue } from "../../vendor/kit/frontmatter";
-import { patchFrontmatter, type FrontmatterPatchResult } from "../../vendor/kit/frontmatter-patch";
+import { patchFrontmatter, type FmLiteral, type FrontmatterPatchResult } from "../../vendor/kit/frontmatter-patch";
 import type { FmVal } from "../mirror/profile";
 import { splitBody, wrapBlock, zoneHash } from "./fences";
 import { detectEol } from "../../vendor/code-kit/text-window";
@@ -152,13 +152,28 @@ export function setFrontmatterField(input: { existing: string; key: string; valu
 
 /**
  * Setzt MEHRERE Frontmatter-Keys zeilenweise und LEGT fehlende an (E1, Welle 36): der Weg fuer Kommandos,
- * deren Feld im Bestand fehlen darf (Vorgang). Anders als `mergeFrontmatterOnly` (nur Bestehendes) und wie
- * `setFrontmatterField`; die Zone und alles andere bleibt Byte fuer Byte stehen.
+ * deren Feld im Bestand fehlen darf (Vorgang, Folgen-Markierung). Anders als `mergeFrontmatterOnly` (nur Bestehendes)
+ * und wie `setFrontmatterField`; die Zone und alles andere bleibt Byte fuer Byte stehen.
+ *
+ * `literals` schreibt fertige YAML-Skalare unveraendert (E2): `{ k: "false" }` ergibt `k: false`, nicht `k: "false"`,
+ * das `toFm` aus einem Wahrheitswert machen wuerde. Was das Kit nicht als Literal zulaesst, ist `frontmatter-unparseable`.
+ * `remove` entfernt Schluessel samt Zeile; ein fehlender ist kein Fehler. Derselbe Schluessel in zwei der drei
+ * Angaben ist ein Fehler, es wird nicht geraten, welcher gewinnt.
  */
-export function setFrontmatterFields(input: { existing: string; values: Record<string, FmVal> }):
+export function setFrontmatterFields(input: {
+  existing: string;
+  values: Record<string, FmVal>;
+  literals?: Record<string, string>;
+  remove?: readonly string[];
+}):
   | { ok: true; content: string; changed: boolean }
   | { ok: false; code: MergeErrorCode } {
-  return fromPatch(patchFrontmatter(input.existing, { set: toFmValues(input.values), create: true, protect: [] }));
+  const set: Record<string, FmValue | FmLiteral> = toFmValues(input.values);
+  for (const [k, literal] of Object.entries(input.literals ?? {})) {
+    if (Object.hasOwn(set, k)) return { ok: false, code: "frontmatter-unparseable" };
+    set[k] = { literal };
+  }
+  return fromPatch(patchFrontmatter(input.existing, { set, create: true, protect: [], ...(input.remove ? { remove: input.remove } : {}) }));
 }
 
 /**

@@ -541,3 +541,51 @@ describe("setFrontmatterFields (E1)", () => {
     expect(setFrontmatterFields({ existing: note, values: { "vorgäng": "x" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
   });
 });
+
+describe("setFrontmatterFields — Literale und Entfernen (E1, E2: Folgen-Markierung)", () => {
+  const ohne = "---\ntype: mail\nmail_id: a@x\n---\n\n%% mailstone:begin %%\nZone\n%% mailstone:end %%\n";
+
+  it("legt einen fehlenden Schluessel als YAML-Literal an: false ohne Anfuehrungszeichen", () => {
+    const r = setFrontmatterFields({ existing: ohne, values: {}, literals: { mail_follow: "false" } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.changed).toBe(true);
+    expect(r.content).toContain("\nmail_follow: false\n");
+    expect(r.content).not.toContain('"false"');
+    expect(r.content.endsWith("%% mailstone:begin %%\nZone\n%% mailstone:end %%\n")).toBe(true);
+    expect(parseFrontmatter(r.content).data.mail_follow).toBe("false"); // der eigene Leser liefert Text; Obsidians Cache den Wahrheitswert
+  });
+
+  it("ersetzt einen vorhandenen Text \"false\" durch das Literal", () => {
+    const alt = ohne.replace("mail_id: a@x\n", 'mail_id: a@x\nmail_follow: "false"\n');
+    const r = setFrontmatterFields({ existing: alt, values: {}, literals: { mail_follow: "false" } });
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.content).toContain("\nmail_follow: false\n");
+    expect(r.content).not.toContain('mail_follow: "false"');
+  });
+
+  it("ist ohne Aenderung changed=false, wenn das Literal schon so steht", () => {
+    const schon = ohne.replace("mail_id: a@x\n", "mail_id: a@x\nmail_follow: false\n");
+    expect(setFrontmatterFields({ existing: schon, values: {}, literals: { mail_follow: "false" } })).toMatchObject({ ok: true, changed: false });
+  });
+
+  it("entfernt einen Schluessel samt Zeile; ein fehlender ist kein Fehler", () => {
+    const schon = ohne.replace("mail_id: a@x\n", "mail_id: a@x\nmail_follow: false\n");
+    const r = setFrontmatterFields({ existing: schon, values: {}, remove: ["mail_follow"] });
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.content).toBe(ohne);
+    expect(setFrontmatterFields({ existing: ohne, values: {}, remove: ["mail_follow"] })).toMatchObject({ ok: true, changed: false });
+  });
+
+  it("Werte und Literale in einem Zug; derselbe Schluessel in beiden ist ein Fehler, nicht geraten", () => {
+    const r = setFrontmatterFields({ existing: ohne, values: { projekt: "x" }, literals: { mail_follow: "false" } });
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.content).toContain("projekt: x");
+    expect(r.content).toContain("mail_follow: false");
+    expect(setFrontmatterFields({ existing: ohne, values: { k: "x" }, literals: { k: "false" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+
+  it("ein Literal, das kein YAML-Skalar ist, wird abgelehnt statt roh geschrieben", () => {
+    expect(setFrontmatterFields({ existing: ohne, values: {}, literals: { k: "a\nb: c" } })).toEqual({ ok: false, code: "frontmatter-unparseable" });
+  });
+});

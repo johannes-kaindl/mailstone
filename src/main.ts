@@ -26,6 +26,7 @@ import { createUidCache, type UidCacheStore, type UidCacheData } from "./core/sy
 import { recordRun, parseRunState, type RunState } from "./core/sync/run-state";
 import { vaultRelinkDeps } from "./obsidian/relink-run";
 import { threadNotes } from "./obsidian/thread-index";
+import { openFollowUps } from "./obsidian/follow-ups";
 import { findNotePathForMailId, mailIndex, trashEml, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
 import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
@@ -378,6 +379,20 @@ export default class MailstonePlugin extends Plugin {
 
     if (networkFeaturesAvailable()) {
       this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
+      // Lesend, nur Desktop (A1, Vorstufe): zeigt Mails in Posteingang und Gesendet, die zu einem Vorgang im Vault gehoeren.
+      this.addCommand({
+        id: "mail-showFollowUps",
+        name: t("cmd.showFollowUps.name"),
+        callback: () => {
+          openFollowUps({
+            app: this.app,
+            busy: this.busy,
+            profile: () => this.settings.profile,
+            accounts: () => this.settings.accounts,
+            secret: (id) => secrets.get(id),
+          });
+        },
+      });
     }
 
     // Genau ein registerView-Type (UI-STANDARD §1): das Ribbon-Symbol OEFFNET die Ansicht,

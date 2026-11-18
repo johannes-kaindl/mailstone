@@ -412,3 +412,62 @@ describe("MailstoneSettingTab — Vorgang (A3, E7)", () => {
     expect(neu).toBe(2);
   });
 });
+
+describe("MailstoneSettingTab — Folgen-Feld (A1, E7)", () => {
+  type Def = { name?: string; desc?: string; control?: { key?: string } };
+  const defs = (tab: MailstoneSettingTab): Def[] => tab.getSettingDefinitions() as Def[];
+  const after = (tab: MailstoneSettingTab, key: string): Def | undefined => {
+    const list = defs(tab);
+    return list[list.findIndex((d) => d.control?.key === key) + 1];
+  };
+
+  it("zeigt die Zeile direkt nach dem Vorgangsfeld, Vorgabe mail_follow", () => {
+    const tab = newTab();
+    const keys = defs(tab).map((d) => d.control?.key);
+    expect(keys.indexOf("profile.followField")).toBe(keys.indexOf("profile.threadField") + 1);
+    expect(defs(tab).find((d) => d.control?.key === "profile.followField")?.name).toBe(t("settings.followField"));
+    expect(tab.getControlValue("profile.followField")).toBe("mail_follow");
+  });
+
+  it("speichert den Wert getrimmt; leer bleibt leer (aus)", async () => {
+    const tab = newTab();
+    await tab.setControlValue("profile.followField", "  folgen ");
+    expect(tab["host"].settings.profile.followField).toBe("folgen");
+    await tab.setControlValue("profile.followField", "");
+    expect(tab["host"].settings.profile.followField).toBe("");
+  });
+
+  it("kein Hinweis beim Standard", () => {
+    expect(defs(newTab()).some((d) => d.name === t("settings.threadHint"))).toBe(false);
+  });
+
+  it("ein verwalteter Schluessel, ein Name mit Umlaut und eine Kollision zeigen je ihren Hinweis unter der Zeile", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.followField = "mail_id";
+    expect(after(tab, "profile.followField")?.desc).toBe(t("settings.followField.problem.managed", "mail_id"));
+    tab["host"].settings.profile.followField = "folgen-ä";
+    expect(after(tab, "profile.followField")?.desc).toBe(t("settings.followField.problem.unreadable", "folgen-ä"));
+    tab["host"].settings.profile.threadField = "vorgang";
+    tab["host"].settings.profile.followField = "vorgang";
+    expect(after(tab, "profile.followField")?.desc).toBe(t("settings.followField.problem.collision", "vorgang"));
+    // dieselbe Kollision zeigt auch das Vorgangsfeld an
+    expect(after(tab, "profile.threadField")?.desc).toBe(t("settings.threadField.problem.collision", "vorgang"));
+  });
+
+  it("nach einer Aenderung, die einen Hinweis ein- oder ausblendet, zeichnet der Tab neu; sonst nicht (Fokus)", async () => {
+    const tab = newTab();
+    let neu = 0;
+    (tab as unknown as { update: () => void }).update = () => { neu++; };
+    await tab.setControlValue("profile.followField", "folgen");
+    expect(neu).toBe(0);
+    await tab.setControlValue("profile.followField", "mail_id");
+    expect(neu).toBe(1);
+    await tab.setControlValue("profile.threadField", "x");
+    expect(neu).toBe(1);
+    // Das Vorgangsfeld auf denselben Namen: der Hinweis erscheint unter beiden Zeilen
+    await tab.setControlValue("profile.followField", "gleich");
+    expect(neu).toBe(2);
+    await tab.setControlValue("profile.threadField", "gleich");
+    expect(neu).toBe(3);
+  });
+});
