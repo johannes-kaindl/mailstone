@@ -70,11 +70,11 @@ describe("buildContext", () => {
     expect(r.ok && r.ctx.mail?.id).toBe("a@x");
   });
 
-  it("meldet eml-missing, wenn am Konventionspfad nichts liegt", async () => {
+  it("meldet original-desktop-only, wenn nichts am Konventionspfad liegt und es keinen Abruf gibt (Mobile)", async () => {
     const app = makeApp();
     await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\n---\n${ZONE}`);
     const r = await buildContext(deps(app), RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
-    expect(r).toEqual({ ok: false, code: "eml-missing" });
+    expect(r).toEqual({ ok: false, code: "original-desktop-only" });
   });
 
   it("meldet eml-mismatch, wenn die .eml zu einer anderen Mail gehoert", async () => {
@@ -153,6 +153,98 @@ describe("buildContext", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.ctx.existingAttachment("a.txt")).toBeNull();
+  });
+});
+
+// A6 (Welle 36): ohne brauchbare .eml neben der Notiz holt buildContext das Original vom Server.
+describe("buildContext: Rueckfall auf das Original vom Server", () => {
+  const bytes = new TextEncoder().encode(EML);
+  const ok = { ok: true as const, bytes };
+  const fileOf = (app: Awaited<ReturnType<typeof vaultWithNote>>) => app.vault.getAbstractFileByPath("Mail/2026/x.md");
+  async function ohneEml() {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\nmail_source: acc/Vault\nmail_state: live\n---\n## Notizen\n\n${ZONE}`);
+    return app;
+  }
+
+  it("ruft den Abruf mit Message-ID und mail_source, wenn die .eml fehlt, und baut den Kontext aus den Bytes", async () => {
+    const app = await ohneEml();
+    const fetchOriginal = vi.fn(async () => ok);
+    const r = await buildContext({ ...deps(app), fetchOriginal }, RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(fetchOriginal).toHaveBeenCalledWith({ mailId: "a@x", source: "acc/Vault" });
+    expect(r.ok && r.ctx.mail?.id).toBe("a@x");
+  });
+
+  it("ruft den Abruf NICHT, wenn eine passende .eml daneben liegt", async () => {
+    const app = await vaultWithNote();
+    const fetchOriginal = vi.fn(async () => ok);
+    await buildContext({ ...deps(app), fetchOriginal }, RERENDER_COMMAND, fileOf(app));
+    expect(fetchOriginal).not.toHaveBeenCalled();
+  });
+
+  it("ruft ihn auch bei einer nicht passenden und bei einer unlesbaren .eml", async () => {
+    const fremd = await vaultWithNote(EML.replace("<a@x>", "<fremd@x>"));
+    const f1 = vi.fn(async () => ok);
+    const r1 = await buildContext({ ...deps(fremd), fetchOriginal: f1 }, RERENDER_COMMAND, fileOf(fremd));
+    expect(f1).toHaveBeenCalledTimes(1);
+    expect(r1.ok).toBe(true);
+    const kaputt = await vaultWithNote("");
+    const f2 = vi.fn(async () => ok);
+    const r2 = await buildContext({ ...deps(kaputt), fetchOriginal: f2 }, RERENDER_COMMAND, fileOf(kaputt));
+    expect(f2).toHaveBeenCalledTimes(1);
+    expect(r2.ok).toBe(true);
+  });
+
+  it("holt fuer den Anhang-Befehl genauso, und die Anhangpfade kommen aus dem geholten Original", async () => {
+    const app = await ohneEml();
+    const mitAnhang = new TextEncoder().encode(EML.replace("\r\n\r\nHallo\r\n", EML_ANHANG_TEIL));
+    const r = await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: true, bytes: mitAnhang }) }, EXTRACT_ATTACHMENT_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(r.ok && r.ctx.attachmentPathFor("a.txt")).toBe("Anhaenge/a.txt");
+  });
+
+  it("schreibt das geholte Original nicht in den Vault", async () => {
+    const app = await ohneEml();
+    const spy = vi.spyOn(app.vault, "createBinary");
+    await buildContext({ ...deps(app), fetchOriginal: async () => ok }, RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("reicht not-found mit der Ordnerliste und unsearchable als eigenen Code weiter", async () => {
+    const app = await ohneEml();
+    const f = app.vault.getAbstractFileByPath("Mail/2026/x.md");
+    expect(await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: false, code: "original-not-found", detail: "Konto: Vault" }) }, RERENDER_COMMAND, f))
+      .toEqual({ ok: false, code: "original-not-found", detail: "Konto: Vault" });
+    expect(await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: false, code: "original-unsearchable", detail: "a@x" }) }, RERENDER_COMMAND, f))
+      .toEqual({ ok: false, code: "original-unsearchable" });
+  });
+
+  it("reicht busy durch und laesst Netzfehler ihren Code und Text (error.sync.*) behalten", async () => {
+    const app = await ohneEml();
+    const f = app.vault.getAbstractFileByPath("Mail/2026/x.md");
+    expect(await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: false, code: "busy", detail: "" }) }, RERENDER_COMMAND, f)).toEqual({ ok: false, code: "busy" });
+    for (const code of ["auth", "connect", "timeout", "no-secret"] as const) {
+      expect(await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: false, code, detail: "x" }) }, RERENDER_COMMAND, f), code)
+        .toEqual({ ok: false, code: `error.sync.${code}` });
+    }
+  });
+
+  it("behaelt bei einer schlechten lokalen .eml deren Code, wenn der Server auch nichts liefert oder nicht gefragt werden kann", async () => {
+    const fremd = await vaultWithNote(EML.replace("<a@x>", "<fremd@x>"));
+    const nichts = { ok: false as const, code: "original-not-found" as const, detail: "Konto: Vault" };
+    expect(await buildContext({ ...deps(fremd), fetchOriginal: async () => nichts }, RERENDER_COMMAND, fileOf(fremd))).toEqual({ ok: false, code: "eml-mismatch" });
+    expect(await buildContext(deps(fremd), RERENDER_COMMAND, fileOf(fremd))).toEqual({ ok: false, code: "eml-mismatch" });
+    const kaputt = await vaultWithNote("");
+    expect(await buildContext(deps(kaputt), RERENDER_COMMAND, fileOf(kaputt))).toMatchObject({ ok: false, code: expect.stringMatching(/^eml-(unparseable|mismatch)$/) });
+    // Ein Netzfehler beim Rueckfall wird gemeldet, nicht von der lokalen Meldung ueberdeckt.
+    const netz = await buildContext({ ...deps(fremd), fetchOriginal: async () => ({ ok: false, code: "auth", detail: "x" }) }, RERENDER_COMMAND, fileOf(fremd));
+    expect(netz).toEqual({ ok: false, code: "error.sync.auth" });
+  });
+
+  it("ein geholtes Original mit anderer Message-ID wird als eml-mismatch abgelehnt", async () => {
+    const app = await ohneEml();
+    const falsch = new TextEncoder().encode(EML.replace("<a@x>", "<anders@x>"));
+    expect(await buildContext({ ...deps(app), fetchOriginal: async () => ({ ok: true, bytes: falsch }) }, RERENDER_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md")))
+      .toEqual({ ok: false, code: "eml-mismatch" });
   });
 });
 

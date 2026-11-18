@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { en, de } from "../../src/i18n/strings";
+import { errorKey } from "../../src/obsidian/command-i18n";
 import { MAIL_COMMANDS } from "../../src/core/commands/mail-commands";
 import type { CommandErrorCode } from "../../src/core/commands/types";
 
@@ -9,6 +10,7 @@ import type { CommandErrorCode } from "../../src/core/commands/types";
 // separately below (Fix-Runde 1, Finding 2).
 const COMMAND_ERROR_CODES = [
   "busy", "invalid-input", "not-applicable", "eml-missing", "eml-unparseable", "eml-mismatch",
+  "original-not-found", "original-unsearchable", "original-desktop-only",
   "fences-missing", "zone-edited", "frontmatter-unparseable", "attachment-missing",
   "no-recipient", "tasknotes-unavailable", "task-create-failed", "no-choices", "nothing-to-do", "write-failed", "unexpected",
 ] as const satisfies readonly CommandErrorCode[];
@@ -40,6 +42,19 @@ describe("i18n-Paritaet der Kommandos", () => {
 
   it.each(dicts)("%s kennt jeden Fehlercode", (_lang, dict) => {
     for (const code of COMMAND_ERROR_CODES) expect(dict[`error.command.${code}`], code).toBeTruthy();
+  });
+
+  it("errorKey: Kommando-Codes liegen unter error.command.*, ein Netzfehler ist schon der volle Schluessel", () => {
+    expect(errorKey("eml-mismatch")).toBe("error.command.eml-mismatch");
+    expect(errorKey("error.sync.auth")).toBe("error.sync.auth");
+  });
+
+  it.each(dicts)("%s kennt jeden Netzfehler-Schluessel, den der Originalabruf durchreicht", (_lang, dict) => {
+    for (const code of ["auth", "connect", "tls", "timeout", "closed", "protocol", "tls-required", "no-secret"]) expect(dict[errorKey(`error.sync.${code}`)], code).toBeTruthy();
+  });
+
+  it("original-not-found traegt die Ordnerliste als {0}", () => {
+    for (const dict of [en, de]) expect(dict["error.command.original-not-found"]).toContain("{0}");
   });
 
   it("hat in beiden Sprachen dieselben Schluessel", () => {

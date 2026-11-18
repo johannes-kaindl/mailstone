@@ -11,6 +11,9 @@ export type CommandErrorCode =
   | "eml-missing"              // keine .eml am Konventionspfad
   | "eml-unparseable"          // parseEml hat geworfen
   | "eml-mismatch"             // die .eml gehoert zu einer ANDEREN Mail als die Notiz
+  | "original-not-found"       // weder .eml neben der Notiz noch Original auf dem Server (A6)
+  | "original-unsearchable"    // Message-ID fehlt (noid-) oder ist per IMAP nicht durchsuchbar
+  | "original-desktop-only"    // keine .eml, und der Abruf vom Server gibt es nur am Desktop
   | "fences-missing"           // Zone fehlt (Merge-Regel 3)
   | "zone-edited"              // Zone von Hand geaendert (Merge-Regel 4)
   | "frontmatter-unparseable"  // verwalteter Key liegt als Block-Skalar vor (Merge-Regel 2)
@@ -22,6 +25,14 @@ export type CommandErrorCode =
   | "nothing-to-do"            // Plan waere leer — nichts zu schreiben
   | "write-failed"             // Schreibvorgang gescheitert
   | "unexpected";              // runCommand() hat geworfen, BEVOR etwas geschrieben wurde (M3b-Nachlese, Fund 3)
+
+/** Ein Netzfehler beim Abruf des Originals behaelt Code UND Text des Sync-Fehlers: der Code ist
+ *  schon der volle i18n-Schluessel (`error.sync.auth`), dieselbe Konvention wie `notifyError` im
+ *  Posteingang (ein Punkt im Code heisst „bereits qualifiziert“). */
+export type QualifiedErrorKey = `error.sync.${string}`;
+
+/** Was ein Fehler beim Aufbau des Kontexts tragen kann: ein Kommando-Code oder ein Sync-Schluessel. */
+export type ContextErrorCode = CommandErrorCode | QualifiedErrorKey;
 
 /** Die Notiz, auf die ein Kommando wirkt. */
 export interface MailTarget {

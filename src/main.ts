@@ -31,9 +31,10 @@ import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
 import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/execute";
 import type { NotePlan } from "./core/mirror/plan";
-import { runCommand, probeFor, type RunResult } from "./obsidian/command-flow";
+import { runCommand, probeFor, type CommandFlowDeps, type RunResult } from "./obsidian/command-flow";
+import { fetchOriginal } from "./core/originals/fetch-original";
 import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-bridge";
-import { trTitle } from "./obsidian/command-i18n";
+import { errorKey, trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
 import type { CockpitHost } from "./obsidian/views/cockpit-panel";
 import { createInboxHost, type CreateTaskOutcome } from "./obsidian/views/inbox-host";
@@ -681,6 +682,36 @@ export default class MailstonePlugin extends Plugin {
     return { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } };
   }
 
+  /** Die Deps des Kommando-Ablaufs. Der Abruf des Originals vom Server (A6) braucht die
+   *  Socket-Schicht und steht deshalb nur am Desktop bereit; auf Mobile fehlt die Dep, und
+   *  buildContext meldet `original-desktop-only`. Lesende Sitzung (`imapConnect`), nie schreibend. */
+  private commandFlowDeps(): CommandFlowDeps {
+    const secrets = obsidianSecretStore(this.app);
+    return {
+      app: this.app,
+      profile: () => this.commandProfile(),
+      hashes: this.hashStore(),
+      now: () => new Date(),
+      ...(networkFeaturesAvailable() ? {
+        fetchOriginal: (req) => fetchOriginal({
+          accounts: () => this.settings.accounts.map((a) => ({ id: a.id, label: a.label || a.id, folders: { allowlist: a.folders.allowlist, archive: a.folders.archive } })),
+          connect: async (o) => {
+            const acc = this.settings.accounts.find((a) => a.id === o.id);
+            if (!acc) return { ok: false, code: "connect", detail: "Konto nicht mehr vorhanden" };
+            const pw = secrets.get(acc.secretId);
+            if (pw === null) return { ok: false, code: "no-secret", detail: "kein Geheimnis hinterlegt" };
+            return imapConnect(nodeSocketTransport(), {
+              host: acc.imap.host, port: acc.imap.port, tls: acc.imap.tls,
+              username: acc.username, password: pw, timers: window,
+              ...(isLoopback(acc.imap.host) ? { allowInsecureAuth: true } : {}),
+            });
+          },
+          busy: this.busy,
+        }, req),
+      } : {}),
+    };
+  }
+
   private commandExecuteDeps(): CommandExecuteDeps {
     return {
       // Derselbe Guard wie der SyncService: ein laufender Sync und ein Kommando schliessen
@@ -701,7 +732,7 @@ export default class MailstonePlugin extends Plugin {
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(
-        { app: this.app, profile: () => this.commandProfile(), hashes: this.hashStore(), now: () => new Date() },
+        this.commandFlowDeps(),
         this.commandExecuteDeps(),
         descriptor,
       ));
@@ -709,9 +740,9 @@ export default class MailstonePlugin extends Plugin {
       await this.saveSettings();
     }
     if (outcome.kind === "cancelled") return;
-    if (outcome.kind === "error") { notify.error(`error.command.${outcome.code}`); return; }
+    if (outcome.kind === "error") { notify.error(errorKey(outcome.code), ...(outcome.detail !== undefined ? [outcome.detail] : [])); return; }
     const r = outcome.result;
-    if (!r.ok) { notify.error(`error.command.${r.code}`); return; }
+    if (!r.ok) { notify.error(errorKey(r.code)); return; }
     if (!suppressDoneNotice(r)) notify.info("notice.command.done", r.created + r.updated, r.skipped.length);
     const staleSkips = staleSkipCount(r.skipped);
     if (staleSkips > 0) notify.info("notice.command.staleSkip", staleSkips);
@@ -738,7 +769,7 @@ export default class MailstonePlugin extends Plugin {
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(
-        { app: this.app, profile: () => this.commandProfile(), hashes: this.hashStore(), now: () => new Date() },
+        this.commandFlowDeps(),
         this.commandExecuteDeps(),
         CREATE_TASK_COMMAND,
         file,
@@ -751,7 +782,7 @@ export default class MailstonePlugin extends Plugin {
     // keine InboxActionCode-Werte — `strings.ts` fuehrt sie unter `error.command.*`, nicht
     // unter `inbox.error.*`. Der volle, bereits qualifizierte Schluessel geht durch bis zum
     // Host, dessen `notifyError` einen Punkt im Code als "schon qualifiziert" erkennt.
-    if (outcome.kind === "error") return { kind: "error", code: `error.command.${outcome.code}`, adopted: true };
+    if (outcome.kind === "error") return { kind: "error", code: errorKey(outcome.code), adopted: true };
     const r = outcome.result;
     if (!r.ok) return { kind: "error", code: `error.command.${r.code}`, adopted: true };
     const taskNotice = taskCreatedNotice(r);

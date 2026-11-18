@@ -18,9 +18,9 @@ import { validateInput } from "./schema";
  */
 export const RERENDER_COMMAND: CommandDescriptor = {
   id: "mail.rerender",
-  title: "Re-render note from its .eml",
+  title: "Re-render note from its original",
   titleKey: "cmd.mail.rerender.title",
-  description: "Rebuilds the message zone and the derived front matter keys from the .eml stored next to the note. Anything you wrote outside the zone stays untouched.",
+  description: "Rebuilds the message zone and the derived front matter keys from the original: the .eml stored next to the note or the message fetched from the server. Anything you wrote outside the zone stays untouched.",
   descriptionKey: "cmd.mail.rerender.desc",
   schema: EMPTY_SCHEMA,
   needs: { eml: true },

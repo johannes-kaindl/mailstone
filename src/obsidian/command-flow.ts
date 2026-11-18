@@ -3,7 +3,8 @@ import { parseEml } from "../core/mime/parse";
 import { emlPathFor, verifyEml } from "../core/commands/eml";
 import { executeCommandPlan, type CommandExecuteDeps, type CommandExecuteResult } from "../core/commands/execute";
 import { emptyChoiceField, predeterminedInput } from "../core/commands/schema";
-import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type MailNoteRef, type MailTarget } from "../core/commands/types";
+import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type ContextErrorCode, type MailNoteRef, type MailTarget } from "../core/commands/types";
+import type { FetchOriginalRequest, FetchOriginalResult } from "../core/originals/fetch-original";
 import type { MailProfile } from "../core/mirror/profile";
 import { SchemaFormModal } from "./modals/schema-form-modal";
 import { PlanPreviewModal } from "./modals/plan-preview-modal";
@@ -15,12 +16,18 @@ export interface CommandFlowDeps {
   profile: () => MailProfile;
   hashes: ZoneHashStore;
   now: () => Date;
+  /** Holt das Original einer Mail vom Server, wenn neben der Notiz keine brauchbare .eml liegt
+   *  (A6). Fehlt die Dep (Mobile: `networkFeaturesAvailable()` ist false), meldet buildContext
+   *  `original-desktop-only`. */
+  fetchOriginal?: (req: FetchOriginalRequest) => Promise<FetchOriginalResult>;
 }
 
 export type RunResult =
   | { kind: "cancelled" }
   | { kind: "done"; result: CommandExecuteResult }
-  | { kind: "error"; code: CommandErrorCode };
+  | { kind: "error"; code: ContextErrorCode; /** Argument fuer den Fehlertext, etwa die durchsuchten Ordner. */ detail?: string };
+
+type ContextFailure = { ok: false; code: ContextErrorCode; detail?: string };
 
 /** Die Notiz als Kommando-Ziel — oder null, wenn sie keine Mail-Notiz ist. Herkunft und
  *  Zustand duerfen fehlen (Altbestand aus einem Import vor M3); die Kommandos reichen dann
@@ -65,11 +72,56 @@ function anhangzugriffErlaubt(descriptor: CommandDescriptor): void {
   if (!descriptor.needs?.attachments) throw new Error(`${descriptor.id}: needs.attachments nicht deklariert`);
 }
 
+/** Die Mail zu einer Notiz: die .eml am Konventionspfad, wenn sie da ist, zu dieser Mail gehoert
+ *  und sich lesen laesst; sonst das Original vom Server (A6). Die geholten Bytes werden nie in
+ *  den Vault geschrieben. Ist die lokale .eml da, aber nicht brauchbar (`eml-mismatch`,
+ *  `eml-unparseable`), und der Server liefert auch nichts oder kann nicht gefragt werden, bleibt
+ *  es bei der lokalen Meldung; Busy und Netzfehler gehen vor, sie sind behebbar. */
+async function loadOriginal(
+  deps: CommandFlowDeps,
+  profile: MailProfile,
+  file: TFile,
+  target: MailTarget,
+): Promise<{ ok: true; mail: Awaited<ReturnType<typeof parseEml>> } | ContextFailure> {
+  const { app } = deps;
+  let local: CommandErrorCode | null = null;
+  const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
+  if (emlFile instanceof TFile) {
+    try {
+      const parsed = await parseEml(new Uint8Array(await app.vault.readBinary(emlFile)));
+      const check = verifyEml(parsed, target.mailId);
+      if (check.ok) return { ok: true, mail: parsed };
+      local = check.code;
+    } catch {
+      local = "eml-unparseable";
+    }
+  }
+  if (!deps.fetchOriginal) return { ok: false, code: local ?? "original-desktop-only" };
+  const r = await deps.fetchOriginal({ mailId: target.mailId, source: target.source });
+  if (!r.ok) {
+    switch (r.code) {
+      case "busy": return { ok: false, code: "busy" };
+      case "original-not-found":
+        return local ? { ok: false, code: local } : { ok: false, code: "original-not-found", detail: r.detail };
+      case "original-unsearchable":
+        return { ok: false, code: local ?? "original-unsearchable" };
+      default: return { ok: false, code: `error.sync.${r.code}` };
+    }
+  }
+  try {
+    const parsed = await parseEml(r.bytes);
+    const check = verifyEml(parsed, target.mailId);
+    return check.ok ? { ok: true, mail: parsed } : { ok: false, code: check.code };
+  } catch {
+    return { ok: false, code: "eml-unparseable" };
+  }
+}
+
 export async function buildContext(
   deps: CommandFlowDeps,
   descriptor: CommandDescriptor,
   file: TFile | null,
-): Promise<{ ok: true; ctx: CommandContext } | { ok: false; code: CommandErrorCode }> {
+): Promise<{ ok: true; ctx: CommandContext } | ContextFailure> {
   const { app } = deps;
   const profile = deps.profile();
   if (!(file instanceof TFile)) return { ok: false, code: "not-applicable" };
@@ -87,16 +139,9 @@ export async function buildContext(
   const vorhandeneAnhaenge = new Map<string, { path: string; data: Uint8Array }>();
   let mail: Awaited<ReturnType<typeof parseEml>> | undefined;
   if (descriptor.needs?.eml) {
-    const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
-    if (!(emlFile instanceof TFile)) return { ok: false, code: "eml-missing" };
-    let parsed: Awaited<ReturnType<typeof parseEml>>;
-    try {
-      parsed = await parseEml(new Uint8Array(await app.vault.readBinary(emlFile)));
-    } catch {
-      return { ok: false, code: "eml-unparseable" };
-    }
-    const check = verifyEml(parsed, target.mailId);
-    if (!check.ok) return { ok: false, code: check.code };
+    const loaded = await loadOriginal(deps, profile, file, target);
+    if (!loaded.ok) return loaded;
+    const parsed = loaded.mail;
     mail = parsed;
     // getAvailablePathForAttachment ist async, `plan()` ist synchron — also hier aufloesen.
     // Nur fuer Kommandos, die es DEKLARIEREN: `mail.rerender` ruft attachmentPathFor nie, zahlte
@@ -165,7 +210,7 @@ export async function runCommand(
   file: TFile | null = deps.app.workspace.getActiveFile(),
 ): Promise<RunResult> {
   const built = await buildContext(deps, descriptor, file);
-  if (!built.ok) return { kind: "error", code: built.code };
+  if (!built.ok) return { kind: "error", code: built.code, ...(built.detail !== undefined ? { detail: built.detail } : {}) };
   const ctx = built.ctx;
   if (!descriptor.appliesTo(ctx)) return { kind: "error", code: "not-applicable" };
 

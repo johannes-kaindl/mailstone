@@ -1,7 +1,7 @@
 // uebernommen aus calendar-notes/src/obsidian/command-i18n.ts, 2026-08-30
 import { t } from "../vendor/code-kit/i18n";
 import type { FieldSchema } from "../core/commands/schema";
-import type { CommandDescriptor, MailCommandPlan } from "../core/commands/types";
+import type { CommandDescriptor, ContextErrorCode, MailCommandPlan } from "../core/commands/types";
 
 /** `t()` faellt bei einem unbekannten Key auf den Key selbst zurueck. Passiert das, zeigen
  *  wir den englischen Fallback aus dem Deskriptor statt `cmd.mail.relink.title`. */
@@ -36,4 +36,10 @@ export function trPlan(plan: MailCommandPlan): string {
  *  eigenen Bezeichner (`attachment`) haben einen Eintrag und werden uebersetzt. */
 export function fieldLabel(name: string): string {
   return trOrFallback(`plan.field.${name}`, name);
+}
+
+/** Der i18n-Schluessel eines Fehlers: ein Kommando-Code liegt unter `error.command.*`, ein
+ *  Netzfehler des Originalabrufs ist schon der volle Schluessel (`error.sync.auth`). */
+export function errorKey(code: ContextErrorCode): string {
+  return code.startsWith("error.") ? code : `error.command.${code}`;
 }
