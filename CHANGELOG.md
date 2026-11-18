@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
 - *Re-render mail note* and *Extract an attachment* fetch the original from the server by Message-ID when no `.eml` is stored next to the note (or it belongs to another mail or cannot be read). Read-only (`EXAMINE`, `BODY.PEEK`), desktop only; the fetched original is not saved. If the server does not have it either, the message lists the folders searched. Re-render is now called *Re-render mail note from its original*.
 - Command *Remove stored .eml files*, available while *Save original as .eml* is off: moves the `.eml` files next to your mail notes to the trash (the trash follows the vault's setting for deleted files). A preview lists the files first; a `.eml` whose Message-ID does not match its note, or that cannot be read, is left alone. Notes are never touched, and the files you imported from are not covered.
 
+### Changed
+
+- When a sync run creates a note, it now also replaces the raw message id in `in_reply_to` and `references` of **existing** mail notes with a link to that new note (before, those stayed raw until *Relink threads* was run by hand, for example when a ticket confirmation arrived days before your own original). Only ids of notes created in that run, only those two fields; the message section and its checksum stay untouched, and a note that cannot be updated counts as an error without stopping the run.
+
 ### Fixed
 
 - Replies and their original mail synced (or imported) in the same run now link to each other. Before, the link was only written for mails from earlier runs, so a reply that arrived together with its original kept the raw message id; the order of the mails in the run no longer matters.

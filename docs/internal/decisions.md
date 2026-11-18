@@ -31,6 +31,17 @@ Die Spec (§ 5) sagte „Löschen gibt es nicht (auch nicht `trashFile`)“. Joh
 
 Ohne `.eml` holt `buildContext` das Original bei Bedarf vom Server (`fetchOriginal`, nur lesend, nur Desktop) und schreibt es nie in den Vault. Mails ohne Message-ID (`noid-…`) behalten die `.eml` auch bei `saveEml: false`, weil sie auf dem Server nicht auffindbar sind.
 
+## Der Sync verlinkt ältere Notizen nach (2026-11-18, eine Ausnahme von Merge-Regel 5)
+
+Merge-Regel 5 (Spec § 2.2) sagt: Sync legt nur Neues an und setzt `mail_state`. Gemessen im Arbeits-Vault: Helpdesk-Bestätigungen kamen vier Tage vor ihren Bezugsmails, danach standen in `in_reply_to` und `references` rohe IDs, obwohl die Zielnotizen existierten; bis zum nächsten *Relink threads* von Hand blieb das so. Entscheidung (Johannes, 2026-11-18): ein Sync-Lauf darf das nachholen, eng begrenzt.
+
+- **Was:** nach dem Anlegen ersetzt der Lauf in **bestehenden** Mail-Notizen die rohe ID durch den Wikilink, in `in_reply_to` und `references`, sonst in keinem Feld.
+- **Nur für IDs, deren Notiz dieser Lauf angelegt hat.** Eine rohe ID auf eine Mail ohne Notiz oder auf eine, die ein früherer Lauf angelegt hat, bleibt roh (dafür gibt es `mail.relink`). Nie ein Selbstverweis.
+- **Derselbe Weg wie `mail.relink`** (`relinkNotePlan`): zeilenweise ins Frontmatter, die Zone bleibt Byte für Byte stehen, der gespeicherte Zone-Hash bleibt; geschrieben über den `PlanExecutor` mit `expectedContent`, also nur, wenn die Datei noch den gelesenen Inhalt hat. Keine Vorschau (es ist ein Sync).
+- **Kein Mailinhalt ändert sich**, deshalb bleibt der Grund der Regel (die Zone gehört dem Nutzer, kein automatischer Re-Render) unberührt. Ein Fehlschlag bei einer Notiz bricht den Lauf nicht ab und zählt als Fehler.
+
+Wer diese Ausnahme erweitert (weitere Felder, IDs früherer Läufe, die Zone), ändert Merge-Regel 5 und braucht eine neue Entscheidung.
+
 ## Ausnahmen von Dach-Regeln
 
 Zwei Abweichungen von der Dach-`REGISTRY.md` sind bewusst und mit Begründung in den Pfadregeln festgehalten: der Aufruf von `api.tasks.create` am Fremdplugin TaskNotes (`.claude/rules/tasknotes.md`, entschieden von Johannes 2026-09-05) und das Zustimmungs-Tor der Versand-API (`.claude/rules/versand-api.md`).

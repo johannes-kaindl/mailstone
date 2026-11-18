@@ -518,3 +518,76 @@ describe("createSyncService — Header-Deckel hebelt den Body-Deckel nicht aus",
     expect(fake.written.filter((l) => l.includes("BODY.PEEK[]"))).toHaveLength(0);
   });
 });
+
+// Vorspann zu A3 (Welle 36, Entscheidung Johannes 2026-11-18): nach dem Anlegen verlinkt der Lauf in
+// BESTEHENDEN Notizen die rohen IDs auf Notizen, die er selbst angelegt hat — und sonst nichts.
+describe("createSyncService — verlinkt aeltere Notizen nach", () => {
+  const header = new TextEncoder().encode("Message-ID: <neu@example.net>\r\n\r\n");
+  const body = new TextEncoder().encode(EML);
+  const steps = (): DialogStep[] => dialog([
+    { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 7", "a004 OK done"] },
+    { expect: /^a005 UID FETCH 7 \(BODY\.PEEK\[HEADER\.FIELDS \(MESSAGE-ID\)\]\)$/, send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(header.byteLength)}}`, header, ")", "a005 OK done"] },
+    { expect: /^a006 UID FETCH 7 \(BODY\.PEEK\[\]\)$/, send: [`* 1 FETCH (UID 7 BODY[] {${String(body.byteLength)}}`, body, ")", "a006 OK done"] },
+    { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
+  ]);
+  const ALT = "---\nmail_id: alt@example.net\nin_reply_to: neu@example.net\n---\n\n%% mailstone:begin %%\nx\n%% mailstone:end %%\n";
+  const fremd = { mailId: "fremd@example.net", path: "Mail/2026/fremd.md", frontmatter: { mail_id: "fremd@example.net", in_reply_to: "nirgends@example.net" } };
+  const alt = { mailId: "alt@example.net", path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.net", in_reply_to: "neu@example.net" } };
+
+  function lauf(relink: NonNullable<Parameters<typeof createSyncService>[0]["relink"]>, exec = recordingExecutor()) {
+    const fake = new FakeSocketTransport(["* OK ready"], steps());
+    const svc = createSyncService({
+      accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim", transport: () => fake,
+      index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => exec.executor,
+      uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
+      now: () => new Date("2026-08-30T09:00:00Z"), relink,
+    });
+    return { svc, exec };
+  }
+
+  it("verlinkt die rohe ID in einer aelteren Notiz auf die Notiz, die der Lauf anlegt", async () => {
+    const { svc, exec } = lauf({ heads: () => [alt, fremd], read: (p) => Promise.resolve(p === alt.path ? { content: ALT, zoneHash: "h" } : null) });
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { created: 1, errors: 0 } });
+    const create = exec.seen.find((p) => p.kind === "create")!;
+    const update = exec.seen.find((p) => p.kind === "update")!;
+    expect(update).toMatchObject({ path: alt.path, mailId: "alt@example.net" });
+    expect(update.kind === "update" && update.content).toContain(`in_reply_to: "[[${create.path.replace(/\.md$/, "")}]]"`);
+    // Die Notiz mit der ID auf eine NICHT angelegte Mail bleibt unberuehrt.
+    expect(exec.seen.some((p) => p.path === fremd.path)).toBe(false);
+  });
+
+  it("legt zuerst an und verlinkt danach: zwei Executor-Aufrufe in dieser Reihenfolge", async () => {
+    const aufrufe: string[][] = [];
+    const exec = { seen: [] as NotePlan[], executor: { execute: (plans: NotePlan[]) => { aufrufe.push(plans.map((p) => p.kind)); return Promise.resolve({ created: plans.filter((p) => p.kind === "create").length, updated: plans.filter((p) => p.kind === "update").length, stateChanged: 0, skipped: [], errors: [] }); } } };
+    const { svc } = lauf({ heads: () => [alt], read: () => Promise.resolve({ content: ALT, zoneHash: "h" }) }, exec);
+    await svc.syncAccount("acc");
+    expect(aufrufe).toEqual([["create"], ["update"]]);
+  });
+
+  it("ein Fehler beim Nachverlinken bricht den Lauf nicht ab und zaehlt als Fehler", async () => {
+    const { svc, exec } = lauf({ heads: () => [alt], read: () => Promise.reject(new Error("weg")) });
+    const r = await svc.syncAccount("acc");
+    expect(r).toMatchObject({ ok: true, counts: { created: 1, errors: 1 } });
+    expect(exec.seen.some((p) => p.kind === "create")).toBe(true);
+  });
+
+  it("schreibt nichts nach, wenn der Lauf keine Notiz anlegt", async () => {
+    let gelesen = 0;
+    const header2 = new TextEncoder().encode("Message-ID: <da@example.net>\r\n\r\n");
+    const fake = new FakeSocketTransport(["* OK ready"], dialog([
+      { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 7", "a004 OK done"] },
+      { expect: /^a005 UID FETCH 7 \(BODY\.PEEK\[HEADER\.FIELDS \(MESSAGE-ID\)\]\)$/, send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(header2.byteLength)}}`, header2, ")", "a005 OK done"] },
+      { expect: /^a006 LOGOUT$/, send: ["* BYE", "a006 OK done"] },
+    ]));
+    const exec = recordingExecutor();
+    const svc = createSyncService({
+      accounts: () => [account()], profile: () => defaultMailProfile(), secret: () => "geheim", transport: () => fake,
+      index: () => new Map([["da@example.net", { path: "Mail/2026/d.md", state: "live", source: "acc/Vault" }]]), takenPaths: () => new Set<string>(), executor: () => exec.executor,
+      uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
+      now: () => new Date("2026-08-30T09:00:00Z"), relink: { heads: () => [alt], read: () => { gelesen++; return Promise.resolve(null); } },
+    });
+    expect((await svc.syncAccount("acc")).ok).toBe(true);
+    expect(gelesen).toBe(0);
+  });
+});

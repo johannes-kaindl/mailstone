@@ -5,7 +5,7 @@ import { show } from "./diff";
 import { keepZoneHash } from "./zone";
 import type { NotePlan } from "../mirror/plan";
 import { validateInput } from "./schema";
-import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type PlanResult } from "./types";
+import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type MailNoteRef, type PlanResult } from "./types";
 
 /** Ein Frontmatter-Wert, der schon ein Wikilink ist, bleibt einer — die Rueckrichtung
  *  braeuchte die Message-ID, und die steht dann nirgends mehr.
@@ -45,6 +45,30 @@ export function relinkValues(
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/** Der Plan fuer EINE Notiz: `update` mit den verlinkten Werten, `skip` mit Grund (keine Zone,
+ *  Frontmatter nicht lesbar) oder `null`, wenn es nichts zu tun gibt. Der gemeinsame Weg von
+ *  `mail.relink` (vault-weit, mit Vorschau) und vom Nachverlinken nach einem Sync-Lauf
+ *  (`core/mirror/relink-run.ts`, ohne Vorschau): beide aendern nur Frontmatter-Werte, nie die Zone,
+ *  und uebernehmen den GESPEICHERTEN Zone-Hash. Eine Notiz verlinkt nie auf sich selbst
+ *  (Vorspann zu A6, Welle 36). */
+export function relinkNotePlan(
+  ref: MailNoteRef,
+  keys: readonly string[],
+  linkFor: (id: string) => string | null,
+): { note: NotePlan; values: Record<string, FmVal> } | null {
+  const values = relinkValues(ref.frontmatter, keys, (id) => (id === ref.mailId ? null : linkFor(id)));
+  if (!values) return null;
+  const hash = keepZoneHash(ref.content, ref.zoneHash);
+  if (hash === null) {
+    // Notiz ohne Zone: Merge-Regel 3, nicht halb anfassen.
+    return { note: { kind: "skip", path: ref.path, mailId: ref.mailId, reason: "fences-missing" }, values };
+  }
+  const merged = mergeFrontmatterOnly({ existing: ref.content, values });
+  if (!merged.ok) return { note: { kind: "skip", path: ref.path, mailId: ref.mailId, reason: merged.code }, values };
+  if (!merged.changed) return null;
+  return { note: { kind: "update", path: ref.path, content: merged.content, mailId: ref.mailId, zoneHash: hash, expectedContent: ref.content }, values };
+}
+
 const MAX_DIFF_ROWS = 20;
 
 export const RELINK_COMMAND: CommandDescriptor = {
@@ -74,25 +98,12 @@ export const RELINK_COMMAND: CommandDescriptor = {
     // Notiz, die es stillschweigend auslaesst, sieht fuer den Nutzer aus wie eine, die nichts
     // zu tun hatte. Der Executor zaehlt die Eintraege und die Meldung nennt sie.
     for (const ref of ctx.notes ?? []) {
-      // Eine Notiz verlinkt nie auf sich selbst (Vorspann zu A6, Welle 36).
-      const values = relinkValues(ref.frontmatter, keys, (id) => (id === ref.mailId ? null : linkFor(id)));
-      if (!values) continue; // wirklich nichts zu tun — kein Uebergehen, deshalb auch kein skip
-      const hash = keepZoneHash(ref.content, ref.zoneHash);
-      if (hash === null) {
-        // Notiz ohne Zone: Merge-Regel 3, nicht halb anfassen.
-        notes.push({ kind: "skip", path: ref.path, mailId: ref.mailId, reason: "fences-missing" });
-        continue;
-      }
-      const merged = mergeFrontmatterOnly({ existing: ref.content, values });
-      if (!merged.ok) {
-        notes.push({ kind: "skip", path: ref.path, mailId: ref.mailId, reason: merged.code });
-        continue;
-      }
-      if (!merged.changed) continue;
-      notes.push({ kind: "update", path: ref.path, content: merged.content, mailId: ref.mailId, zoneHash: hash, expectedContent: ref.content });
-      if (diff.length < MAX_DIFF_ROWS) {
-        const k = Object.keys(values)[0] as string;
-        diff.push({ field: ref.path, before: show(ref.frontmatter[k]), after: show(values[k]) });
+      const r = relinkNotePlan(ref, keys, linkFor);
+      if (!r) continue; // wirklich nichts zu tun — kein Uebergehen, deshalb auch kein skip
+      notes.push(r.note);
+      if (r.note.kind === "update" && diff.length < MAX_DIFF_ROWS) {
+        const k = Object.keys(r.values)[0] as string;
+        diff.push({ field: ref.path, before: show(ref.frontmatter[k]), after: show(r.values[k]) });
       }
     }
     // Gezaehlt wird, was WIRKLICH geschrieben wird — ein Lauf, der nur Uebersprungene

@@ -8,6 +8,7 @@ import { NetError } from "../net/types";
 import type { PlanExecutionResult, PlanExecutor } from "../mirror/execute";
 import type { NotePlan } from "../mirror/plan";
 import { planSync, type MailIndex } from "../mirror/apply";
+import { planRunRelinks, type RelinkRunDeps } from "../mirror/relink-run";
 import { parseEml } from "../mime/parse";
 import type { ParsedMail } from "../mime/types";
 import { imapConnect, type ImapReadSession } from "../imap/client";
@@ -37,6 +38,8 @@ export interface SyncDeps {
   timers: TimeoutTimers;
   now: () => Date;
   log?: (line: string) => void;
+  /** Nachverlinken nach dem Anlegen (Vorspann zu A3): ohne diese Dep bleiben aeltere Notizen, wie sie sind. */
+  relink?: RelinkRunDeps;
 }
 
 export interface SyncService {
@@ -200,21 +203,45 @@ export function createSyncService(deps: SyncDeps): SyncService {
 
       const result = await deps.executor().execute(plans);
       const executedPlans = executed(plans, result);
+      const relinked = await relinkOlderNotes(profile, executedPlans);
       const counts: SyncCounts = {
         created: result.created,
         reattached: executedPlans.filter((p) => p.kind === "setState" && p.state === "live").length,
         detached: executedPlans.filter(isDetach).length,
-        skipped: result.skipped.length,
+        skipped: result.skipped.length + relinked.skipped,
         detachSkipped,
-        errors: errors + result.errors.length,
+        errors: errors + result.errors.length + relinked.errors,
       };
-      for (const p of executedPlans) {
+      for (const p of [...executedPlans, ...relinked.executed]) {
         deps.events.emit("changed", { path: p.path, kind: p.kind, mailId: p.mailId });
       }
       deps.events.emit("synced", { accountId: account.id, counts });
       return { ok: true, accountId: account.id, counts };
     } finally {
       await session.logout();
+    }
+  }
+
+  /** Merge-Regel 5, eine enge Ausnahme (Entscheidung Johannes 2026-11-18): nach dem Anlegen ersetzt
+   *  der Lauf in BESTEHENDEN Notizen die rohe ID einer eben angelegten Mail in `in_reply_to` und
+   *  `references` durch den Wikilink. Ein Fehlschlag haelt den Lauf nicht an; er zaehlt als Fehler. */
+  async function relinkOlderNotes(
+    profile: MailProfile,
+    executedPlans: NotePlan[],
+  ): Promise<{ executed: NotePlan[]; skipped: number; errors: number }> {
+    const none = { executed: [], skipped: 0, errors: 0 };
+    if (!deps.relink) return none;
+    const created = new Map<string, string>();
+    for (const p of executedPlans) if (p.kind === "create") created.set(p.mailId, p.path.replace(/\.md$/, ""));
+    if (created.size === 0) return none;
+    try {
+      const planned = await planRunRelinks(profile, created, deps.relink);
+      if (planned.plans.length === 0) return { ...none, errors: planned.errors };
+      const r = await deps.executor().execute(planned.plans);
+      deps.log?.(`relink: ${String(r.updated)} Notiz(en) nachverlinkt`);
+      return { executed: executed(planned.plans, r), skipped: r.skipped.length, errors: planned.errors + r.errors.length };
+    } catch {
+      return { ...none, errors: 1 };
     }
   }
 
