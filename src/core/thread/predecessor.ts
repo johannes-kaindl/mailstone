@@ -6,7 +6,13 @@ import { tokenOf, type Subjected } from "./token";
 export interface PredecessorMail extends Dated, Subjected {
   inReplyTo: string | null;
   references: readonly string[];
+  /** Vorberechnet aus der Original-Mail (A5, Schritt 1): hat Vorrang vor der Kennung im `subject`, auch als `null`
+   *  ("keine Kennung"). Fehlt das Feld (`undefined`), wird sie wie bisher aus dem Betreff gelesen. */
+  threadToken?: string | null;
 }
+
+const tokenFor = (mail: PredecessorMail, re: RegExp | null): string | null =>
+  mail.threadToken !== undefined ? mail.threadToken : tokenOf(mail, re);
 
 export interface PredecessorLookup {
   /** Gibt es eine Notiz (im Vault oder im selben Lauf) zu dieser Mail-ID? */
@@ -21,7 +27,7 @@ export function buildPredecessorLookup(nodes: readonly PredecessorMail[], tokenP
   const byToken = new Map<string, Dated[]>();
   for (const n of nodes) {
     ids.add(n.mailId);
-    const token = tokenOf(n, tokenPattern);
+    const token = tokenFor(n, tokenPattern);
     if (token === null) continue;
     const list = byToken.get(token);
     if (list) list.push(n); else byToken.set(token, [n]);
@@ -50,6 +56,6 @@ export function predecessorOf(mail: PredecessorMail, lookup: PredecessorLookup, 
     const id = mail.references[i]!;
     if (id !== mail.mailId && lookup.has(id)) return id;
   }
-  const token = tokenOf(mail, tokenPattern);
+  const token = tokenFor(mail, tokenPattern);
   return token === null ? null : lookup.newestWithTokenBefore(token, mail);
 }

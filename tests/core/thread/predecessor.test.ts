@@ -48,3 +48,31 @@ describe("predecessorOf", () => {
     expect(predecessorOf(mail, lookup([mail]), TOKEN)).toBeNull();
   });
 });
+
+// A5, Schritt 1: die Kennung kann vorberechnet aus der Original-Mail kommen (Betreff nach einer Pseudonymisierung ist ein Platzhalter).
+describe("predecessorOf — Kennung aus dem Original (threadToken)", () => {
+  it("findet die Vorgaengerin ueber die vorberechnete Kennung, obwohl der Betreff ein Platzhalter ist", () => {
+    const nodes = [m("t@x", { subject: "[Ticket#1] Anfrage", date: "2026-08-01" })];
+    const original = m("n@x", { subject: "Re: [Ticket#1] Anfrage", date: "2026-08-10" });
+    const pseudonym = m("n@x", { subject: "Person_x Re: Anfrage", threadToken: "[Ticket#1]", date: "2026-08-10" });
+    expect(predecessorOf(pseudonym, lookup(nodes), TOKEN)).toBe(predecessorOf(original, lookup(nodes), TOKEN));
+    expect(predecessorOf(pseudonym, lookup(nodes), TOKEN)).toBe("t@x");
+  });
+  it("ohne die Kennung waere die Vorgaengerin nicht zu finden (Gegenprobe)", () => {
+    const mail = m("n@x", { subject: "Person_x Re: Anfrage", date: "2026-08-10" });
+    expect(predecessorOf(mail, lookup([m("t@x", { subject: "[Ticket#1] Anfrage", date: "2026-08-01" })]), TOKEN)).toBeNull();
+  });
+  it("auch ein Knoten im Lauf wird ueber seine vorberechnete Kennung gefunden", () => {
+    const frueher = m("f@x", { subject: "Person_y", threadToken: "[Ticket#1]", date: "2026-08-01" });
+    const mail = m("n@x", { subject: "Person_x", threadToken: "[Ticket#1]", date: "2026-08-10" });
+    expect(predecessorOf(mail, lookup([frueher]), TOKEN)).toBe("f@x");
+  });
+  it("eine vorhandene Kennung null heisst: keine Kennung, auch wenn der Betreff eine truege", () => {
+    const mail = m("n@x", { subject: "Re: [Ticket#1] x", threadToken: null, date: "2026-08-10" });
+    expect(predecessorOf(mail, lookup([m("t@x", { subject: "[Ticket#1] a", date: "2026-08-01" })]), TOKEN)).toBeNull();
+  });
+  it("Header gehen auch hier vor", () => {
+    const mail = m("n@x", { inReplyTo: "kopf@x", threadToken: "[Ticket#1]", date: "2026-08-10" });
+    expect(predecessorOf(mail, lookup([m("kopf@x", { subject: "x" }), m("t@x", { subject: "[Ticket#1] a", date: "2026-08-01" })]), TOKEN)).toBe("kopf@x");
+  });
+});

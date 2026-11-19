@@ -119,4 +119,19 @@ describe("importEmlFolder", () => {
     const note = [...app.__files.keys()].find((p: string) => p.endsWith(".md"))!;
     expect(await app.vault.adapter.read(note)).not.toContain("vorgang");
   });
+  // A5, Schritt 1: vorberechnete Werte aus dem Original gehen der Ableitung aus der (spaeter transformierten) Mail vor.
+  it("facts je Mail-ID: richtung kommt aus dem Original, ohne facts wie bisher", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", enc(eml("a@example.org", "")));
+    const mk = (facts?: Map<string, { direction: "eingehend" | "ausgehend"; threadToken: string | null }>) =>
+      ({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0), ...(facts ? { facts } : {}) });
+    const r = await importEmlFolder(mk(new Map([["a@example.org", { direction: "ausgehend", threadToken: null }]])), "Import");
+    expect(r.errors).toEqual([]);
+    const pfad = (await app.vault.getMarkdownFiles())[0]!.path;
+    expect(await app.vault.adapter.read(pfad)).toContain("richtung: ausgehend");
+    const app2 = makeApp();
+    await app2.vault.createBinary("Import/a.eml", enc(eml("a@example.org", "")));
+    await importEmlFolder({ app: app2, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    expect(await app2.vault.adapter.read((await app2.vault.getMarkdownFiles())[0]!.path)).toContain("richtung: eingehend");
+  });
 });

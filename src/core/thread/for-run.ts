@@ -3,6 +3,7 @@
 import type { ParsedMail } from "../mime/types";
 import type { FmVal, MailProfile } from "../mirror/profile";
 import { localDate, localTime } from "../../vendor/code-kit/local-stamp";
+import type { OriginalFacts } from "../transform/original-facts";
 import { threadValuesForNew, type KnownThreadNote } from "./create-links";
 import { effectiveThreadField } from "./field";
 import { tokenRegexOf } from "./token";
@@ -14,6 +15,8 @@ export function threadExtrasForRun(
   fresh: readonly ParsedMail[],
   targets: ReadonlyMap<string, string>,
   known: (() => readonly KnownThreadNote[]) | undefined,
+  /** Mail-ID -> Werte aus dem Original (A5): die Kennung geht dem Betreff vor. */
+  facts?: ReadonlyMap<string, OriginalFacts>,
 ): Map<string, Record<string, FmVal>> {
   const field = effectiveThreadField(profile);
   const out = new Map<string, Record<string, FmVal>>();
@@ -24,6 +27,7 @@ export function threadExtrasForRun(
       if (path === undefined) return [];
       return [{
         mailId: mail.id, path, inReplyTo: mail.inReplyTo, references: mail.references, subject: mail.subject,
+        ...(facts?.has(mail.id) ? { threadToken: facts.get(mail.id)!.threadToken } : {}),
         date: mail.date ? localDate(mail.date) : "", time: mail.date ? localTime(mail.date) : "",
       }];
     }),

@@ -47,3 +47,17 @@ describe("threadValuesForNew", () => {
     expect(run([fresh("n@x", { path: "Mail/Ticket #5" })])).toEqual({});
   });
 });
+
+describe("threadValuesForNew — vorberechnete Kennung (A5, Schritt 1)", () => {
+  it("ordnet zwei Mails mit Platzhalter-Betreff ueber die Kennung aus dem Original zu", () => {
+    const r = run([
+      fresh("a@x", { subject: "Person_a", threadToken: "[Ticket#9]", date: "2026-08-01" }),
+      fresh("b@x", { subject: "Person_b", threadToken: "[Ticket#9]", date: "2026-08-02" }),
+    ]);
+    expect(r).toEqual({ "a@x": "[[Mail/neu-a@x]]", "b@x": "[[Mail/neu-a@x]]" });
+  });
+  it("ohne die Kennung bleiben beide eigene Wurzeln (Gegenprobe)", () => {
+    const r = run([fresh("a@x", { subject: "Person_a", date: "2026-08-01" }), fresh("b@x", { subject: "Person_b", date: "2026-08-02" })]);
+    expect(r).toEqual({ "a@x": "[[Mail/neu-a@x]]", "b@x": "[[Mail/neu-b@x]]" });
+  });
+});

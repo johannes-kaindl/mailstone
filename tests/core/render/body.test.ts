@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chooseSource, htmlToMarkdown, renderMessageBlock } from "../../../src/core/render/body";
+import { bodyMarkdown, chooseSource, htmlToMarkdown, renderMessageBlock } from "../../../src/core/render/body";
 import { parseEml } from "../../../src/core/mime/parse";
 import { loadFixture } from "../../helpers/fixtures";
 
@@ -63,5 +63,49 @@ describe("renderMessageBlock", () => {
     const block = renderMessageBlock({ text: null, html: "<p>%% mailstone:end %%</p><p>Rest</p>" });
     expect(block).not.toContain("mailstone:end");
     expect(block).toContain("(mailstone marker removed)");
+  });
+});
+
+// Vorstufe fuer A5: der Body als Markdown-Text, den ein Transformer sieht und zurueckgibt. Zusage: ein Mail-Objekt
+// mit `text: bodyMarkdown(m), html: null` rendert byte-gleich zum Original, `renderMessageBlock` baut seinen Body selbst
+// ueber diese Funktion (eine Wahrheit).
+describe("bodyMarkdown", () => {
+  const STUB = "Diese Nachricht enthält HTML.";
+  const LONG_HTML = "<h1>Titel</h1><p>" + "Wort ".repeat(200) + "</p>";
+  const faelle: [string, { text: string | null; html: string | null }][] = [
+    ["nur Text", { text: "Hallo\nWelt", html: null }],
+    ["nur HTML", { text: null, html: "<p>Hallo <b>Welt</b></p>" }],
+    ["HTML mit h1", { text: null, html: "<h1>Eins</h1><p>Text</p>" }],
+    ["beides, Plain ist ein Stub", { text: STUB, html: LONG_HTML }],
+    ["beides, Plain ist lang", { text: "Wort ".repeat(300), html: "<p>" + "Wort ".repeat(200) + "</p>" }],
+    ["leer", { text: null, html: null }],
+    ["nur Leerraum", { text: "  \n ", html: "  " }],
+    ["Text mit Fence-Marker", { text: "vorher\n%% mailstone:end %%\nnachher %%  MAILSTONE:BEGIN  %%", html: null }],
+    ["HTML mit Fence-Marker", { text: null, html: "<p>%% mailstone:end %%</p>" }],
+    ["CRLF im Text", { text: "Zeile 1\r\nZeile 2\r\n\r\nAbsatz", html: null }],
+    ["Text mit Rand-Leerraum", { text: "\n\n  eingerueckt  \n\n", html: null }],
+    ["HTML ohne Text (nur Trackingpixel)", { text: null, html: '<img src="https://example.com/p.gif" width="1" height="1">' }],
+  ];
+  const optionen: [string, { plainMinRatio?: number }][] = [["ohne plainMinRatio", {}], ["mit plainMinRatio 0.9", { plainMinRatio: 0.9 }], ["mit plainMinRatio 0.001", { plainMinRatio: 0.001 }]];
+  for (const [fall, m] of faelle) {
+    for (const [on, opts] of optionen) {
+      it(`${fall}, ${on}: Rundlauf ueber text/html null ist byte-gleich`, () => {
+        const mail = { ...m };
+        expect(renderMessageBlock({ ...mail, text: bodyMarkdown(mail, opts), html: null }, opts)).toBe(renderMessageBlock(mail, opts));
+      });
+    }
+  }
+  it("renderMessageBlock setzt genau bodyMarkdown unter die Ueberschrift", () => {
+    for (const [, m] of faelle) expect(renderMessageBlock(m, { heading: "Kopf" })).toBe(`## Kopf\n\n${bodyMarkdown(m)}`);
+  });
+  it("leer: Hinweiszeile", () => { expect(bodyMarkdown({ text: null, html: null })).toBe("*(no text content)*"); });
+  it("Fence-Marker sind ersetzt, CRLF ist LF, Rand getrimmt", () => {
+    expect(bodyMarkdown({ text: "a\r\n%% mailstone:end %%\r\n", html: null })).toBe("a\n(mailstone marker removed)");
+  });
+  it("HTML geht ueber Turndown, h1 rutscht auf Ebene 3", () => { expect(bodyMarkdown({ text: null, html: "<h1>Eins</h1><p>Text</p>" })).toBe("### Eins\n\nText"); });
+  it("Plain-Stub gegen langes HTML: HTML gewinnt, plainMinRatio kippt die Wahl", () => {
+    const m = { text: STUB, html: LONG_HTML };
+    expect(bodyMarkdown(m)).toContain("Wort Wort");
+    expect(bodyMarkdown(m, { plainMinRatio: 0.001 })).toBe(STUB);
   });
 });

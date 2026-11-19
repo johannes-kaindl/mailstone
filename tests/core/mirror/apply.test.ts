@@ -256,3 +256,44 @@ describe("planSync — Vorgangswert beim Anlegen", () => {
   });
 });
 
+
+// A5, Schritt 1: Werte aus dem Original-Mail, vorberechnet, bevor ein Transformer `from` und `subject` ersetzt.
+describe("planSync — Werte aus dem Original (facts)", () => {
+  const own = { ...profile, ownAddresses: ["ich@example.org"], threadField: "vorgang" };
+  const base = { source: SOURCE, syncedAt, index: new Map() as MailIndex, takenPaths: new Set<string>() };
+  const create = (plans: ReturnType<typeof planSync>, id: string) => {
+    const p = plans.find((x) => x.mailId === id);
+    if (!p || p.kind !== "create") throw new Error(`kein create-Plan fuer ${id}`);
+    return p;
+  };
+  const platzhalter = (id: string, over: Partial<ParsedMail> = {}): ParsedMail => ({
+    ...mail(id), from: { name: "Person_k3x9m2ab7q", address: "Person_k3x9m2ab7q_Mail" }, subject: "Person_x Re: Anfrage", ...over,
+  });
+
+  it("Charakterisierung: ohne facts ist alles wie bisher (richtung aus from, Kennung aus dem Betreff)", () => {
+    const m = { ...mail("a@x"), from: { name: "Ich", address: "ich@example.org" } };
+    const p = create(planSync({ ...base, profile: own, fetched: [{ mail: m, eml }], onServer: new Set(["a@x"]) }), "a@x");
+    expect(p.content).toContain("richtung: ausgehend");
+    const q = create(planSync({ ...base, profile: own, fetched: [{ mail: platzhalter("b@x"), eml }], onServer: new Set(["b@x"]) }), "b@x");
+    expect(q.content).toContain("richtung: eingehend");
+  });
+  it("Platzhalter-from plus facts aus dem Original mit eigener Adresse: richtung ausgehend", () => {
+    const facts = new Map([["b@x", { direction: "ausgehend" as const, threadToken: null }]]);
+    const q = create(planSync({ ...base, profile: own, fetched: [{ mail: platzhalter("b@x"), eml }], onServer: new Set(["b@x"]), facts }), "b@x");
+    expect(q.content).toContain("richtung: ausgehend");
+  });
+  it("facts einer anderen Mail gelten nicht", () => {
+    const facts = new Map([["anders@x", { direction: "ausgehend" as const, threadToken: null }]]);
+    const q = create(planSync({ ...base, profile: own, fetched: [{ mail: platzhalter("b@x"), eml }], onServer: new Set(["b@x"]), facts }), "b@x");
+    expect(q.content).toContain("richtung: eingehend");
+  });
+  it("Platzhalter-Betreff plus Kennung aus dem Original: die Vorgaengerin wird wie aus dem Original gefunden", () => {
+    const known = [{ mailId: "t@x", path: "Mail/2026/t", subject: "[Ticket#1] Anfrage", date: "2026-08-01", time: "10:00", value: "[[Mail/2026/wurzel]]" }];
+    const m = platzhalter("n@x", { date: new Date("2026-08-10T08:00:00Z") });
+    const ohne = create(planSync({ ...base, profile: own, fetched: [{ mail: m, eml }], onServer: new Set(["n@x"]), threadNotes: () => known }), "n@x");
+    expect(ohne.content).not.toContain("wurzel");
+    const facts = new Map([["n@x", { direction: "eingehend" as const, threadToken: "[Ticket#1]" }]]);
+    const mit = create(planSync({ ...base, profile: own, fetched: [{ mail: m, eml }], onServer: new Set(["n@x"]), threadNotes: () => known, facts }), "n@x");
+    expect(mit.content).toContain('vorgang: "[[Mail/2026/wurzel]]"');
+  });
+});

@@ -3,6 +3,7 @@ import { buildDerivedFrontmatter } from "../render/frontmatter";
 import { renderMessageBlock } from "../render/body";
 import { mailFilename, mailFolder, emlFolder } from "../render/filename";
 import { DEFAULT_NOTE_HEADINGS, managedKeys, type FmVal, type MailProfile } from "./profile";
+import type { OriginalFacts } from "../transform/original-facts";
 import { blockHeadingOf, mergeNote, newNote } from "../merge/merge";
 
 export type NotePlan =
@@ -58,6 +59,9 @@ export interface PlanInput {
    *  "Re-Render nie automatisch; Sync legt nur Neues an und setzt mail_state"). Der Sync
    *  uebergibt false, das Import-Kommando true. */
   allowUpdate: boolean;
+  /** Vorberechnet aus der Original-Mail, bevor ein Transformer `from` und `subject` ersetzt (A5, Schritt 1). Vorhanden
+   *  hat es Vorrang (`richtung`), fehlt es, wird wie bisher aus `mail` abgeleitet. */
+  facts?: OriginalFacts;
 }
 
 /** Notiz und .eml gehoeren zusammen: beide Pfade werden gegen dieselbe Belegt-Menge geprueft
@@ -104,6 +108,7 @@ export function planMailNote(input: PlanInput): NotePlan {
     state: "live",
     syncedAt: input.syncedAt,
     linkFor: input.linkFor,
+    ...(input.facts ? { facts: input.facts } : {}),
   });
   const headings = profile.noteHeadings ?? DEFAULT_NOTE_HEADINGS;
   // Bestand behaelt die Ueberschrift seiner Zone (nie umschreiben), neue Notizen die der Oberflaeche.
