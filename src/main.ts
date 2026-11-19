@@ -37,8 +37,9 @@ import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/e
 import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type CommandFlowDeps, type RunResult } from "./obsidian/command-flow";
 import { fetchOriginal } from "./core/originals/fetch-original";
-import { pseudonymizeFor } from "./vendor/kit-obsidian/pseudonymizer-call";
-import type { TransformPort } from "./core/transform/transform-mail";
+import { pseudonymizeFor, restoreFor } from "./vendor/kit-obsidian/pseudonymizer-call";
+import { TRANSFORM_CALLER, type TransformPort } from "./core/transform/transform-mail";
+import type { RestorePort } from "./core/transform/restore";
 import { noMailText } from "./obsidian/transform-text";
 import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-bridge";
 import { errorKey, trTitle } from "./obsidian/command-i18n";
@@ -322,6 +323,12 @@ export default class MailstonePlugin extends Plugin {
   private pseudonymizePort(): TransformPort {
     return (req) => pseudonymizeFor(this.app, this.settings.profile.pseudonymize, req);
   }
+
+  /** Der Port der Rueckwandlung (A5, Schritt 5): synchron, liest Stellung und Plugin-API frisch je Aufruf. Bei Aus ohne bereites Plugin bleibt der Text
+   *  unveraendert; mit bereitem Plugin loest auch Aus auf (Kit: eine alte Notiz kann Platzhalter tragen). */
+  private restorePort(): RestorePort {
+    return (text) => restoreFor(this.app, this.settings.profile.pseudonymize, text, TRANSFORM_CALLER);
+  }
   api: MailstoneApi | null = null;
   private entladen = false;
 
@@ -365,6 +372,8 @@ export default class MailstonePlugin extends Plugin {
       timers: window,
       now: () => new Date(),
       randomId: () => crypto.randomUUID(),
+      // Rueckwandlung (A5, Schritt 5): gilt fuer jeden Versand ueber den Dienst (iMIP-Bruecke, Testmail); die Plugin-API wandelt vor dem Modal selbst zurueck.
+      restore: this.restorePort(),
       ...(this.settings.debugLog ? { log: (l: string) => console.debug("[mailstone smtp]", l) } : {}),
     });
     this.wireApi();
@@ -542,7 +551,8 @@ export default class MailstonePlugin extends Plugin {
       },
       callerLabel: (id) => pluginName(this.app, id),
       consent: (opts) => askSendConsent(this.app, opts, window),
-      send: (accountId, msg) => this.sendService.send(accountId, msg),
+      send: (accountId, msg, opts) => (opts ? this.sendService.send(accountId, msg, opts) : this.sendService.send(accountId, msg)),
+      restore: this.restorePort(),
     });
   }
 

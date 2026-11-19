@@ -42,11 +42,15 @@ export type ApiSendErrorCode =
   | "busy"
   | "invalid"
   | "send-failed"
-  | "unloaded";
+  | "unloaded"
+  /** Ein Platzhalter des Plugins pseudonymizer liess sich nicht in den Klartext zurueckwandeln (unbekannt, Plugin gesperrt oder nicht bereit, ein
+   *  vergessener Platzhalter in einem Empfaengerfeld, eine Empfaengeradresse ohne `@` nach der Rueckwandlung). Nichts wurde gesendet, kein
+   *  Bestaetigungs-Modal geoeffnet. `message` nennt Art und Anzahl, nie einen Klartext. */
+  | "pseudonym-unresolved";
 
 export type ApiSendResult =
   | { ok: true; messageId: string; sentCopy: "ok" | "failed" | "skipped" }
-  | { ok: false; reason: ApiSendErrorCode };
+  | { ok: false; reason: ApiSendErrorCode; /** Nur bei `pseudonym-unresolved`: ein lesbarer Text in der Oberflaechensprache, ohne Klartext. */ message?: string };
 
 /** Vertrag, den mailstone anderen Obsidian-Plugins als `plugin.api` anbietet.
  *  Zugriff: `app.plugins.plugins["mailstone"]?.api` — defensiv lesen, das Plugin

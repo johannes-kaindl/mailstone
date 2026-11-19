@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { CONSENT_TIMEOUT_MS, createMailstoneApi, pluginName, type MailstoneApiDeps } from "../../src/obsidian/plugin-api";
 import type { ConsentOutcome } from "../../src/obsidian/send-consent-modal";
 import type { TrustedSender } from "../../src/core/api/types";
+import { initI18n } from "../../src/i18n/strings";
+import { fakeRestorePort, GONE, GONE_MAIL, MAIL, NAME, NAME_2 } from "../helpers/restore-port";
+
+initI18n("de");
 
 function deps(over: Partial<MailstoneApiDeps> = {}): MailstoneApiDeps {
   return {
@@ -303,5 +307,118 @@ describe("pluginName", () => {
     // sie abfangen muss.
     expect(pluginName({}, "calendar-notes")).toBe("calendar-notes");
     expect(pluginName(undefined, "calendar-notes")).toBe("calendar-notes");
+  });
+});
+
+// A5, Schritt 5: die API wandelt Empfaenger, Betreff und Text VOR dem Bestaetigungs-Modal zurueck, damit es zeigt, was wirklich hinausgeht.
+describe("createMailstoneApi: Rueckwandlung (A5, Schritt 5)", () => {
+  const platzhalter = { callerId: "fremd", to: [MAIL], cc: [MAIL], subject: `Termin ${NAME_2}`, body: `Hallo ${NAME_2},\n${NAME}` };
+  const klartext = { to: ["gast@example.org"], cc: ["gast@example.org"], subject: "Termin Max", body: "Hallo Max,\nMax Mustermann" };
+  const sendet = (): ReturnType<typeof vi.fn> => vi.fn(async () => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
+  const einmal = async (): Promise<ConsentOutcome> => ({ kind: "send", transportId: "privat/mail", remember: false });
+
+  it("release: das Modal zeigt den Klartext, gesendet wird der Klartext (Empfaenger, cc, Betreff, Text)", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send }));
+    await expect(api.send(platzhalter)).resolves.toEqual({ ok: true, messageId: "x@y", sentCopy: "ok" });
+    expect(consent).toHaveBeenCalledTimes(1);
+    expect(consent.mock.calls[0]![0].req).toMatchObject(klartext);
+    expect(send).toHaveBeenCalledWith("privat", expect.objectContaining({ to: klartext.to, cc: klartext.cc, subject: klartext.subject, text: klartext.body }), { restored: true });
+  });
+
+  it("ein vertrautes Plugin sendet ebenfalls den Klartext, ohne Modal", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send, trusted: () => [{ pluginId: "fremd", transportId: "privat/mail" }] }));
+    await api.send(platzhalter);
+    expect(consent).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith("privat", expect.objectContaining({ to: klartext.to, subject: klartext.subject, text: klartext.body }), { restored: true });
+  });
+
+  it("hold: nichts gesendet, das Modal nie geoeffnet, pseudonym-unresolved mit der Anzahl, nicht dem Klartext", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send }));
+    const r = await api.send({ ...platzhalter, body: "Person_aaaaaaaaaa und Person_bbbbbbbbbb" });
+    expect(r).toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
+    const message = (r as { message?: string }).message ?? "";
+    expect(message).toContain("2");
+    expect(message).not.toContain("Person_aaaaaaaaaa");
+    expect(message).not.toContain("Mustermann");
+    expect(consent).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("hold nur in einem Empfaengerfeld scheitert ebenso (nicht erst am Text)", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send }));
+    await expect(api.send({ ...platzhalter, bcc: undefined, to: ["Person_aaaaaaaaaa_Mail"] })).resolves.toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
+    expect(consent).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("hold, weil das Plugin fehlt: derselbe Fehler, keine Nachricht", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort({ absent: true }), consent, send }));
+    await expect(api.send(platzhalter)).resolves.toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
+    expect(consent).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ein vergessener Platzhalter in einem Adressfeld: Fehler, kein Modal, keine Nachricht", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort({ gone: [GONE_MAIL] }), consent, send }));
+    await expect(api.send({ ...platzhalter, cc: [GONE_MAIL] })).resolves.toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
+    expect(consent).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("eine Adresse ohne @ nach der Rueckwandlung: Fehler, kein Modal, keine Nachricht", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send }));
+    await expect(api.send({ ...platzhalter, to: [NAME] })).resolves.toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
+    expect(consent).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ein vergessener Platzhalter im Text geht als Platzhalter hinaus; das Modal bekommt die Zahl fuer seinen Hinweis", async () => {
+    const consent = vi.fn(einmal);
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort({ gone: [GONE] }), consent, send }));
+    await api.send({ ...platzhalter, body: `Gruss ${GONE}` });
+    expect(consent.mock.calls[0]![0].forgotten).toBe(1);
+    expect(consent.mock.calls[0]![0].req.body).toBe(`Gruss ${GONE}`);
+  });
+
+  it("die Pruefung der Adressgrammatik laeuft NACH der Rueckwandlung: ein Platzhalter-Empfaenger ist nicht invalid, eine kaputte Adresse bleibt es", async () => {
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent: einmal, send: sendet() }));
+    await expect(api.send({ ...platzhalter, to: ["max.mustermann"] })).resolves.toEqual({ ok: false, reason: "invalid" });
+    await expect(api.send({ ...platzhalter, to: [] })).resolves.toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("Text ohne Platzhalter: byte-gleich zu heute (Modal bekommt die Eingabe, kein forgotten)", async () => {
+    const consent = vi.fn(einmal);
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send: sendet() }));
+    await api.send(req);
+    expect(consent.mock.calls[0]![0].req).toEqual(req);
+    expect(consent.mock.calls[0]![0].forgotten).toBeUndefined();
+  });
+
+  it("die Rueckwandlung sieht den Schnappschuss: eine Aenderung des Aufrufers waehrend des Modals aendert nichts", async () => {
+    const eingabe = { ...platzhalter, to: [MAIL] };
+    let loesen: (o: ConsentOutcome) => void = () => {};
+    const send = sendet();
+    const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent: () => new Promise<ConsentOutcome>((r) => { loesen = r; }), send }));
+    const laufend = api.send(eingabe);
+    await Promise.resolve();
+    eingabe.to.push("fremd@example.org");
+    loesen({ kind: "send", transportId: "privat/mail", remember: false });
+    await laufend;
+    expect(send.mock.calls[0]![1].to).toEqual(["gast@example.org"]);
   });
 });

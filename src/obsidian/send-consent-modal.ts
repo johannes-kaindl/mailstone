@@ -20,6 +20,8 @@ export interface SendConsentOptions {
    *  Adapter. Ein Default hier waere eine zweite Stelle, an der die 60 s gepflegt werden
    *  muessten — und die stille Zweitfassung faellt erst auf, wenn beide auseinanderlaufen. */
   timeoutMs: number;
+  /** Anzahl vergessener Platzhalter in Betreff und Text, die so hinausgehen (A5, Spec 8.7: „nach einem Hinweis im Dialog“). Fehlt es oder ist es 0, steht kein Hinweis da. */
+  forgotten?: number;
 }
 
 interface Timers { setTimeout: (fn: () => void, ms: number) => number; clearTimeout: (id: number) => void }
@@ -88,6 +90,7 @@ class SendConsentModal extends Modal {
     contentEl.createEl("p", { text: t("api.consent.caller", opts.callerLabel), cls: "mailstone-consent-caller" });
     contentEl.createEl("p", { text: t("api.consent.to", opts.req.to.join(", ")) });
     contentEl.createEl("p", { text: t("api.consent.subject", opts.req.subject) });
+    if (opts.forgotten) contentEl.createEl("p", { text: t("api.consent.forgotten", String(opts.forgotten)), cls: "mod-warning" });
 
     const auswahl = contentEl.createDiv({ cls: "mailstone-consent-from" });
     auswahl.createSpan({ text: t("api.consent.from") });

@@ -9,8 +9,11 @@ import type { SocketTransport } from "../net/types";
 import { imapConnect } from "../imap/client";
 import type { TimeoutTimers } from "../../vendor/code-kit/timeout";
 import { isLoopbackHost } from "../../vendor/code-kit/loopback";
+import { restoreMessage, type RestorePort } from "../transform/restore";
 
-export type SendErrorCode = "unknown-account" | "unknown-identity" | "no-secret" | "invalid" | SmtpErrorCode;
+/** `pseudonym-unresolved` (A5): ein Platzhalter des Pseudonymizers liess sich nicht zurueckwandeln; nichts wurde gesendet. `detail` nennt die Art
+ *  (`held`, `forgotten-address`, `address-unresolved`), nie einen Wert. */
+export type SendErrorCode = "unknown-account" | "unknown-identity" | "no-secret" | "invalid" | "pseudonym-unresolved" | SmtpErrorCode;
 
 export interface SendDeps {
   accounts: () => Account[];
@@ -26,12 +29,22 @@ export interface SendDeps {
   /** uuid-artig — Eindeutigkeit reicht, kein bestimmtes Format vorausgesetzt. */
   randomId: () => string;
   log?: (line: string) => void;
+  /** Rueckwandlung (A5, Schritt 5): ersetzt Platzhalter des Pseudonymizers in Empfaengern, Betreff, Text und HTML durch den Klartext, VOR dem
+   *  Bauen der Nachricht. Fehlt der Port, geht die Nachricht unveraendert hinaus. Die obsidian-Schicht bindet ihn an `restoreFor`. */
+  restore?: RestorePort;
+}
+
+/** Optionen eines Versands. */
+export interface SendOptions {
+  /** Die Nachricht ist schon zurueckgewandelt (die Plugin-API tut es vor dem Bestaetigungs-Modal, damit es zeigt, was hinausgeht). */
+  restored?: boolean;
 }
 
 export interface SendService {
   send(
     accountId: string,
     msg: OutgoingMessage,
+    opts?: SendOptions,
   ): Promise<{ ok: true; messageId: string; rejected?: string[]; sentCopy: SentCopyResult } | { ok: false; code: SendErrorCode; detail?: string }>;
 }
 
@@ -67,10 +80,18 @@ function domainOf(address: string): string {
 
 export function createSendService(deps: SendDeps): SendService {
   return {
-    async send(accountId, msg) {
-      const resolved = resolveSender(deps.accounts(), accountId, msg.from);
+    async send(accountId, original, opts) {
+      const resolved = resolveSender(deps.accounts(), accountId, original.from);
       if (!resolved.ok) return { ok: false, code: resolved.code };
       const { account, identity } = resolved;
+
+      // A5: Platzhalter zurueckwandeln, bevor irgendetwas gebaut oder verbunden wird. Ein Fehler heisst: nichts geht hinaus.
+      let msg = original;
+      if (deps.restore && !opts?.restored) {
+        const r = restoreMessage(original, deps.restore);
+        if (!r.ok) return { ok: false, code: "pseudonym-unresolved", detail: r.failure.kind };
+        msg = r.msg;
+      }
 
       const validation = validateOutgoing(msg);
       if (!validation.ok) return { ok: false, code: "invalid", detail: validation.code };

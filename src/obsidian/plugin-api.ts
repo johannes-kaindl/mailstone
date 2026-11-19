@@ -4,8 +4,10 @@ import { MAILSTONE_API_VERSION, type ApiSendRequest, type ApiSendResult, type Ap
 import { splitTransportId, transportAccounts } from "../core/send/imip";
 import type { Account } from "../core/settings";
 import { isAddress, type OutgoingMessage } from "../core/send/outgoing";
-import type { SentCopyResult } from "../core/send/service";
+import type { SendOptions, SentCopyResult } from "../core/send/service";
+import { restoreMessage, type RestorePort } from "../core/transform/restore";
 import type { ConsentOutcome, SendConsentOptions } from "./send-consent-modal";
+import { restoreFailureText } from "./transform-text";
 
 /** Frist des Bestaetigungs-Modals (Spec § 7: 60 s). Steht hier und NUR hier — `SendConsentOptions.timeoutMs`
  *  ist bewusst ein Pflichtfeld ohne Default, damit die Zahl nicht an zwei Orten lebt. */
@@ -19,8 +21,11 @@ export interface MailstoneApiDeps {
   /** Anzeigename des Aufrufers; loest ueber app.plugins.manifests auf. */
   callerLabel: (callerId: string) => string;
   consent: (opts: SendConsentOptions) => Promise<ConsentOutcome>;
-  send: (accountId: string, msg: OutgoingMessage) =>
+  send: (accountId: string, msg: OutgoingMessage, opts?: SendOptions) =>
     Promise<{ ok: true; messageId: string; sentCopy: SentCopyResult } | { ok: false; code: string }>;
+  /** Rueckwandlung (A5, Schritt 5): Platzhalter des Pseudonymizers in Empfaengern, Betreff und Text VOR dem Bestaetigungs-Modal durch den Klartext
+   *  ersetzen, damit das Modal zeigt, was wirklich hinausgeht. Fehlt der Port, bleibt alles wie vor A5. */
+  restore?: RestorePort;
 }
 
 /** `app.plugins` ist nicht Teil der offiziellen Obsidian-Typen — lokal nachgebildet, nur so
@@ -40,6 +45,10 @@ function adressen(werte: unknown): boolean {
   return Array.isArray(werte) && werte.every((a) => typeof a === "string" && isAddress(a));
 }
 
+function zeichenketten(werte: unknown): boolean {
+  return Array.isArray(werte) && werte.every((a) => typeof a === "string");
+}
+
 /** Torwaechter VOR dem Modal. Zwei Dinge, die er ueber eine Typpruefung hinaus tut:
  *
  *  - **Adressgrammatik** (`isAddress`, pur aus `core/send/outgoing.ts` — dieselbe Regel, die
@@ -49,14 +58,21 @@ function adressen(werte: unknown): boolean {
  *    ausdruecklich als `invalid`, und ein Modal fuer eine unsendbare Eingabe ist Klickweg
  *    ohne Ertrag.
  *  - **`callerId`**: das einzige Feld, das PERSISTIERT wird (`remember` → `data.json`). Ein
- *    leerer oder Nicht-String-Wert landete dort dauerhaft. */
-function eingabeGueltig(req: ApiSendRequest): boolean {
+ *    leerer oder Nicht-String-Wert landete dort dauerhaft.
+ *
+ *  In zwei Schritten (A5): `eingabeForm` prueft die Typen, DANACH wandelt der Adapter Platzhalter zurueck, und erst dann prueft `adressenGueltig`
+ *  die Grammatik — ein Empfaenger `Person_…_Mail` ist vor der Rueckwandlung keine Adresse, nach ihr schon (Spec 8.8: „vor der Eingabepruefung“). */
+function eingabeForm(req: ApiSendRequest): boolean {
   if (typeof req.callerId !== "string" || !req.callerId) return false;
-  if (!adressen(req.to) || req.to.length === 0) return false;
-  if (req.cc !== undefined && !adressen(req.cc)) return false;
+  if (!zeichenketten(req.to) || req.to.length === 0) return false;
+  if (req.cc !== undefined && !zeichenketten(req.cc)) return false;
   if (typeof req.subject !== "string" || typeof req.body !== "string") return false;
   if (req.inReplyTo !== undefined && typeof req.inReplyTo !== "string") return false;
   return true;
+}
+
+function adressenGueltig(req: ApiSendRequest): boolean {
+  return adressen(req.to) && (req.cc === undefined || adressen(req.cc));
 }
 
 /** Duenner Adapter statt der internen Fassade (Anbieter-Muster, Punkt 1): die Fassade traegt
@@ -81,7 +97,7 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
     async send(req: ApiSendRequest): Promise<ApiSendResult> {
       const st = status();
       if (!st.ready) return { ok: false, reason: st.reason };
-      if (!eingabeGueltig(req)) return { ok: false, reason: "invalid" };
+      if (!eingabeForm(req)) return { ok: false, reason: "invalid" };
 
       // SCHNAPPSCHUSS beim Eintritt, mit kopierten Arrays. Der Aufrufer haelt dieselbe
       // Referenz und darf sie waehrend der bis zu 60 s im Modal veraendern — ohne Kopie
@@ -90,7 +106,7 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
       // vollstaendig zeigen kann, was rausgeht): eine lebende Referenz hebt die Zusage
       // strukturell auf. Kein boeser Wille noetig — ein Konsument, der sein Request-Objekt
       // ueber einen Retry hinweg wiederverwendet, genuegt.
-      const anfrage: ApiSendRequest = {
+      let anfrage: ApiSendRequest = {
         callerId: req.callerId,
         to: [...req.to],
         ...(req.cc ? { cc: [...req.cc] } : {}),
@@ -99,6 +115,16 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
         ...(req.inReplyTo !== undefined ? { inReplyTo: req.inReplyTo } : {}),
         ...(req.fromHint !== undefined ? { fromHint: req.fromHint } : {}),
       };
+      // A5, Schritt 5: Platzhalter zurueckwandeln, BEVOR das Modal (oder die Abkuerzung fuer vertraute Plugins) etwas sieht. Ein Fehler heisst:
+      // nichts wird gesendet, kein Modal. Die Zahl vergessener Platzhalter in Betreff und Text geht ans Modal (Hinweis, Spec 8.7).
+      let vergessen = 0;
+      if (deps.restore) {
+        const r = restoreMessage({ to: anfrage.to, ...(anfrage.cc ? { cc: anfrage.cc } : {}), subject: anfrage.subject, text: anfrage.body }, deps.restore);
+        if (!r.ok) return { ok: false, reason: "pseudonym-unresolved", message: restoreFailureText(r.failure) };
+        vergessen = r.forgotten;
+        anfrage = { ...anfrage, to: r.msg.to, ...(r.msg.cc ? { cc: r.msg.cc } : {}), subject: r.msg.subject, body: r.msg.text };
+      }
+      if (!adressenGueltig(anfrage)) return { ok: false, reason: "invalid" };
       // `freeze` richtet sich nicht gegen den Aufrufer (der hat die Kopie nie gesehen),
       // sondern gegen den eigenen Code: der Schnappschuss ist ab hier Beweisstueck.
       Object.freeze(anfrage.to);
@@ -138,6 +164,7 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
             preselectId: vorbelegt.id,
             req: anfrage,
             timeoutMs: CONSENT_TIMEOUT_MS,
+            ...(vergessen > 0 ? { forgotten: vergessen } : {}),
           });
         } catch {
           // "Fehler sind Werte, nie Ausnahmen" (Anbieter-Muster, s. tasknotes-bridge.ts).
@@ -182,7 +209,8 @@ export function createMailstoneApi(deps: MailstoneApiDeps): MailstoneApi {
 
       let ergebnis: Awaited<ReturnType<MailstoneApiDeps["send"]>>;
       try {
-        ergebnis = await deps.send(geteilt.accountId, msg);
+        // Mit Rueckwandlung sagt der Aufruf dem Dienst, dass die Nachricht schon zurueckgewandelt ist; ohne bleibt er wie vor A5.
+        ergebnis = await (deps.restore ? deps.send(geteilt.accountId, msg, { restored: true }) : deps.send(geteilt.accountId, msg));
       } catch {
         // Wie oben: "Fehler sind Werte, nie Ausnahmen". Ein werfendes deps.send heisst,
         // der Versand kam nicht zustande — derselbe Ausgang wie ein regulaeres { ok: false }.
