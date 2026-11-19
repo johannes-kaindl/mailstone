@@ -21,18 +21,14 @@
  * (eigenes Profil, eigener Port) — nie in der Instanz, an der eine andere Session haengt, und nie
  * mit `quit`:
  *
- * ```bash
- * UD=/tmp/obs-test-mailstone; mkdir -p "$UD"
- * lsof -nP -iTCP:9436 -sTCP:LISTEN; pgrep -f "user-data-dir=$UD"      # beides leer, sonst ausweichen
- * # (a) aktuelle Version statt gebuendelter (nachsehen: ls ~/Library/Application\ Support/obsidian/*.asar)
- * cp ~/Library/Application\ Support/obsidian/obsidian-<version>.asar "$UD"/
- * # Vault "$STAGING_VAULTS_DIR/mailstone" und "language":"en" in "$UD/obsidian.json" eintragen
- * OBSIDIAN_PLUGIN_DIR="$STAGING_VAULTS_DIR/mailstone/.obsidian/plugins/mailstone" npm run deploy
- * /Applications/Obsidian.app/Contents/MacOS/Obsidian --user-data-dir="$UD" --remote-debugging-port=9436 &
- * python3 ~/.claude/hooks/obsidian-cdp-lock.py acquire --label mailstone --intent "GUI-Smoke :9436" --exclusive focus --port 9436 --ttl 300
- * npm run smoke:gui -- --port 9436
- * npm run smoke:gui -- --port 9436 --vault mailstone --keep
- * ```
+ * Lauf: `tools/obsidian-cdp/messlauf.sh` (Dach, README § Messlauf in einem Aufruf) startet die Zweitinstanz, hält den Lock (`--exclusive focus`, davor, mit `export`)
+ * und räumt auf; das Rezept steht nur dort. Für diesen Treiber: `REPO=mailstone PORT=9436 OHNE_SETUP=1` (Port als Vorschlag, jeder freie geht).
+ *
+ * Weitere Läufe (als `SMOKE_ARGS`):
+ *   --vault mailstone --keep
+ *
+ * Besonderheiten dieses Treibers (aus dem früheren Rezept übernommen):
+ *   OBSIDIAN_PLUGIN_DIR="$STAGING_VAULTS_DIR/mailstone/.obsidian/plugins/mailstone" npm run deploy
  *
  * Vertrauensdialog und Restricted Mode erledigt der Treiber selbst (`bereiteInstanzVor`); je
  * Messlauf ein frischer Prozess (eine Zweitinstanz altert). Bilanz in vier Zustaenden (CORE-TEST-19,
