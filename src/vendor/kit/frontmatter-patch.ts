@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.100.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.103.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // frontmatter-patch.ts — eigene Frontmatter-Felder setzen, fremde Zeilen byte-gleich lassen. Kein obsidian-Import.
 //
 // Zusammengeführt aus zwei unabhängigen Fassungen desselben Vorgangs (Diachronic wäre die dritte):
@@ -502,4 +502,64 @@ function collect(
     written.add(k);
   }
   return out;
+}
+
+export type InsertBlockResult =
+  | { ok: true; content: string; changed: true }
+  | { ok: false; reason: "unparseable" | "invalid-key" | "invalid-block" | "exists"; key?: string };
+
+/**
+ * Fügt einer Notiz einen fertigen YAML-Block (verschachteltes Mapping, Liste, Mapping in Liste) unter EINEM neuen Schlüssel an (Welle 36, h2c, Bestellung 23; Anlass hypertext-exporter: `processFrontMatter` formt den ganzen Block um,
+ * `patchFrontmatter` kennt keine verschachtelten Werte). Jede andere Zeile, der Text hinter dem Block und das Zeilenende bleiben byte-gleich; der Block kommt ans Ende des Frontmatters. Wirft nie.
+ *
+ * `body` sind die Zeilen UNTER dem Schlüssel, jede Zeile mit Inhalt um mindestens ein Leerzeichen eingerückt (die Einrückung bestimmt der Aufrufer, sie bleibt wie übergeben); Zeilenenden in `body` (`\n` oder `\r\n`) werden
+ * auf das Zeilenende des Blocks gebracht, führende und endende Leerzeilen entfallen. Ohne Block in der Notiz entsteht einer (wie `create: true` in `patchFrontmatter`).
+ *
+ * Verweigert mit Grund statt zu raten: der Schlüssel steht schon im Block (`exists`, auch als gequoteter Schlüssel oder hinter einem Block-Skalar), ein Block, den `patchFrontmatter` nicht beschreibt (`unparseable`: dieselben Regeln, siehe Kopf der Datei,
+ * auch ein BOM vor dem Zaun), ein Schlüssel, den der Block-Leser nicht erkennt (`invalid-key`), ein `body`, der leer ist, nur aus Kommentaren besteht, eine Zeile auf Spalte 0 oder einen Tab oder ein Steuerzeichen trägt, einen Anker setzt oder aus dem
+ * Eintrag des Schlüssels einen anderen machte (`invalid-block`; geprüft wird das Ergebnis: der neue Eintrag deckt genau die angefügten Zeilen, alle alten Einträge behalten ihren Bereich, der Block bleibt für Obsidian lesbar).
+ *
+ * @example
+ * insertFrontmatterBlock("---\ntitle: A\n---\nText\n", "export", "  format: pdf\n  pages: [1, 2]")
+ * // → { ok: true, changed: true, content: "---\ntitle: A\nexport:\n  format: pdf\n  pages: [1, 2]\n---\nText\n" }
+ */
+export function insertFrontmatterBlock(text: string, key: string, body: string): InsertBlockResult {
+  if (!isFrontmatterKeyName(key)) return { ok: false, reason: "invalid-key", key };
+  if (typeof body !== "string" || hasControl(body.replace(/\r?\n/g, "")) || body.includes("\t")) return { ok: false, reason: "invalid-block", key };
+  const bodyLines = body.split(/\r?\n/);
+  while (bodyLines.length > 0 && (bodyLines[0] ?? "").trim() === "") bodyLines.shift();
+  while (bodyLines.length > 0 && (bodyLines[bodyLines.length - 1] ?? "").trim() === "") bodyLines.pop();
+  if (!bodyLines.every((l) => l.trim() === "" || l.startsWith(" "))) return { ok: false, reason: "invalid-block", key };
+  if (!bodyLines.some((l) => l.trim() !== "" && !l.trim().startsWith("#"))) return { ok: false, reason: "invalid-block", key };
+
+  if (/^\uFEFF---\r?\n/.test(text)) return { ok: false, reason: "unparseable" };
+  const read = readDoc(text);
+  if (!read) {
+    if (text.startsWith("---")) return { ok: false, reason: "unparseable" };
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    const lines = [`${key}:`, ...bodyLines];
+    if (!insertedAsOne(lines, 0, [])) return { ok: false, reason: "invalid-block", key };
+    return { ok: true, content: ["---", ...lines, "---", ""].join(eol) + text, changed: true };
+  }
+  const { doc, bodyFrom } = read;
+  if (!doc.empty && !writableBlock(doc.lines)) return { ok: false, reason: "unparseable" };
+  if (doc.entries.has(key)) return { ok: false, reason: "exists", key };
+  const added = [`${key}:`, ...bodyLines];
+  if (!insertedAsOne([...doc.lines, ...added], doc.lines.length, scanAll(doc.lines))) return { ok: false, reason: "invalid-block", key };
+  const all = [...doc.lines, ...added];
+  const raw = doc.empty ? all.join(doc.eol) + doc.eol : all.join(doc.eol);
+  return { ok: true, content: `${doc.open}${raw}${doc.close}${text.slice(bodyFrom)}`, changed: true };
+}
+
+/** Prüft das Ergebnis: der Block ist für Obsidian lesbar, die alten Einträge behalten ihre Bereiche, und hinter ihnen steht genau ein neuer Eintrag ab `from` bis zum Ende, ohne Anker. Die Prüfungen decken sich teils (eine Spalte-0-Zeile im `body` fällt schon vorher auf, und hier an Anzahl, Anfang und Ende): Doppelsicherung, weil das Ergebnis die Wahrheit ist, nicht die Vorprüfung. */
+function insertedAsOne(lines: string[], from: number, old: Array<Entry & { key: string }>): boolean {
+  if (!writableBlock(lines)) return false;
+  const now = scanAll(lines);
+  if (now.length !== old.length + 1) return false;
+  for (let i = 0; i < old.length; i++) {
+    const a = old[i], b = now[i];
+    if (!a || !b || a.start !== b.start || a.end !== b.end || a.key !== b.key || a.kind !== b.kind) return false;
+  }
+  const e = now[now.length - 1];
+  return !!e && e.start === from && e.end === lines.length && e.kind === "ok" && !e.anchor;
 }

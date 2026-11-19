@@ -1,4 +1,4 @@
-// vendored from code-kit@0.79.1, src/ts/pure/placeholder.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.83.0, src/ts/pure/placeholder.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: new in code-kit (Welle 36, kp2, order 2 of the pseudonymizer design, spec section 8.1, released by Johannes 2026-11-18 22:44). Sibling of
 // `createRedactionSession` in `redact.ts`, not part of it: that session numbers placeholders per session and cannot be serialized; these placeholders
 // carry a random ID that outlives the session and stands in the notes.

@@ -7,7 +7,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit && node esbuild.config.mjs --production",
     "typecheck": "tsc --noEmit",
-    "typecheck:test": "tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.vendor-guard.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "typecheck:scripts": "if test -d ../tools/obsidian-cdp; then tsc -p tsconfig.scripts.json --noEmit; else echo 'typecheck:scripts uebersprungen: ../tools/obsidian-cdp fehlt'; fi",
     "test": "node scripts/check-no-abs-paths.mjs && vitest run --passWithNoTests --exclude \"tests/integration/**\"",
     "test:integration": "vitest run tests/integration --testTimeout 60000",

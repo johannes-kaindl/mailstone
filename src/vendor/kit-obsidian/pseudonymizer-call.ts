@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.100.0, src/obsidian/pseudonymizer-call.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.103.0, src/obsidian/pseudonymizer-call.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Der Verbraucher-Aufruf der Pseudonymisierungs-API (Welle 36, kp1b, Teil B; Bestellung 14 der Design-Linie pseudonymizer, Spec 2026-11-18 § 8.7).
 //
 // Wer Text hinausgibt oder schreibt (mailstone, koda-agent, ein Export), ruft `pseudonymizeFor` vor dem Schreiben und `restoreFor` vor dem Anzeigen oder Senden. Beide kapseln den Schalter
@@ -24,6 +24,9 @@
 //   `pseudonymizer` kennt sie sonst nicht).
 // - **`restoreFor` mit bereitem Plugin, Fehlerwert:** `locked` und `not-ready` behalten ihren Grund (`hold/locked`, `hold/not-ready`), jeder andere Fehlerwert ist `hold/error`.
 //
+// - **`message` ist Anzeige und folgt der Sprache (Standard Englisch, `opts.strings.lang: "de"` für Deutsch; `pseudonymizer-call-strings.ts`, Welle 36, kp1c).** Tragend sind `kind`, `reason` und `unknown`; die `message` einer
+//   Antwort der Plugin-API reicht der Aufruf unverändert durch.
+//
 // Der Aufruf liest die Plugin-API frisch je Aufruf (`readPseudonymizerApi`), er merkt sich nichts.
 
 import type { App } from "obsidian";
@@ -31,12 +34,10 @@ import { errorMessage } from "../kit/error-message";
 import { findPlaceholders } from "../kit/placeholder";
 import type { ApiError, PseudonymizerApi, TransformRequest, TransformResult } from "../kit/pseudonymizer-source";
 import { readPseudonymizerApi } from "./capability-apis";
+import { resolvePseudonymizerCallStrings, type PseudonymizerCallStringsOverride } from "./pseudonymizer-call-strings";
 
 /** Der Schalter des Verbrauchers: Aus, Wenn verfügbar, Verlangt. */
 export type PseudonymizeMode = "off" | "if-available" | "required";
-
-/** Warum das Plugin nicht bereit ist: nicht da (fehlt oder abgeschaltet), noch nicht eingerichtet, gesperrt. */
-type Unavailable = "absent" | "not-set-up" | "locked";
 
 export type PseudonymizeOutcome =
   | { kind: "pseudonymized"; result: TransformResult }
@@ -52,11 +53,12 @@ export type ReleaseOutcome =
   /** Nichts hinausgeben, die Platzhalter in `unknown` nennen. */
   | { kind: "hold"; reason: "unknown" | Unavailable | "not-ready" | "error" | "threw"; unknown: string[]; message: string };
 
-const UNAVAILABLE_TEXT: Record<Unavailable, string> = {
-  absent: "Das Plugin pseudonymizer fehlt oder ist abgeschaltet.",
-  "not-set-up": "Das Plugin pseudonymizer ist noch nicht eingerichtet.",
-  locked: "Das Plugin pseudonymizer ist gesperrt.",
-};
+/** Option beider Aufrufe: die Sprache der `message` (Standard Englisch, `strings.lang: "de"` für Deutsch) und einzelne Texte. `reason` und `unknown` hängen nicht davon ab. */
+export interface PseudonymizerCallOptions {
+  strings?: PseudonymizerCallStringsOverride;
+}
+
+type Unavailable = "absent" | "not-set-up" | "locked";
 
 function isApiError(x: unknown): x is ApiError {
   return x !== null && typeof x === "object" && typeof (x as { error?: unknown }).error === "string";
@@ -79,10 +81,11 @@ function availability(app: App): { ready: PseudonymizerApi } | { unavailable: Un
  *  - `"if-available"`: fehlt das Plugin, ist es nicht eingerichtet oder gesperrt, `plain` mit diesem Grund; sonst `transform`.
  *  - `"required"`: **nie `plain`**; fehlt das Plugin, ist es nicht eingerichtet oder gesperrt, `wait` mit diesem Grund.
  *  `transform`: Erfolg → `pseudonymized`; `deferred`, `cancelled`, `storage-failed`, `not-ready` → `wait`; `invalid-input` → `error`; Wurf → `error/threw`. */
-export async function pseudonymizeFor(app: App, mode: PseudonymizeMode, req: TransformRequest): Promise<PseudonymizeOutcome> {
+export async function pseudonymizeFor(app: App, mode: PseudonymizeMode, req: TransformRequest, opts?: PseudonymizerCallOptions): Promise<PseudonymizeOutcome> {
   if (mode === "off") return { kind: "plain", reason: "off" };
+  const t = resolvePseudonymizerCallStrings(opts?.strings);
   const unavailable = (reason: Unavailable): PseudonymizeOutcome =>
-    mode === "required" ? { kind: "wait", reason, message: UNAVAILABLE_TEXT[reason] } : { kind: "plain", reason };
+    mode === "required" ? { kind: "wait", reason, message: t.unavailable[reason] } : { kind: "plain", reason };
   try {
     const a = availability(app);
     if ("unavailable" in a) return unavailable(a.unavailable);
@@ -97,7 +100,7 @@ export async function pseudonymizeFor(app: App, mode: PseudonymizeMode, req: Tra
       }
     }
     if (out === null || typeof out !== "object" || !Array.isArray((out).parts)) {
-      return { kind: "error", reason: "threw", message: "Unerwartete Antwort von pseudonymizer.transform." };
+      return { kind: "error", reason: "threw", message: t.unexpectedTransform };
     }
     return { kind: "pseudonymized", result: out };
   } catch (e) {
@@ -108,7 +111,8 @@ export async function pseudonymizeFor(app: App, mode: PseudonymizeMode, req: Tra
 /** Blendet Platzhalter in `text` wieder ein, für einen Verbraucher, der anzeigt oder sendet. Synchron, wirft nie.
  *  Ist das Plugin bereit (in jeder Stellung): `restore`; ein nicht leeres `unknown` ist `hold/unknown`, ein Fehlerwert `hold/error` (`locked`, `not-ready` mit ihrem Grund), ein Wurf `hold/threw`, sonst `release`.
  *  Ist es nicht bereit: in „Aus“ `release` mit dem Text unverändert; in „Wenn verfügbar“ und „Verlangt“ `release`, wenn der Text keinen Platzhalter enthält, sonst `hold` mit dem Grund. */
-export function restoreFor(app: App, mode: PseudonymizeMode, text: string, caller: string): ReleaseOutcome {
+export function restoreFor(app: App, mode: PseudonymizeMode, text: string, caller: string, opts?: PseudonymizerCallOptions): ReleaseOutcome {
+  const t = resolvePseudonymizerCallStrings(opts?.strings);
   try {
     const a = availability(app);
     if ("unavailable" in a) {
@@ -116,7 +120,7 @@ export function restoreFor(app: App, mode: PseudonymizeMode, text: string, calle
       const found: string[] = [];
       for (const p of findPlaceholders(text)) if (!found.includes(p.raw)) found.push(p.raw);
       if (found.length === 0) return { kind: "release", text, forgotten: [] };
-      return { kind: "hold", reason: a.unavailable, unknown: found, message: `${UNAVAILABLE_TEXT[a.unavailable]} Der Text enthält ${String(found.length)} Platzhalter, die sich nicht auflösen lassen.` };
+      return { kind: "hold", reason: a.unavailable, unknown: found, message: `${t.unavailable[a.unavailable]} ${t.placeholdersUnresolvable(found.length)}` };
     }
     const r = a.ready.restore(text, { caller });
     if (isApiError(r)) {
@@ -124,10 +128,10 @@ export function restoreFor(app: App, mode: PseudonymizeMode, text: string, calle
       return { kind: "hold", reason, unknown: [], message: r.message };
     }
     if (r === null || typeof r !== "object" || typeof r.text !== "string" || !Array.isArray(r.unknown) || !Array.isArray(r.forgotten)) {
-      return { kind: "hold", reason: "threw", unknown: [], message: "Unerwartete Antwort von pseudonymizer.restore." };
+      return { kind: "hold", reason: "threw", unknown: [], message: t.unexpectedRestore };
     }
     if (r.unknown.length > 0) {
-      return { kind: "hold", reason: "unknown", unknown: [...r.unknown], message: `${String(r.unknown.length)} Platzhalter lassen sich nicht auflösen.` };
+      return { kind: "hold", reason: "unknown", unknown: [...r.unknown], message: t.placeholdersUnknown(r.unknown.length) };
     }
     return { kind: "release", text: r.text, forgotten: [...r.forgotten] };
   } catch (e) {

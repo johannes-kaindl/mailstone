@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.100.0"
+      "ref": "0.103.0"
     },
     "code-kit": {
-      "ref": "0.79.1"
+      "ref": "0.83.0"
     }
   },
   "targets": [
@@ -91,6 +91,7 @@
         "plugin-api",
         "capability-apis",
         "pseudonymizer-call",
+        "pseudonymizer-call-strings",
         "segmented-control"
       ],
       "rewrite": [

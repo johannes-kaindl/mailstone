@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.100.0, tests/pseudonymizer-source.types.test.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.103.0, tests/pseudonymizer-source.types.test.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { describe, it, expect } from "vitest";
 import type {
   ApiError, PseudonymizerApi, RestoreResult, TransformEntity, TransformPart, TransformRequest, TransformResult,
@@ -25,7 +25,8 @@ const req: TransformRequest = { caller: "c", documentKey: "k", interactive: fals
 const reqFull: TransformRequest = { caller: "c", documentKey: "k", interactive: true, title: "t", parts: [part, partLine, partName], entities: [entityFull], keep: ["x"] };
 const transformResult: TransformResult = { parts: [{ id: "p1", value: "w" }], entities: [entity], applied: 1 };
 const restoreResult: RestoreResult = { text: "t", restored: 1, unknown: [], forgotten: [] };
-const errors: ApiError[] = [   // alle sechs heutigen Werte müssen bleiben (ein entfernter Wert bricht das)
+// Ein nicht leeres Tupel statt `ApiError[]`: `errors[0]` ist so auch unter `noUncheckedIndexedAccess` ein `ApiError` (der Test wird vendort und übersetzt im Konsumenten mit dessen Einstellung; Befund mailstone-f6).
+const errors: [ApiError, ...ApiError[]] = [   // alle sechs heutigen Werte müssen bleiben (ein entfernter Wert bricht das)
   { error: "not-ready", message: "m" }, { error: "locked", message: "m" }, { error: "cancelled", message: "m" },
   { error: "deferred", message: "m" }, { error: "invalid-input", message: "m" }, { error: "storage-failed", message: "m" },
 ];
