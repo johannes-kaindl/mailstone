@@ -111,14 +111,21 @@ export function createSyncService(deps: SyncDeps): SyncService {
       deps.log?.(`follow-copy: skipped for ${account.id}: the follow field is empty or unusable, so stopped threads cannot be told apart`);
     } else if (account.sync.followThreads && deps.follow) {
       const follow = deps.follow;
-      const r = await copyFollowUps(
-        {
-          ...followCopyConnections(() => deps.transport(), connectOptions(account, password)),
-          context: follow.context, now: deps.now, ...(deps.log ? { log: deps.log } : {}),
-        },
-        { inbox: account.folders.inbox, sent: account.folders.sent ?? "", allowlist: folder },
-      );
-      followErrors = r.errors;
+      try {
+        const r = await copyFollowUps(
+          {
+            ...followCopyConnections(() => deps.transport(), connectOptions(account, password)),
+            context: follow.context, now: deps.now, ...(deps.log ? { log: deps.log } : {}),
+          },
+          { inbox: account.folders.inbox, sent: account.folders.sent ?? "", allowlist: folder },
+        );
+        followErrors = r.errors;
+      } catch (e) {
+        // Jede Ausnahme des Schritts (nicht nur ein Verbindungsfehler, den copyFollowUps selbst als Wert zaehlt) haelt den
+        // Lese-Sync nicht an: sie zaehlt als ein Fehler. Ins Log kommt nur die Meldung, kein Passwort, kein Mail-Inhalt.
+        followErrors = 1;
+        deps.log?.(`follow-copy: failed for ${account.id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     const connected = await imapConnect(deps.transport(), connectOptions(account, password));

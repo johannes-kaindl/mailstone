@@ -11,6 +11,7 @@ import type { MailIndex } from "../../../src/core/mirror/apply";
 import type { NotePlan } from "../../../src/core/mirror/plan";
 import type { PlanExecutor } from "../../../src/core/mirror/execute";
 import { groupThreads } from "../../../src/core/thread/group";
+import type { FollowContext } from "../../../src/core/thread/follow-run";
 
 const EML = "From: a@example.net\r\nTo: b@example.net\r\nSubject: Testmail\r\nMessage-ID: <neu@example.net>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n";
 
@@ -611,7 +612,7 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
     { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
   ];
 
-  function mitFolgen(an: boolean, fakes: FakeSocketTransport[], contextAufrufe: { n: number }, extra: { profile?: MailProfile; log?: (l: string) => void } = {}) {
+  function mitFolgen(an: boolean, fakes: FakeSocketTransport[], contextAufrufe: { n: number }, extra: { profile?: MailProfile; log?: (l: string) => void; context?: () => FollowContext } = {}) {
     const acc = account();
     acc.sync.followThreads = an;
     const verbindungen = { n: 0 };
@@ -623,7 +624,7 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
       index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => exec.executor,
       uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
       now: () => new Date("2026-08-30T09:00:00Z"),
-      follow: { context: () => { contextAufrufe.n += 1; return { index: groupThreads([]), stopped: new Set<string>() }; } },
+      follow: { context: extra.context ?? (() => { contextAufrufe.n += 1; return { index: groupThreads([]), stopped: new Set<string>() }; }) },
     });
     return { svc, verbindungen };
   }
@@ -689,6 +690,26 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
     const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
     const { svc } = mitFolgen(true, [kaputt, main], { n: 0 });
     expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { errors: 1 } });
+  });
+
+  it("wirft der Schritt eine fremde Ausnahme (hier: der Vault-Stand), zaehlt sie als Fehler, steht im Log und der Lese-Sync laeuft normal", async () => {
+    const folgen = new FakeSocketTransport(["* OK ready"], [
+      { expect: /^a001 CAPABILITY$/, send: ["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR UIDPLUS", "a001 OK done"] },
+      { expect: /^a002 AUTHENTICATE PLAIN /, send: ["a002 OK authenticated"] },
+      { expect: /^a003 LOGOUT$/, send: ["* BYE", "a003 OK done"] },
+    ]);
+    const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+    const zeilen: string[] = [];
+    const { svc, verbindungen } = mitFolgen(true, [folgen, main], { n: 0 }, {
+      log: (l) => zeilen.push(l), context: () => { throw new Error("Cache kaputt"); },
+    });
+    const r = await svc.syncAccount("acc");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.counts.errors).toBeGreaterThanOrEqual(1);
+    expect(verbindungen.n).toBe(2);
+    expect(main.written.some((l) => /EXAMINE/.test(l))).toBe(true);
+    expect(zeilen.some((l) => l.startsWith("follow-copy: failed") && l.includes("Cache kaputt"))).toBe(true);
+    expect(zeilen.some((l) => l.includes("geheim"))).toBe(false);
   });
 
   it("ohne Dep `follow` bleibt die Einstellung wirkungslos (kein Schritt, eine Verbindung)", async () => {
