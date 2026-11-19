@@ -113,6 +113,18 @@
 
 **Fix:** Enter a plain field name such as `mail_follow` under Settings → Mailstone → Follow field, then run the command again.
 
+### "This is not a valid regular expression. The subject token is ignored until you fix it."
+
+**Cause:** This note appears under Settings → Mailstone → *Thread token in the subject*. The text there is not a regular expression the engine can read (an unclosed bracket or parenthesis, a stray backslash at the end). Until it is fixed, mails are matched by their headers only; the other thread settings are not affected.
+
+**Fix:** Correct the expression, or empty the field to switch the subject token off. The default is `\[Ticket#\d+\]`.
+
+### "This expression could run very long on some subjects (a repeat inside a repeat, or repeats that overlap). The subject token is ignored until you rewrite it."
+
+**Cause:** Mailstone checks the expression before it uses it and refuses shapes that can make a regular expression take exponentially long on some text, such as `(a+)+` or `(\w+\s?)+`. The check is cautious, so a harmless expression can be refused too: several reply prefixes written as one repeated group, `^(?:(?:Re|AW):\s*)+`, are an example. The token is ignored until it is rewritten.
+
+**Fix:** Write the part you need without a repeat inside a repeat, for example `^(?:Re|AW):\s*` for one prefix. For a ticket number, a plain expression such as `\[Ticket#\d+\]` or `Ticket ?#(\d+)` is enough.
+
 ### "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link."
 
 **Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted. Normally Mailstone then fetches the original from the server instead (desktop), so you see this message only in the rare case where no lookup was attempted.
@@ -185,7 +197,7 @@
 
 ### "No follow-up mails found."
 
-**Cause:** Nothing in the last 60 days in the inbox or sent folder has a `In-Reply-To` or `References` header that points to a mail with a note in your vault, or every such thread is stopped. A mail only counts if its thread is already in the vault; mails of unrelated threads are not listed.
+**Cause:** Nothing in the last 60 days in the inbox or sent folder has an `In-Reply-To` or `References` header that points to a mail with a note in your vault, or a subject token (setting *Thread token in the subject*) that a mail with a note carries, or every such thread is stopped. A mail only counts if its thread is already in the vault; mails of unrelated threads are not listed.
 
 **Fix:** Nothing is broken. To see a stopped thread again, run *Follow this thread again* on any note of it.
 
@@ -215,7 +227,7 @@ The *Sent* folder deserves a second look: the default is `Sent`, and some provid
 
 ### A follow-up mail is never copied
 
-**Cause:** Either its thread is not in your vault yet (a mail only counts if it answers a mail that has a note), the thread is stopped, the mail is older than 60 days, or it has no usable Message-ID (missing, or with characters an IMAP search cannot carry): such a mail cannot be checked for a copy that already exists, so Mailstone leaves it alone. At most 50 mails are copied per run; the rest follows in the next ones.
+**Cause:** Either its thread is not in your vault yet (a mail only counts if it answers a mail that has a note or carries the subject token of one), the thread is stopped, the mail is older than 60 days, or it has no usable Message-ID (missing, or with characters an IMAP search cannot carry): such a mail cannot be checked for a copy that already exists, so Mailstone leaves it alone. At most 50 mails are copied per run; the rest follows in the next ones.
 
 **Fix:** *Show follow-up mails* lists what Mailstone sees. Move a mail into the allowlist folder by hand if it cannot be followed automatically.
 

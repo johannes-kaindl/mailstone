@@ -358,23 +358,29 @@ describe("MailstoneSettingTab — Vorgang (A3, E7)", () => {
   type Def = { name?: string; desc?: string; control?: { key?: string } };
   const defs = (tab: MailstoneSettingTab): Def[] => tab.getSettingDefinitions() as Def[];
   const field = (tab: MailstoneSettingTab) => defs(tab).find((d) => d.control?.key === "profile.threadField");
+  const token = (tab: MailstoneSettingTab) => defs(tab).find((d) => d.control?.key === "profile.threadTokenPattern");
 
-  it("zeigt die Zeile im Profil-Abschnitt, nach dem Schalter fuer die .eml", () => {
+  it("zeigt beide Zeilen im Profil-Abschnitt, nach dem Schalter fuer die .eml", () => {
     const tab = newTab();
     const keys = defs(tab).map((d) => d.control?.key);
     expect(keys.indexOf("profile.saveEml")).toBeLessThan(keys.indexOf("profile.threadField"));
+    expect(keys.indexOf("profile.threadField")).toBeLessThan(keys.indexOf("profile.threadTokenPattern"));
     expect(field(tab)?.name).toBe(t("settings.threadField"));
+    expect(token(tab)?.name).toBe(t("settings.threadTokenPattern"));
   });
 
-  it("der Wert steht im Profil: Vorgabe aus", () => {
+  it("die Werte stehen im Profil: Vorgabe aus und `\\[Ticket#\\d+\\]`", () => {
     const tab = newTab();
     expect(tab.getControlValue("profile.threadField")).toBe("");
+    expect(tab.getControlValue("profile.threadTokenPattern")).toBe("\\[Ticket#\\d+\\]");
   });
 
-  it("speichert den Wert getrimmt im Profil", async () => {
+  it("speichert beide Werte getrimmt im Profil", async () => {
     const tab = newTab();
     await tab.setControlValue("profile.threadField", "  vorgang ");
+    await tab.setControlValue("profile.threadTokenPattern", "\\bINC\\d+\\b");
     expect(tab["host"].settings.profile.threadField).toBe("vorgang");
+    expect(tab["host"].settings.profile.threadTokenPattern).toBe("\\bINC\\d+\\b");
   });
 
   it("kein Hinweis bei brauchbaren Werten", () => {
@@ -400,6 +406,46 @@ describe("MailstoneSettingTab — Vorgang (A3, E7)", () => {
     expect(list[i + 1]?.desc).toBe(t("settings.threadField.problem.unreadable", "vorgäng"));
   });
 
+  it("ein ungueltiger Regex zeigt den Hinweis unter der Token-Zeile", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadTokenPattern = "[";
+    const list = defs(tab);
+    const i = list.findIndex((d) => d.control?.key === "profile.threadTokenPattern");
+    expect(list[i + 1]?.desc).toBe(t("settings.threadTokenPattern.problem.syntax"));
+  });
+
+  it("ein Regex, den das Risiko-Veto ablehnt, zeigt einen eigenen Hinweis", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadTokenPattern = "(a+)+$";
+    const list = defs(tab);
+    const i = list.findIndex((d) => d.control?.key === "profile.threadTokenPattern");
+    expect(list[i + 1]?.desc).toBe(t("settings.threadTokenPattern.problem.risky"));
+  });
+
+  it("leer und die Vorgabe zeigen keinen Hinweis", () => {
+    const tab = newTab();
+    for (const v of ["", "\\[Ticket#\\d+\\]"]) {
+      tab["host"].settings.profile.threadTokenPattern = v;
+      const list = defs(tab);
+      const i = list.findIndex((d) => d.control?.key === "profile.threadTokenPattern");
+      expect(list[i + 1]?.name, JSON.stringify(v)).not.toBe(t("settings.threadHint"));
+    }
+  });
+
+  it("die Aenderung des Ausdrucks zeichnet nur neu, wenn der Hinweis wechselt", async () => {
+    const tab = newTab();
+    let neu = 0;
+    (tab as unknown as { update: () => void }).update = () => { neu++; };
+    await tab.setControlValue("profile.threadTokenPattern", "\\bINC\\d+\\b");
+    expect(neu).toBe(0);
+    await tab.setControlValue("profile.threadTokenPattern", "[");
+    expect(neu).toBe(1);
+    await tab.setControlValue("profile.threadTokenPattern", "(a+)+$");
+    expect(neu).toBe(2);
+    await tab.setControlValue("profile.threadTokenPattern", "");
+    expect(neu).toBe(3);
+  });
+
   it("nach einer Aenderung, die den Hinweis ein- oder ausblendet, zeichnet der Tab neu", async () => {
     const tab = newTab();
     let neu = 0;
@@ -421,10 +467,10 @@ describe("MailstoneSettingTab — Folgen-Feld (A1, E7)", () => {
     return list[list.findIndex((d) => d.control?.key === key) + 1];
   };
 
-  it("zeigt die Zeile direkt nach dem Vorgangsfeld, Vorgabe mail_follow", () => {
+  it("zeigt die Zeile direkt nach der Kennung im Betreff, Vorgabe mail_follow", () => {
     const tab = newTab();
     const keys = defs(tab).map((d) => d.control?.key);
-    expect(keys.indexOf("profile.followField")).toBe(keys.indexOf("profile.threadField") + 1);
+    expect(keys.indexOf("profile.followField")).toBe(keys.indexOf("profile.threadTokenPattern") + 1);
     expect(defs(tab).find((d) => d.control?.key === "profile.followField")?.name).toBe(t("settings.followField"));
     expect(tab.getControlValue("profile.followField")).toBe("mail_follow");
   });

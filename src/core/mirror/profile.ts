@@ -17,6 +17,11 @@ export interface MailProfile {
    *  neues Feld). Kein verwaltetes Feld: der Wert haengt am Vault-Stand, nicht an der Mail, Re-render rechnet
    *  ihn nicht neu. Wirksam ist nur ein brauchbarer Name (`effectiveThreadField`). */
   threadField: string;
+  /** Regulaerer Ausdruck fuer die Kennung im Betreff (A3/A1), die Mails ohne Header-Bezug einem Vorgang zuordnet
+   *  (Standard `\[Ticket#\d+\]`). Leer = die Regel ist aus. Ein ungueltiger oder vom Risiko-Veto abgelehnter Ausdruck bleibt
+   *  stehen, wirkt aber nicht (`tokenRegexOf`); die Einstellung zeigt dazu einen Hinweis. Hat der Ausdruck eine Gruppe, ist
+   *  deren Inhalt die Kennung, sonst der ganze Treffer. Header haben Vorrang vor der Kennung. */
+  threadTokenPattern: string;
   /** Frontmatter-Feld der Wurzel-Notiz, das einen Vorgang beendet (A1): steht dort `false`, folgt Mailstone diesem Vorgang
    *  nicht mehr („Folge-Mails anzeigen“ blendet ihn aus, „Vorgängen folgen“ kopiert für ihn nichts mehr). Standard `mail_follow`; leer = die Befehle sind aus.
    *  Kein verwaltetes Feld, am Vault-Stand wie `threadField`. Wirksam ist nur ein brauchbarer Name (`effectiveFollowField`). */
@@ -57,6 +62,7 @@ export function defaultMailProfile(): MailProfile {
     emlSubfolder: "_eml",
     saveEml: true,
     threadField: "",
+    threadTokenPattern: "\\[Ticket#\\d+\\]",
     followField: "mail_follow",
     filename: "{date}-{time}-{slug}",
     idField: "mail_id",

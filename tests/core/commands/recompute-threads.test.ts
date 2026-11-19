@@ -6,14 +6,14 @@ import type { CommandContext, MailNoteRef } from "../../../src/core/commands/typ
 const profile = { ...defaultMailProfile(), threadField: "vorgang" };
 const ZONE = "%% mailstone:begin %%\n## Nachricht\nHallo\n%% mailstone:end %%\n";
 
-interface N { id: string; date?: string; time?: string; value?: string | null; valueId?: string | null; inReplyTo?: string[]; references?: string[]; zone?: boolean }
+interface N { id: string; date?: string; time?: string; value?: string | null; valueId?: string | null; inReplyTo?: string[]; references?: string[]; subject?: string; zone?: boolean }
 function note(n: N): MailNoteRef {
   const fm: string[] = [`mail_id: ${n.id}`];
   if (n.value !== undefined && n.value !== null) fm.push(`vorgang: "${n.value}"`);
   return {
     mailId: n.id, path: `Mail/${n.id}.md`, zoneHash: n.zone === false ? null : "h",
     content: `---\n${fm.join("\n")}\n---\n\n${n.zone === false ? "keine Zone\n" : ZONE}`,
-    frontmatter: { mail_id: n.id, date: n.date ?? "2026-08-01", time: n.time ?? "10:00", ...(n.value ? { vorgang: n.value } : {}) },
+    frontmatter: { mail_id: n.id, date: n.date ?? "2026-08-01", time: n.time ?? "10:00", subject: n.subject ?? `Betreff ${n.id}`, ...(n.value ? { vorgang: n.value } : {}) },
     thread: { inReplyTo: n.inReplyTo ?? [], references: n.references ?? [], valueId: n.valueId ?? null },
   };
 }
@@ -83,6 +83,23 @@ describe("mail.recomputeThreads", () => {
     const n = updates(r);
     expect(n.find((p) => p.mailId === "b@x")).toEqual({ kind: "skip", path: "Mail/b@x.md", mailId: "b@x", reason: "fences-missing" });
     expect(n.find((p) => p.mailId === "a@x")?.kind).toBe("update");
+  });
+
+  it("verbindet ueber den Betreff-Token, wenn die Header nichts verbinden", () => {
+    const r = cmd.plan({}, ctx([
+      note({ id: "a@x", subject: "[Ticket#7] Start" }),
+      note({ id: "b@x", date: "2026-08-03", subject: "AW: [Ticket#7] Start" }),
+    ]));
+    for (const p of updates(r)) expect(p.kind === "update" && p.content).toContain('vorgang: "[[Mail/a@x]]"');
+  });
+
+  it("ein ungueltiger Token-Regex schaltet nur die Token-Regel ab", () => {
+    const r = cmd.plan({}, ctx([
+      note({ id: "a@x", subject: "[Ticket#7] Start" }),
+      note({ id: "b@x", date: "2026-08-03", subject: "AW: [Ticket#7] Start" }),
+    ], { ...profile, threadTokenPattern: "[" }));
+    const n = updates(r);
+    expect(n.find((p) => p.mailId === "b@x")?.kind === "update" && (n.find((p) => p.mailId === "b@x") as { content: string }).content).toContain('vorgang: "[[Mail/b@x]]"');
   });
 
   it("die Vorschau nennt die Zahl und enthaelt eine Zeile je Notiz (bis zum Deckel)", () => {

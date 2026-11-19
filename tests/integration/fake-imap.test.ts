@@ -273,7 +273,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
   // zu alte (faellt aus SEARCH SINCE), nicht die ohne Bezug. Der Dialog bleibt lesend.
   it("findet Folge-Mails in INBOX und Sent, nur lesend: kein SELECT, kein BODY[, kein COPY, STORE oder MOVE", async () => {
     await starteServer();
-    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [], subject: "Start" }], null);
     const r = await runFollowUps({
       accounts: () => [{ id: "acc", label: "Testkonto", folders: { inbox: "INBOX", sent: "Sent" } }],
       connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()),
@@ -301,7 +301,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
 
   it("laesst einen beendeten Vorgang auch ueber den echten Socket aus", async () => {
     await starteServer();
-    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [], subject: "Start" }], null);
     const r = await runFollowUps({
       accounts: () => [{ id: "acc", label: "Testkonto", folders: { inbox: "INBOX", sent: "Sent" } }],
       connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()),
@@ -326,7 +326,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     const angelegt = new Map<string, { path: string; state: "live"; source: string }>();
     const plaene: NotePlan[] = [];
     let contextAufrufe = 0;
-    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [], subject: "Start" }], null);
     const svc = createSyncService({
       accounts: () => [account],
       profile: () => defaultMailProfile(),

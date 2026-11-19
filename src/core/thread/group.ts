@@ -1,11 +1,13 @@
 // Gruppierung der Mail-Notizen eines Vaults zu Vorgaengen (A3/A1, Welle 36) — rein, ohne Vault.
 //
-// Verbunden sind zwei Mails, wenn eine die andere in `in_reply_to` oder `references` nennt. Die Wurzel eines Vorgangs ist seine fruehste Mail. Der Aufrufer
+// Verbunden sind zwei Mails, wenn eine die andere in `in_reply_to` oder `references` nennt oder beide dieselbe
+// Kennung im Betreff tragen (`token.ts`). Die Wurzel eines Vorgangs ist seine fruehste Mail. Der Aufrufer
 // (die Obsidian-Schicht) hat Wikilinks schon zu Mail-IDs aufgeloest (E6): hier werden IDs verglichen,
 // nie Linktexte.
 import { compareDated, dateKey } from "./order";
+import { tokenOf, type Subjected } from "./token";
 
-export interface ThreadEntry {
+export interface ThreadEntry extends Subjected {
   mailId: string;
   /** Pfad der Notiz ohne `.md`. */
   path: string;
@@ -20,6 +22,10 @@ export interface ThreadEntry {
 export interface ThreadIndex {
   /** Mail-ID -> Mail-ID der Wurzel ihres Vorgangs (die Wurzel nennt sich selbst). */
   rootOf: ReadonlyMap<string, string>;
+  /** Kennung im Betreff -> Wurzel des Vorgangs, in dem sie vorkommt. */
+  tokenRoot: ReadonlyMap<string, string>;
+  /** Der Ausdruck, mit dem dieser Index gebaut wurde (`null` = Regel aus); `threadOf` liest damit den Betreff der Kandidatin. */
+  tokenPattern: RegExp | null;
 }
 
 const namesOf = (e: ThreadEntry): string[] => [...e.inReplyTo, ...e.references];
@@ -38,7 +44,7 @@ function pickRoot(members: readonly ThreadEntry[]): string {
   return (heads.length > 0 ? heads : tie).reduce((best, m) => (compareDated(m, best) < 0 ? m : best)).mailId;
 }
 
-export function groupThreads(entries: readonly ThreadEntry[]): ThreadIndex {
+export function groupThreads(entries: readonly ThreadEntry[], tokenPattern: RegExp | null): ThreadIndex {
   const byId = new Map<string, ThreadEntry>();
   for (const e of entries) if (!byId.has(e.mailId)) byId.set(e.mailId, e);
 
@@ -55,8 +61,16 @@ export function groupThreads(entries: readonly ThreadEntry[]): ThreadIndex {
     if (ra !== rb) parent.set(ra, rb);
   };
 
+  const firstWithToken = new Map<string, string>();
+  const tokenOfEntry = new Map<string, string>();
   for (const e of byId.values()) {
     for (const n of namesOf(e)) if (n !== e.mailId && byId.has(n)) union(e.mailId, n);
+    const token = tokenOf(e, tokenPattern);
+    if (token === null) continue;
+    tokenOfEntry.set(e.mailId, token);
+    const first = firstWithToken.get(token);
+    if (first === undefined) firstWithToken.set(token, e.mailId);
+    else union(e.mailId, first);
   }
 
   const groups = new Map<string, ThreadEntry[]>();
@@ -69,10 +83,12 @@ export function groupThreads(entries: readonly ThreadEntry[]): ThreadIndex {
     const root = pickRoot(members);
     for (const m of members) rootOf.set(m.mailId, root);
   }
-  return { rootOf };
+  const tokenRoot = new Map<string, string>();
+  for (const [mailId, token] of tokenOfEntry) tokenRoot.set(token, rootOf.get(mailId)!);
+  return { rootOf, tokenRoot, tokenPattern };
 }
 
-export interface ThreadCandidate {
+export interface ThreadCandidate extends Subjected {
   mailId: string;
   inReplyTo: string | null;
   references: readonly string[];
@@ -80,8 +96,9 @@ export interface ThreadCandidate {
 
 /**
  * Die Wurzel des Vorgangs im Vault, dem eine Kandidaten-Mail angehoert — oder `null`. In der
- * Reihenfolge der Quelle: In-Reply-To, dann References, die zuletzt genannte zuerst. Der gemeinsame
- * Kern fuer das Folgen eines Vorgangs auf dem Server (A1).
+ * Reihenfolge der Quelle: erst die Header (In-Reply-To, dann References, die zuletzt genannte zuerst), dann die
+ * Kennung im Betreff. Ein Header, der auf eine Notiz im Vault trifft, gewinnt gegen eine Kennung, die auf einen anderen
+ * Vorgang zeigt. Der gemeinsame Kern fuer das Folgen eines Vorgangs auf dem Server (A1).
  */
 export function threadOf(candidate: ThreadCandidate, index: ThreadIndex): string | null {
   const headers = [...(candidate.inReplyTo ? [candidate.inReplyTo] : []), ...[...candidate.references].reverse()];
@@ -90,5 +107,6 @@ export function threadOf(candidate: ThreadCandidate, index: ThreadIndex): string
     const root = index.rootOf.get(id);
     if (root !== undefined) return root;
   }
-  return null;
+  const token = tokenOf(candidate, index.tokenPattern);
+  return token === null ? null : index.tokenRoot.get(token) ?? null;
 }

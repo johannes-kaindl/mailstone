@@ -1,5 +1,6 @@
 import { fmKeyFor, type MailProfile } from "../mirror/profile";
 import type { ThreadEntry } from "../thread/group";
+import { noteSubject } from "../thread/token";
 import type { MailNoteRef } from "./types";
 
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -18,5 +19,6 @@ export function threadEntryOf(profile: MailProfile, ref: MailNoteRef): ThreadEnt
     time: f("time"),
     inReplyTo: ref.thread?.inReplyTo ?? [],
     references: ref.thread?.references ?? [],
+    subject: noteSubject(profile, ref.frontmatter),
   };
 }

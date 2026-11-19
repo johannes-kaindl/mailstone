@@ -200,8 +200,35 @@ describe("planSync — Vorgangswert beim Anlegen", () => {
   it("uebernimmt den Wert der Vorgaengerin im Vault", () => {
     const b = at("b@x", "09", { inReplyTo: "p@x" });
     const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]),
-      threadNotes: () => [{ mailId: "p@x", path: "Mail/2026/p", value: "[[Mail/2026/wurzel]]" }] });
+      threadNotes: () => [{ mailId: "p@x", path: "Mail/2026/p", subject: "Betreff p@x", date: "2026-08-01", time: "10:00", value: "[[Mail/2026/wurzel]]" }] });
     expect(vorgang(create(plans, "b@x"))).toBe('vorgang: "[[Mail/2026/wurzel]]"');
+  });
+
+  describe("Kennung im Betreff", () => {
+    const tNote = (mailId: string, value: string, subject: string) => ({ mailId, path: `Mail/2026/${mailId}`, subject, date: "2026-08-01", time: "10:00", value });
+    const planFor = (p: typeof on, m: ParsedMail, known: ReturnType<typeof tNote>[]) =>
+      vorgang(create(planSync({ ...base, profile: p, fetched: [{ mail: m, eml }], onServer: new Set([m.id]), threadNotes: () => known }), m.id));
+
+    it("uebernimmt ohne Header-Bezug den Wert der juengsten fruehere Notiz mit derselben Kennung", () => {
+      const m = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker" });
+      expect(planFor(on, m, [tNote("t@x", "[[Mail/2026/wurzel]]", "[Ticket#7] Drucker"), tNote("o@x", "[[Mail/2026/fremd]]", "[Ticket#8] Monitor")]))
+        .toBe('vorgang: "[[Mail/2026/wurzel]]"');
+    });
+
+    it("ein Header, der auf eine Notiz trifft, geht der Kennung vor", () => {
+      const m = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker", inReplyTo: "p@x" });
+      expect(planFor(on, m, [tNote("t@x", "[[Mail/2026/ticket]]", "[Ticket#7] Drucker"), tNote("p@x", "[[Mail/2026/header]]", "Anderes")]))
+        .toBe('vorgang: "[[Mail/2026/header]]"');
+    });
+
+    it("leerer oder unbrauchbarer Ausdruck: nur die Header gelten, die Mail ist ihre eigene Wurzel", () => {
+      const m = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker" });
+      const known = [tNote("t@x", "[[Mail/2026/wurzel]]", "[Ticket#7] Drucker")];
+      for (const pattern of ["", "[", "(a+)+$"]) {
+        expect(planFor({ ...on, threadTokenPattern: pattern }, m, known), JSON.stringify(pattern)).toMatch(/^vorgang: "\[\[Mail\//);
+        expect(planFor({ ...on, threadTokenPattern: pattern }, m, known), JSON.stringify(pattern)).not.toContain("wurzel");
+      }
+    });
   });
 
   it("die Vorgaengerin darf eine Notiz desselben Laufs sein, auch wenn die Antwort zuerst geliefert wird", () => {

@@ -42,11 +42,11 @@ describe("threadRefsFor / threadNotes", () => {
     const fm = { in_reply_to: "[[a]]", references: ["[[a]]", "roh@x", "[[weg]]"], vorgang: "[[a]]" };
     expect(threadRefsFor(app, profile, "Mail/2026/b.md", fm)).toEqual({ inReplyTo: ["a@x"], references: ["a@x", "roh@x"], valueId: "a@x" });
   });
-  it("threadNotes liefert Pfad ohne .md und den Vorgangswert", async () => {
+  it("threadNotes liefert Pfad ohne .md, Datum, Betreff und den Vorgangswert", async () => {
     const app = makeApp();
     await app.vault.create("Mail/2026/a.md", mailNote("a@x", ['vorgang: "[[Mail/2026/a]]"']));
     await app.vault.create("Notizen/keine-mail.md", "---\ntitle: x\n---\n");
-    expect(threadNotes(app, profile)).toEqual([{ mailId: "a@x", path: "Mail/2026/a", value: "[[Mail/2026/a]]" }]);
+    expect(threadNotes(app, profile)).toEqual([{ mailId: "a@x", path: "Mail/2026/a", subject: "Betreff a@x", date: "2026-08-01", time: "10:00", value: "[[Mail/2026/a]]" }]);
   });
 });
 

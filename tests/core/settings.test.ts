@@ -243,22 +243,32 @@ describe("showStatusBar (UI-STANDARD § 8 Statusleisten-Eintrag)", () => {
   });
 });
 
-describe("threadField (A3)", () => {
-  it("eine alte data.json ohne das Feld ergibt: Vorgang aus", () => {
+describe("threadField und threadTokenPattern (A3)", () => {
+  it("eine alte data.json ohne die Felder ergibt: Vorgang aus, Token-Regex der Vorgabe", () => {
     const alt = loadSettings({ schemaVersion: 1, profile: { folder: "Mail", saveEml: false } });
     expect(alt.profile.threadField).toBe("");
+    expect(alt.profile.threadTokenPattern).toBe("\\[Ticket#\\d+\\]");
     expect(loadSettings(undefined).profile.threadField).toBe("");
   });
-  it("ein gespeicherter Wert bleibt", () => {
-    expect(loadSettings({ profile: { threadField: "vorgang" } }).profile.threadField).toBe("vorgang");
+  it("gespeicherte Werte bleiben", () => {
+    const s = loadSettings({ profile: { threadField: "vorgang", threadTokenPattern: "\\bINC\\d+\\b" } });
+    expect(s.profile.threadField).toBe("vorgang");
+    expect(s.profile.threadTokenPattern).toBe("\\bINC\\d+\\b");
   });
   it("ein Wert, der kein Text ist, faellt auf die Vorgabe zurueck", () => {
     for (const v of [5, true, null, [], {}]) {
-      expect(loadSettings({ profile: { threadField: v } }).profile.threadField, JSON.stringify(v)).toBe("");
+      const s = loadSettings({ profile: { threadField: v, threadTokenPattern: v } });
+      expect(s.profile.threadField, JSON.stringify(v)).toBe("");
+      expect(s.profile.threadTokenPattern, JSON.stringify(v)).toBe("\\[Ticket#\\d+\\]");
     }
   });
-  it("ein unbrauchbarer Feldname bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
-    expect(loadSettings({ profile: { threadField: "mail_id" } }).profile.threadField).toBe("mail_id");
+  it("ein bewusst leerer Token-Regex bleibt leer: die Regel ist aus", () => {
+    expect(loadSettings({ profile: { threadTokenPattern: "" } }).profile.threadTokenPattern).toBe("");
+  });
+  it("ein ungueltiger Regex und ein unbrauchbarer Feldname bleiben stehen (die Einstellung zeigt den Hinweis), laden aber ohne Wurf", () => {
+    const s = loadSettings({ profile: { threadField: "mail_id", threadTokenPattern: "[" } });
+    expect(s.profile.threadField).toBe("mail_id");
+    expect(s.profile.threadTokenPattern).toBe("[");
   });
 });
 

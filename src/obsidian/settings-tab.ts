@@ -17,6 +17,7 @@ import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } fro
 import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
 import { effectiveFollowField, followFieldProblem, threadFieldProblem } from "../core/thread/field";
+import { tokenPatternProblem } from "../core/thread/token";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
 import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
@@ -118,6 +119,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
         control: { type: "text", key: "profile.threadField" },
       },
       ...this.threadHint(this.threadFieldHint()),
+      {
+        name: t("settings.threadTokenPattern"),
+        desc: t("settings.threadTokenPattern.desc"),
+        control: { type: "text", key: "profile.threadTokenPattern" },
+      },
+      ...this.threadHint(this.threadTokenHint()),
       {
         name: t("settings.followField"),
         desc: t("settings.followField.desc"),
@@ -456,6 +463,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return problem === null ? null : t(`settings.threadField.problem.${problem}`, profile.threadField.trim());
   }
 
+  private threadTokenHint(): string | null {
+    const problem = tokenPatternProblem(this.host.settings.profile);
+    return problem === null ? null : t(`settings.threadTokenPattern.problem.${problem}`);
+  }
+
   private followFieldHint(): string | null {
     const profile = this.host.settings.profile;
     const problem = followFieldProblem(profile);
@@ -500,6 +512,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
         get: () => s.profile.threadField,
         set: (value) => { s.profile.threadField = typeof value === "string" ? value.trim() : ""; },
       },
+      "profile.threadTokenPattern": {
+        get: () => s.profile.threadTokenPattern,
+        // Leer ist erlaubt: die Regel ist dann aus. Kein Rueckfall auf die Vorgabe wie beim Dateinamen.
+        set: (value) => { s.profile.threadTokenPattern = typeof value === "string" ? value.trim() : ""; },
+      },
       "profile.followField": {
         get: () => s.profile.followField,
         set: (value) => { s.profile.followField = typeof value === "string" ? value.trim() : ""; },
@@ -531,8 +548,8 @@ export class MailstoneSettingTab extends PluginSettingTab {
     // Nur wenn sich der Hinweis ein- oder ausblendet oder aendert, zeichnet der Tab neu: ein Neuzeichnen
     // bei jedem Tastendruck risse dem Nutzer den Fokus aus dem Textfeld.
     // Beide Feldnamen teilen sich die Kollisionsprobe: eine Aenderung des einen kann den Hinweis des anderen aendern.
-    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}`;
-    const hinweisVorher = key === "profile.threadField" || key === "profile.followField" ? hinweise() : null;
+    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}|${String(this.threadTokenHint())}`;
+    const hinweisVorher = key === "profile.threadField" || key === "profile.followField" || key === "profile.threadTokenPattern" ? hinweise() : null;
     entry.set(value);
     await this.host.saveSettings();
     if (hinweisVorher !== null && hinweisVorher !== hinweise()) this.update();

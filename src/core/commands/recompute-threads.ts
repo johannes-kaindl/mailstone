@@ -3,6 +3,7 @@ import { wikilinkOf } from "../../vendor/kit/frontmatter";
 import type { NotePlan } from "../mirror/plan";
 import { effectiveThreadField } from "../thread/field";
 import { groupThreads } from "../thread/group";
+import { tokenRegexOf } from "../thread/token";
 import { show } from "./diff";
 import { validateInput } from "./schema";
 import { threadEntryOf } from "./thread-entry";
@@ -39,7 +40,7 @@ export const RECOMPUTE_THREADS_COMMAND: CommandDescriptor = {
 
     const refs = ctx.notes ?? [];
     const entries = refs.map((r) => threadEntryOf(ctx.profile, r));
-    const index = groupThreads(entries);
+    const index = groupThreads(entries, tokenRegexOf(ctx.profile));
     const pathOf = new Map(entries.map((e) => [e.mailId, e.path]));
 
     const notes: NotePlan[] = [];

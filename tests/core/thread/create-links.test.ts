@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { threadValuesForNew, type KnownThreadNote, type NewThreadMail } from "../../../src/core/thread/create-links";
+import { DEFAULT_TOKEN as TOKEN } from "../../helpers/token";
 
 const known = (mailId: string, over: Partial<KnownThreadNote> = {}): KnownThreadNote => ({
-  mailId, path: `Mail/${mailId}`, value: null, ...over,
+  mailId, path: `Mail/${mailId}`, subject: `Betreff ${mailId}`, date: "2026-08-01", time: "10:00", value: null, ...over,
 });
 const fresh = (mailId: string, over: Partial<NewThreadMail> = {}): NewThreadMail => ({
-  mailId, path: `Mail/neu-${mailId}`, inReplyTo: null, references: [], ...over,
+  mailId, path: `Mail/neu-${mailId}`, inReplyTo: null, references: [], subject: `Betreff ${mailId}`, date: "2026-08-05", time: "10:00", ...over,
 });
-const run = (f: NewThreadMail[], k: KnownThreadNote[] = []) => Object.fromEntries(threadValuesForNew(f, k));
+const run = (f: NewThreadMail[], k: KnownThreadNote[] = []) => Object.fromEntries(threadValuesForNew(f, k, TOKEN));
 
 describe("threadValuesForNew", () => {
   it("uebernimmt den Wert der Vorgaengerin", () => {
@@ -23,9 +24,9 @@ describe("threadValuesForNew", () => {
     expect(run([fresh("n@x")])).toEqual({ "n@x": "[[Mail/neu-n@x]]" });
   });
   it("kennt eine Vorgaengerin desselben Laufs, unabhaengig von der Reihenfolge", () => {
-    const a = fresh("a@x");
-    const b = fresh("b@x", { inReplyTo: "a@x" });
-    const c = fresh("c@x", { references: ["a@x", "b@x"] });
+    const a = fresh("a@x", { date: "2026-08-01" });
+    const b = fresh("b@x", { date: "2026-08-02", inReplyTo: "a@x" });
+    const c = fresh("c@x", { date: "2026-08-03", references: ["a@x", "b@x"] });
     const erwartet = { "a@x": "[[Mail/neu-a@x]]", "b@x": "[[Mail/neu-a@x]]", "c@x": "[[Mail/neu-a@x]]" };
     expect(run([a, b, c])).toEqual(erwartet);
     expect(run([c, b, a])).toEqual(erwartet);
@@ -33,6 +34,10 @@ describe("threadValuesForNew", () => {
   it("hangelt sich im Lauf von einer Vorgaengerin im Vault zur Wurzel, die ihr Wert nennt", () => {
     const r = run([fresh("b@x", { inReplyTo: "a@x" }), fresh("c@x", { inReplyTo: "b@x" })], [known("a@x", { value: "[[Mail/wurzel]]" })]);
     expect(r).toEqual({ "b@x": "[[Mail/wurzel]]", "c@x": "[[Mail/wurzel]]" });
+  });
+  it("ordnet zwei Mails desselben Laufs ueber den Betreff-Token zu", () => {
+    const r = run([fresh("a@x", { subject: "[Ticket#9] a", date: "2026-08-01" }), fresh("b@x", { subject: "[Ticket#9] b", date: "2026-08-02" })]);
+    expect(r).toEqual({ "a@x": "[[Mail/neu-a@x]]", "b@x": "[[Mail/neu-a@x]]" });
   });
   it("haelt einen Zyklus in den Verweisen aus: kein Wurf, jede Mail bekommt einen Wert", () => {
     const r = run([fresh("a@x", { inReplyTo: "b@x" }), fresh("b@x", { inReplyTo: "a@x" })]);

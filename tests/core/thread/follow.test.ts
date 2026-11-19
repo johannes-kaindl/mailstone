@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { FOLLOW_WINDOW_DAYS, MAX_FOLLOW_HEADERS, findFollowUps, type FollowSession } from "../../../src/core/thread/follow";
 import { groupThreads, type ThreadEntry } from "../../../src/core/thread/group";
+import { DEFAULT_TOKEN } from "../../helpers/token";
 
 // Ein Kopf mit dem Marker `UNLESBAR` laesst den Parser werfen, als haette ihn ein kaputter Header zerlegt. PostalMime
 // selbst ist so nachsichtig, dass sich so ein Kopf nicht ehrlich bauen laesst; die Ablaufregel ist, was hier gemessen wird.
@@ -48,9 +49,9 @@ function fakeSession(folders: Record<string, Msg[]>) {
 }
 
 const entry = (mailId: string, over: Partial<ThreadEntry> = {}): ThreadEntry =>
-  ({ mailId, path: `Mail/${mailId}`, date: "2026-11-01", time: "10:00", inReplyTo: [], references: [], ...over });
+  ({ mailId, path: `Mail/${mailId}`, date: "2026-11-01", time: "10:00", inReplyTo: [], references: [], subject: `Betreff ${mailId}`, ...over });
 const NOW = new Date(Date.UTC(2026, 10, 18, 12, 0));
-const vault = groupThreads([entry("wurzel@example.org"), entry("antwort@example.org", { date: "2026-11-02", inReplyTo: ["wurzel@example.org"] }), entry("andere@example.org")]);
+const vault = groupThreads([entry("wurzel@example.org"), entry("antwort@example.org", { date: "2026-11-02", inReplyTo: ["wurzel@example.org"] }), entry("andere@example.org")], DEFAULT_TOKEN);
 const req = (folders: string[], over: Partial<Parameters<typeof findFollowUps>[1]> = {}) => ({ folders, now: NOW, index: vault, stopped: new Set<string>(), ...over });
 
 describe("findFollowUps — UIDVALIDITY je Ordner", () => {
@@ -101,6 +102,38 @@ describe("findFollowUps — Zuordnung ueber Header", () => {
     });
     const r = await findFollowUps(session, req(["INBOX", "Sent"]));
     expect(r.followUps.map((f) => [f.folder, f.mailId])).toEqual([["Sent", "frueh@example.org"], ["INBOX", "spaet@example.org"]]);
+  });
+});
+
+describe("findFollowUps — Kennung im Betreff", () => {
+  const ticket = groupThreads([
+    entry("tick@example.org", { subject: "[Ticket#42] Drucker" }),
+    entry("anderes@example.org", { date: "2026-11-03", subject: "[Ticket#43] Monitor" }),
+  ], DEFAULT_TOKEN);
+
+  it("ordnet eine Mail ohne Header-Bezug ueber die Kennung dem Vorgang zu", async () => {
+    const { session } = fakeSession({ INBOX: [{ uid: 1, id: "helpdesk@example.org", subject: "AW: [Ticket#42] Drucker" }] });
+    const r = await findFollowUps(session, req(["INBOX"], { index: ticket }));
+    expect(r.followUps.map((f) => [f.mailId, f.root])).toEqual([["helpdesk@example.org", "tick@example.org"]]);
+  });
+
+  it("ein Header, der auf eine Notiz trifft, gewinnt gegen eine Kennung, die auf einen anderen Vorgang zeigt", async () => {
+    const { session } = fakeSession({ INBOX: [{ uid: 1, id: "n@example.org", inReplyTo: "anderes@example.org", subject: "AW: [Ticket#42] Drucker" }] });
+    const r = await findFollowUps(session, req(["INBOX"], { index: ticket }));
+    expect(r.followUps.map((f) => f.root)).toEqual(["anderes@example.org"]);
+  });
+
+  it("laesst eine Mail mit unbekannter Kennung aus und ohne Regel jede", async () => {
+    const { session } = fakeSession({ INBOX: [{ uid: 1, id: "x@example.org", subject: "[Ticket#99] neu" }, { uid: 2, id: "y@example.org", subject: "[Ticket#42] noch mal" }] });
+    expect((await findFollowUps(session, req(["INBOX"], { index: ticket }))).followUps.map((f) => f.mailId)).toEqual(["y@example.org"]);
+    const aus = groupThreads([entry("tick@example.org", { subject: "[Ticket#42] Drucker" })], null);
+    expect((await findFollowUps(session, req(["INBOX"], { index: aus }))).followUps).toEqual([]);
+  });
+
+  it("laesst einen beendeten Vorgang auch ueber die Kennung aus", async () => {
+    const { session } = fakeSession({ INBOX: [{ uid: 1, id: "helpdesk@example.org", subject: "AW: [Ticket#42] Drucker" }] });
+    const r = await findFollowUps(session, req(["INBOX"], { index: ticket, stopped: new Set(["tick@example.org"]) }));
+    expect(r.followUps).toEqual([]);
   });
 });
 

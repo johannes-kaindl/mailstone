@@ -8,6 +8,7 @@ import { setFrontmatterFields } from "../merge/merge";
 import type { NotePlan } from "../mirror/plan";
 import { effectiveFollowField, followStopped } from "../thread/field";
 import { groupThreads } from "../thread/group";
+import { tokenRegexOf } from "../thread/token";
 import { show } from "./diff";
 import { validateInput } from "./schema";
 import { threadEntryOf } from "./thread-entry";
@@ -20,7 +21,7 @@ function planToggle(kind: "stop" | "resume", input: Record<string, unknown>, ctx
   if (field === "") return { ok: false, code: "nothing-to-do", hintKey: "error.command.follow-field-off" };
 
   const refs = ctx.notes ?? [];
-  const index = groupThreads(refs.map((r) => threadEntryOf(ctx.profile, r)));
+  const index = groupThreads(refs.map((r) => threadEntryOf(ctx.profile, r)), tokenRegexOf(ctx.profile));
   const rootId = index.rootOf.get(ctx.target.mailId) ?? ctx.target.mailId;
   const root = refs.find((r) => r.mailId === rootId);
   if (root === undefined) return { ok: false, code: "nothing-to-do" };

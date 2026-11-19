@@ -624,7 +624,7 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
       index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => exec.executor,
       uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
       now: () => new Date("2026-08-30T09:00:00Z"),
-      follow: { context: extra.context ?? (() => { contextAufrufe.n += 1; return { index: groupThreads([]), stopped: new Set<string>() }; }) },
+      follow: { context: extra.context ?? (() => { contextAufrufe.n += 1; return { index: groupThreads([], null), stopped: new Set<string>() }; }) },
     });
     return { svc, verbindungen };
   }
