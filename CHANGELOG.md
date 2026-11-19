@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-11-19
+
 ### Added
 
 - Setting *Save original as .eml* (on by default, so existing vaults stay as they are). Switched off, sync and import no longer write the `.eml` next to each note; mails without a Message-ID keep theirs, because the server cannot find them again.
