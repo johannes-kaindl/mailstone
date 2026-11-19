@@ -29,7 +29,7 @@ import { threadNotes } from "./obsidian/thread-index";
 import { openFollowUps } from "./obsidian/follow-ups";
 import { followContext } from "./obsidian/follow-context";
 import { findNotePathForMailId, mailIndex, trashEml, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
-import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
+import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile, type PseudonymizeMode } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
@@ -233,6 +233,12 @@ export function syncIdleStatus(counts: { created: number; reattached: number }, 
   return n > 0 ? t("status.sync.idle", String(n), time) : t("status.sync.idleNoChange", time);
 }
 
+/** Steht der Befehl „Wartende Mails pruefen“ in der Palette? Nur wenn der Schalter nicht Aus ist (sonst wartet nie eine Mail) und die
+ *  Netzfunktionen verfuegbar sind (Desktop). Wie bei den uebrigen netzabhaengigen Befehlen: fehlt er, statt ausgegraut zu stehen. */
+export function waitingCheckAvailable(mode: PseudonymizeMode, platform: Pick<typeof Platform, "isMobile"> = Platform): boolean {
+  return mode !== "off" && networkFeaturesAvailable(platform);
+}
+
 /** Welche Meldungen ein beendeter Sync-Lauf ausgibt. Reine Funktion (kein Obsidian-Zugriff),
  *  damit die Auswahl ohne Plugin-Mock pruefbar ist — dieselbe Begruendung wie bei
  *  `syncFailureStatus`.
@@ -398,6 +404,7 @@ export default class MailstonePlugin extends Plugin {
 
     if (networkFeaturesAvailable()) {
       this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
+      this.addCommand(this.waitingCommand(notify));
       // Lesend, nur Desktop (A1): zeigt Mails in Posteingang und Gesendet, die zu einem Vorgang im Vault gehoeren.
       this.addCommand({
         id: "mail-showFollowUps",
@@ -856,12 +863,27 @@ export default class MailstonePlugin extends Plugin {
     }
   }
 
+  /** Der Befehl „Wartende Mails pruefen“ (A5, Schritt 4b): derselbe Lauf wie „Synchronisieren“ (gleicher Busy-Guard, dieselbe Notice), aber
+   *  mit `interactive: true`, damit der Pseudonymizer das Pruefenster fuer die wartenden Mails oeffnen darf. Der Wecker und der normale Befehl
+   *  fragen nie. Als Methode statt im onload(), damit der Befehl testbar ist. */
+  private waitingCommand(notify: Notifier): { id: string; name: string; checkCallback: (checking: boolean) => boolean } {
+    return {
+      id: "check-waiting-mails",
+      name: t("cmd.checkWaiting.name"),
+      checkCallback: (checking: boolean): boolean => {
+        if (!waitingCheckAvailable(this.settings.profile.pseudonymize)) return false;
+        if (!checking) void this.runSync(notify, false, undefined, true);
+        return true;
+      },
+    };
+  }
+
   /** `silent` = Intervall-Lauf: kein Notice bei Erfolg, nur bei Fehlern — sonst poppt alle
    *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste.
    *  `only` schraenkt auf bestimmte Konten ein (der Wecker uebergibt die faelligen, das Cockpit
    *  das angeklickte) und laeuft dann OHNE `sync.enabled`-Filter; ohne Angabe laufen alle
    *  aktivierten. Die Auswahl selbst trifft `syncTargets`, dort steht auch die Begruendung. */
-  private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<SyncRunResult[]> {
+  private async runSync(notify: Notifier, silent = false, only?: readonly string[], interactive = false): Promise<SyncRunResult[]> {
     const ziele = syncTargets(this.settings.accounts, only);
     if (ziele.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return []; }
     this.status.set(t("status.sync.running"));
@@ -879,7 +901,8 @@ export default class MailstonePlugin extends Plugin {
       // statt sich auf zwei Filter in zwei Modulen zu verteilen — genau die Aufteilung, aus der
       // Befund 2 entstand.
       const results: SyncRunResult[] = [];
-      for (const id of ziele) results.push(await this.syncService.syncAccount(id));
+      // `interactive` (A5, „Wartende Mails pruefen“) erlaubt dem Pseudonymizer sein Pruefenster; ohne Angabe bleibt der Aufruf wie vor A5.
+      for (const id of ziele) results.push(await (interactive ? this.syncService.syncAccount(id, { interactive: true }) : this.syncService.syncAccount(id)));
       for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
       // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
       // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).

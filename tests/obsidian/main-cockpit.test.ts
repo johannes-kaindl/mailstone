@@ -7,7 +7,7 @@
 // nicht — die Felder, die `runSync`/`saveSettings`/`cockpitHost` anfassen, werden hier direkt
 // gesetzt. `as any` fuer die privaten Methoden: sie sind der Gegenstand, nicht ein Umweg.
 import { describe, it, expect, vi } from "vitest";
-import MailstonePlugin, { syncTargets } from "../../src/main";
+import MailstonePlugin, { syncTargets, waitingCheckAvailable } from "../../src/main";
 import { makeFakeEl } from "../vendor/kit/obsidian-mock";
 import { CockpitPanel, type CockpitHost } from "../../src/obsidian/views/cockpit-panel";
 import { newAccount, type Account } from "../../src/core/settings";
@@ -132,6 +132,56 @@ describe("Befund 2 — manuell heisst manuell", () => {
     expect(syncAccount).not.toHaveBeenCalled();
     expect(results).toEqual([]);
     expect(notify.info).toHaveBeenCalledWith("notice.sync.noAccounts");
+  });
+});
+
+// A5, Schritt 4b: „Wartende Mails pruefen“ ist ein Sync-Lauf ueber alle Konten mit interactive: true; der Befehl „Synchronisieren“, der
+// Wecker und das Cockpit laufen mit false (kein Pruefenster). onload() ist nicht testbar, deshalb steht der Befehl als Methode da.
+describe("Wartende Mails pruefen (A5, Schritt 4b)", () => {
+  const opts = (spy: ReturnType<typeof vi.fn>): unknown[] => spy.mock.calls.map((c) => (c[1] as { interactive?: boolean } | undefined)?.interactive === true);
+
+  it("der Befehl fuehrt einen Lauf ueber alle aktiven Konten mit interactive: true und derselben Notice", async () => {
+    const { plugin, notify, syncAccount } = aufbau([acc("a"), acc("b"), acc("c", false)]);
+    plugin.settings.profile.pseudonymize = "required";
+    const cmd = plugin.waitingCommand(notify);
+    expect(cmd.checkCallback(false)).toBe(true);
+    await vi.waitFor(() => { expect(syncAccount).toHaveBeenCalledTimes(2); });
+    expect(syncAccount.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
+    expect(syncAccount.mock.calls.every((c) => (c[1] as { interactive?: boolean }).interactive === true)).toBe(true);
+    await vi.waitFor(() => { expect(notify.info).toHaveBeenCalledWith("notice.sync.done", 0, 0, 0, 0); });
+  });
+
+  it("der normale Sync (runSync ohne Angabe) und der Intervall-Lauf fragen nie interaktiv", async () => {
+    const { plugin, notify, syncAccount } = aufbau([acc("a")]);
+    plugin.settings.profile.pseudonymize = "required";
+    await plugin.runSync(notify);
+    await plugin.runSync(notify, true, ["a"]);
+    plugin.lastRun = {};
+    await plugin.runDueSyncs(notify, {});
+    await plugin.runSync(notify, false, ["a"]);
+    expect(syncAccount).toHaveBeenCalledTimes(4);
+    expect(opts(syncAccount)).toEqual([false, false, false, false]);
+  });
+
+  it("der Befehl fehlt bei Aus (checkCallback false, kein Lauf), steht bei Wenn verfuegbar und Verlangt", async () => {
+    const { plugin, notify, syncAccount } = aufbau([acc("a")]);
+    plugin.settings.profile.pseudonymize = "off";
+    const cmd = plugin.waitingCommand(notify);
+    expect(cmd.checkCallback(true)).toBe(false);
+    expect(cmd.checkCallback(false)).toBe(false);
+    expect(syncAccount).not.toHaveBeenCalled();
+    plugin.settings.profile.pseudonymize = "if-available";
+    expect(cmd.checkCallback(true)).toBe(true);
+    plugin.settings.profile.pseudonymize = "required";
+    expect(cmd.checkCallback(true)).toBe(true);
+    expect(syncAccount).not.toHaveBeenCalled();
+  });
+
+  it("nur am Desktop und nur bei eingeschaltetem Schalter sichtbar", () => {
+    expect(waitingCheckAvailable("required", { isMobile: false })).toBe(true);
+    expect(waitingCheckAvailable("if-available", { isMobile: false })).toBe(true);
+    expect(waitingCheckAvailable("off", { isMobile: false })).toBe(false);
+    expect(waitingCheckAvailable("required", { isMobile: true })).toBe(false);
   });
 });
 

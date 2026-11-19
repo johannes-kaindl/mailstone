@@ -111,6 +111,7 @@ export const en = {
   "settings.account.test.noSecret": "Set a password before testing the connection.",
 
   "cmd.sync.name": "Synchronise mailbox folder",
+  "cmd.checkWaiting.name": "Check waiting mails",
   "cmd.openCockpit.name": "Open the sidebar panel",
   "cmd.showFollowUps.name": "Show follow-up mails",
   "status.sync.running": "Mailstone: synchronising…",
@@ -446,6 +447,7 @@ export const de: typeof en = {
   "settings.account.test.noSecret": "Vor dem Verbindungstest ein Passwort setzen.",
 
   "cmd.sync.name": "Postfach-Ordner synchronisieren",
+  "cmd.checkWaiting.name": "Wartende Mails prüfen",
   "cmd.openCockpit.name": "Seitenleiste öffnen",
   "cmd.showFollowUps.name": "Folge-Mails anzeigen",
   "status.sync.running": "Mailstone: synchronisiert…",
