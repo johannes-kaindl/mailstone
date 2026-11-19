@@ -1,7 +1,7 @@
 {
   "source": "code-kit",
-  "version": "0.79.0",
-  "sha": "fa0b360",
-  "vendored": "timeout.ts, sha256.ts, filename-template.ts, settings.ts, i18n.ts, busy-guard.ts, slug.ts, local-stamp.ts, marker-zone.ts, validate-input.ts, folder-scope.ts, fold-case.ts, rel-path.ts, loopback.ts, text-window.ts, user-regex.ts, secrets.ts",
+  "version": "0.79.1",
+  "sha": "f2437cf",
+  "vendored": "timeout.ts, sha256.ts, filename-template.ts, settings.ts, i18n.ts, busy-guard.ts, slug.ts, local-stamp.ts, marker-zone.ts, validate-input.ts, folder-scope.ts, fold-case.ts, rel-path.ts, loopback.ts, text-window.ts, user-regex.ts, secrets.ts, error-message.ts, placeholder.ts",
   "license": "AGPL-3.0-or-later"
 }

@@ -1,7 +1,7 @@
 {
   "source": "obsidian-kit",
-  "version": "0.97.0",
-  "sha": "f02c998",
-  "vendored": "settings_walker.ts, folder-suggest.ts, confirm.ts, hub.ts, secrets.ts, help-setting.ts, status-bar-item.ts, setting-body-host.ts",
+  "version": "0.100.0",
+  "sha": "651d57b",
+  "vendored": "settings_walker.ts, folder-suggest.ts, confirm.ts, hub.ts, secrets.ts, help-setting.ts, status-bar-item.ts, setting-body-host.ts, plugin-api.ts, capability-apis.ts, pseudonymizer-call.ts",
   "license": "AGPL-3.0-or-later"
 }

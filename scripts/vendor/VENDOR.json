@@ -1,7 +1,7 @@
 {
   "source": "obsidian-kit",
-  "version": "0.97.0",
-  "sha": "f02c998",
+  "version": "0.100.0",
+  "sha": "651d57b",
   "vendored": "node-builtin-require.mjs",
   "license": "AGPL-3.0-or-later"
 }

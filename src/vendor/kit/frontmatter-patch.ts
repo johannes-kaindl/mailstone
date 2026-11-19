@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.97.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.100.0, src/pure/frontmatter-patch.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // frontmatter-patch.ts — eigene Frontmatter-Felder setzen, fremde Zeilen byte-gleich lassen. Kein obsidian-Import.
 //
 // Zusammengeführt aus zwei unabhängigen Fassungen desselben Vorgangs (Diachronic wäre die dritte):
@@ -13,7 +13,7 @@
 //     eine eigene Notiz (mailstone) schon — beide Fälle sind begründet, der sichere ist der Default.
 //   · Listen gehen als Flow-Liste (`[a, b]`) und ersetzen eine bestehende Blockliste samt ihren Zeilen. Obsidians
 //     Eigenschaften-Editor schreibt sie beim nächsten Bearbeiten als Blockliste um, Bases liest beide gleich.
-//   · Werte sind typisiert (`string | number | string[]`) und laufen durch `serializeFrontmatter` (quotet `"1"`, `true`, `a, b`);
+//   · Werte sind typisiert (`string | number | boolean | string[]`; ein `boolean` steht bar als `true`/`false`, ein Text `"true"` gequotet) und laufen durch `serializeFrontmatter` (quotet `"1"`, `true`, `a, b`);
 //     finance-ledger übergab fertiges YAML und verlagerte das Quoting auf jeden Aufrufer.
 //   · `protect` (Default `["created"]`) verweigert ein `set` — finance-ledgers Grund (ein Lauf setzte `created` jedes Mal neu) gilt allgemein.
 //   · Beim Anhängen an einen CRLF-Block bleibt das Zeilenende CRLF; finance-ledger schrieb dort `\n` vor die angehängte Zeile und
