@@ -123,6 +123,12 @@ Global settings:
 
 Mailstone can hand every new mail to a separate plugin, `pseudonymizer`, before the note is written, so that names, addresses and similar details in the subject, sender, recipients, attachment names and text become placeholders. The setting *Pseudonymize* has three positions: *Off* (the default; Mailstone does not use the plugin), *If available* (pseudonymize while the plugin is ready, otherwise write plain text) and *Required* (without a ready plugin no new mail is written; it waits on the server and the next sync run fetches it again). While the setting is not *Off*, no `.eml` is stored, because an original is plain text. The plugin `pseudonymizer` is not published yet, so *Required* writes no new mail until it exists and is ready; leave the setting *Off* until then.
 
+**Waiting mails.** A mail that cannot be written yet (the plugin is missing, locked or not set up with *Required*, or it wants you to review the mail first) stays on the server. The account line in the sidebar panel shows "N waiting" for it, and so does the notice of a manual sync. The command *Check waiting mails* (listed only while the setting is not *Off*) runs a sync over all accounts, and the pseudonymizer may open its review window for these mails; the background sync and the normal sync command never do.
+
+**Sending and replying.** Placeholders are turned back into the original text before anything leaves Mailstone: in the recipients, the subject and the text of a message sent through the plugin API, the calendar-notes transport or the test mail, and in the sender and subject of *Reply to a mail in the external mail client*. For the plugin API this happens before the confirmation dialog, so the dialog shows what is really sent. If a placeholder cannot be resolved, nothing is sent and no dialog opens; a placeholder of a forgotten entry in a recipient field is an error, and in subject or text it is sent as the placeholder (the dialog says so).
+
+**Limits.** Two places hold plain text on purpose: the content of attachments you extract (with their original names), and the copy of a sent message that Mailstone files in the *Sent* folder on the server, because that is what went out and a mailbox is not a vault. The ICS part of a calendar invitation sent through the calendar-notes transport and attachments of a message are not converted.
+
 ## Documentation
 
 - [Documentation index](https://github.com/johannes-kaindl/mailstone/blob/main/docs/README.md)

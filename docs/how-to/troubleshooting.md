@@ -246,7 +246,13 @@ The setting *Pseudonymize* hands new mails to the plugin `pseudonymizer` before 
 
 **Cause:** *Required* writes nothing without a ready plugin `pseudonymizer`: it is missing, switched off, not set up or locked, or it wants you to review the mail first (the background sync never opens that window). The mail stays on the server, the sync run counts it as waiting, not as an error, and the next run fetches it again. With *Debug log* on, the console shows a line starting with `transform: waiting` and the reason.
 
-**Fix:** Set up and unlock the plugin `pseudonymizer`, or set *Pseudonymize* to *If available* (plain text while the plugin is not ready) or *Off*. To review a mail the plugin has held back, import it with *Import .eml files from a vault folder* or open its note and run *Re-render mail note from its original*: both may open the review window.
+**Fix:** Set up and unlock the plugin `pseudonymizer`, or set *Pseudonymize* to *If available* (plain text while the plugin is not ready) or *Off*. To review a mail the plugin has held back, run *Check waiting mails* (a sync over all accounts that may open the review window), import it with *Import .eml files from a vault folder* or open its note and run *Re-render mail note from its original*: all three may open the review window.
+
+### The sidebar says "{0} waiting", or the sync notice says "{4} waiting for pseudonymization"
+
+**Cause:** That many new mails did not become notes in the last run because the plugin `pseudonymizer` is not ready for them (see the entry above). It is not an error: they are still on the server and the next run fetches them again. In the notice the part reads "… , {4} waiting for pseudonymization ({3} errors)"; in the panel the account line reads "{0} waiting".
+
+**Fix:** Run *Check waiting mails*, or fix the reason as described above.
 
 ### "{0} mails were not imported and left untouched: {1}"
 
@@ -265,6 +271,42 @@ The setting *Pseudonymize* hands new mails to the plugin `pseudonymizer` before 
 **Cause:** The plugin `pseudonymizer` rejected the mail or failed: "The pseudonymizer rejected the mail." / "The pseudonymizer failed unexpectedly." / "The pseudonymizer changed fields Mailstone needs unchanged." / "The pseudonymizer did not return every part of the mail." / "The pseudonymizer gave an unknown answer." During a sync run the same failure counts as one error and the mail is fetched again next time.
 
 **Fix:** Update the plugin `pseudonymizer`. If it persists, switch on *Debug log* and report the reason from the console line starting with `transform: failed`.
+
+### "Nothing was sent: {0} placeholders could not be resolved to the original text. {1}"
+
+**Cause:** A message (sent through the plugin API, the calendar-notes transport or the test mail) contained placeholders of the plugin `pseudonymizer` that Mailstone could not turn back into the original text, so it sent nothing and opened no confirmation dialog. `{0}` is the number of placeholders, `{1}` the reason: "The plugin pseudonymizer is missing or switched off." / "The plugin pseudonymizer is not set up yet." / "The plugin pseudonymizer is locked." / "The plugin pseudonymizer is not ready yet." / "The placeholders are not in the pseudonymizer's table." / "The pseudonymizer reported an error." / "The pseudonymizer failed unexpectedly." A text can also carry placeholders that another device has not synchronised yet. Sending through the plugin API answers `pseudonym-unresolved` with the same text as `message`; the calendar-notes transport and the test mail show "Nothing was sent: a placeholder of the pseudonymizer could not be resolved to the original text."
+
+**Fix:** Unlock or set up the plugin `pseudonymizer`, wait until the device has synchronised its table, and send again.
+
+### "Nothing was sent: placeholders could not be resolved to the original text. {0}"
+
+**Cause:** The same as above, but the plugin gave no number (it is locked, not ready or failed). `{0}` is the reason.
+
+**Fix:** As above.
+
+### "Nothing was sent: {0} placeholders in the recipients belong to forgotten entries."
+
+**Cause:** A recipient (To, Cc or Bcc) is a placeholder of an entry you made the pseudonymizer forget; its address cannot be restored.
+
+**Fix:** Enter the address again, as an address, in the message you send.
+
+### "Nothing was sent: {0} recipient addresses have no usable address after resolving the placeholders."
+
+**Cause:** A recipient was a placeholder, and the entry behind it holds a name or a value that is not an e-mail address (for example a placeholder that belongs to nobody).
+
+**Fix:** Give the recipient as an address, or add the address to the entry in the pseudonymizer.
+
+### "{0} placeholders of forgotten entries are sent as placeholders."
+
+**Cause:** This line in the confirmation dialog for a plugin's message says that the subject or text contains placeholders of forgotten entries: they cannot be turned back and go out as they are. A trusted plugin sends without a dialog, so without this line.
+
+**Fix:** Cancel and ask the sending plugin to leave the passage out, or send as is.
+
+### "Nothing was opened: the sender address or the subject still contains placeholders that cannot be resolved to the original text."
+
+**Cause:** *Reply to a mail in the external mail client* turns the sender and subject of the note back into the original text before it builds the link. A placeholder could not be resolved (unknown, the plugin is locked or missing, an entry was forgotten, or the sender has no address after the conversion), so no mail client opened.
+
+**Fix:** Unlock or set up the plugin `pseudonymizer` and run the command again, or write to the sender by hand.
 
 ### There is no .eml next to a new note although *Save original as .eml* is on
 
