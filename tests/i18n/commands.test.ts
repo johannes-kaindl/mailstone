@@ -12,7 +12,7 @@ const COMMAND_ERROR_CODES = [
   "busy", "invalid-input", "not-applicable", "eml-missing", "eml-unparseable", "eml-mismatch",
   "original-not-found", "original-unsearchable", "original-desktop-only",
   "fences-missing", "zone-edited", "frontmatter-unparseable", "attachment-missing",
-  "no-recipient", "tasknotes-unavailable", "task-create-failed", "no-choices", "nothing-to-do", "write-failed", "unexpected",
+  "no-recipient", "restore-held", "tasknotes-unavailable", "task-create-failed", "no-choices", "nothing-to-do", "write-failed", "unexpected",
 ] as const satisfies readonly CommandErrorCode[];
 
 // Exhaustiveness in the other direction: if MissingCodes is non-empty (a union member is

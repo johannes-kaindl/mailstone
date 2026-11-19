@@ -185,6 +185,46 @@ describe("Wartende Mails pruefen (A5, Schritt 4b)", () => {
   });
 });
 
+// A5, Schritt 5: der Port der Rueckwandlung ist das echte Kit `restoreFor`, gebunden an den Schalter des Profils und die Plugin-API, frisch je Aufruf.
+describe("Port der Rueckwandlung (A5, Schritt 5)", () => {
+  const api = {
+    version: 1,
+    status: () => ({ state: "ready" }),
+    transform: async () => ({ error: "not-ready", message: "x" }),
+    restore: (text: string) => ({ text: text.replace("Person_k3x9m2ab7q", "Max"), restored: 1, unknown: [], forgotten: [] }),
+    containsPlaceholder: () => true,
+  };
+  const mitApp = (pluginApi?: unknown): any => ({ plugins: { plugins: pluginApi ? { pseudonymizer: { api: pluginApi } } : {} } });
+
+  it("mit bereitem Plugin loest er auf, auch bei Aus (eine alte Notiz kann Platzhalter tragen)", () => {
+    const { plugin } = aufbau([], undefined, mitApp(api));
+    plugin.settings.profile.pseudonymize = "off";
+    expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toEqual({ kind: "release", text: "Hallo Max", forgotten: [] });
+  });
+
+  it("bei Aus ohne Plugin bleibt der Text unveraendert, auch mit Platzhalter", () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    plugin.settings.profile.pseudonymize = "off";
+    expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toEqual({ kind: "release", text: "Hallo Person_k3x9m2ab7q", forgotten: [] });
+  });
+
+  it("bei Verlangt ohne Plugin haelt ein Text mit Platzhalter (hold), einer ohne geht durch", () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    plugin.settings.profile.pseudonymize = "required";
+    expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toMatchObject({ kind: "hold", reason: "absent", unknown: ["Person_k3x9m2ab7q"] });
+    expect(plugin.restorePort()("Hallo Welt")).toEqual({ kind: "release", text: "Hallo Welt", forgotten: [] });
+  });
+
+  it("liest den Schalter frisch je Aufruf", () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    const port = plugin.restorePort();
+    plugin.settings.profile.pseudonymize = "off";
+    expect(port("Person_k3x9m2ab7q").kind).toBe("release");
+    plugin.settings.profile.pseudonymize = "if-available";
+    expect(port("Person_k3x9m2ab7q").kind).toBe("hold");
+  });
+});
+
 describe("syncTargets", () => {
   it("nimmt bei ausdruecklicher Anforderung genau die genannten Konten", () => {
     expect(syncTargets([acc("a", false), acc("b")], ["a"])).toEqual(["a"]);

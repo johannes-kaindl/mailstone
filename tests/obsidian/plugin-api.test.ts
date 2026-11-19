@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { CONSENT_TIMEOUT_MS, createMailstoneApi, pluginName, type MailstoneApiDeps } from "../../src/obsidian/plugin-api";
-import type { ConsentOutcome } from "../../src/obsidian/send-consent-modal";
+import type { ConsentOutcome, SendConsentOptions } from "../../src/obsidian/send-consent-modal";
+import type { OutgoingMessage } from "../../src/core/send/outgoing";
+import type { SendOptions } from "../../src/core/send/service";
 import type { TrustedSender } from "../../src/core/api/types";
 import { initI18n } from "../../src/i18n/strings";
 import { fakeRestorePort, GONE, GONE_MAIL, MAIL, NAME, NAME_2 } from "../helpers/restore-port";
@@ -314,8 +316,8 @@ describe("pluginName", () => {
 describe("createMailstoneApi: Rueckwandlung (A5, Schritt 5)", () => {
   const platzhalter = { callerId: "fremd", to: [MAIL], cc: [MAIL], subject: `Termin ${NAME_2}`, body: `Hallo ${NAME_2},\n${NAME}` };
   const klartext = { to: ["gast@example.org"], cc: ["gast@example.org"], subject: "Termin Max", body: "Hallo Max,\nMax Mustermann" };
-  const sendet = (): ReturnType<typeof vi.fn> => vi.fn(async () => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
-  const einmal = async (): Promise<ConsentOutcome> => ({ kind: "send", transportId: "privat/mail", remember: false });
+  const sendet = () => vi.fn(async (_konto: string, _msg: OutgoingMessage, _opts?: SendOptions) => ({ ok: true as const, messageId: "x@y", sentCopy: "ok" as const }));
+  const einmal = async (_o: SendConsentOptions): Promise<ConsentOutcome> => ({ kind: "send", transportId: "privat/mail", remember: false });
 
   it("release: das Modal zeigt den Klartext, gesendet wird der Klartext (Empfaenger, cc, Betreff, Text)", async () => {
     const consent = vi.fn(einmal);
@@ -354,7 +356,7 @@ describe("createMailstoneApi: Rueckwandlung (A5, Schritt 5)", () => {
     const consent = vi.fn(einmal);
     const send = sendet();
     const api = createMailstoneApi(deps({ restore: fakeRestorePort(), consent, send }));
-    await expect(api.send({ ...platzhalter, bcc: undefined, to: ["Person_aaaaaaaaaa_Mail"] })).resolves.toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
+    await expect(api.send({ ...platzhalter, to: ["Person_aaaaaaaaaa_Mail"] })).resolves.toMatchObject({ ok: false, reason: "pseudonym-unresolved" });
     expect(consent).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
