@@ -28,7 +28,10 @@ export type RestoreFailure =
   /** Ein vergessener Platzhalter steht in einem Adressfeld. */
   | { kind: "forgotten-address"; count: number }
   /** Eine Adresse, die einen Platzhalter trug, hat nach der Rueckwandlung kein `@`. */
-  | { kind: "address-unresolved"; count: number };
+  | { kind: "address-unresolved"; count: number }
+  /** P13: der ICS-Teil oder ein Anhang traegt Platzhalter. Diese Teile werden nie zurueckgewandelt (Zeilenfaltung, Injektionsrisiko); `count` zaehlt die
+   *  verschiedenen Platzhalter, nie ihr Wert. */
+  | { kind: "unrestorable-part"; count: number };
 
 export type RestoreResult<T> = ({ ok: true } & T) | { ok: false; failure: RestoreFailure };
 
@@ -96,4 +99,27 @@ export function restoreMessage<M extends RestorableMessage>(msg: M, port: Restor
   const first = heldOnes[0];
   if (first) return { ok: false, failure: { ...first, count: heldOnes.reduce((n, f) => n + f.count, 0) } };
   return { ok: false, failure: failures.find((f) => f.kind === "forgotten-address") ?? failures[0]! };
+}
+
+/** Die Teile einer Nachricht, die nicht zurueckgewandelt werden: der ICS-Teil und die Anhaenge. */
+export interface UnrestorableParts {
+  calendar?: { ics: string };
+  attachments?: { name: string; type: string; data: Uint8Array }[];
+}
+
+/** Textformate, deren Bytes als Text gelesen werden: `text/*` und die gaengigen Anwendungsformate mit Textinhalt (auch `+json`, `+xml`). */
+const TEXTUAL_TYPE = /^(?:text\/|application\/(?:[\w.-]+\+)?(?:json|xml|ics|yaml|x-yaml)\s*(?:;|$))/i;
+
+/** P13: Platzhalter im ICS-Teil, in Anhangnamen oder in Textanhaengen. Diese Teile wandelt Mailstone nicht zurueck (eine Rueckwandlung faltet Zeilen um
+ *  und oeffnet Injektion in den Kalendertext), sie duerfen aber auch nicht mit Platzhaltern hinaus: ein Treffer heisst, nichts wird gesendet. Gemeldet
+ *  wird die Anzahl der verschiedenen Platzhalter, nie ein Wert. Binaeranhaenge werden nicht gelesen. Ohne Treffer `null`, die Nachricht bleibt byte-gleich. */
+export function unrestorablePlaceholders(msg: UnrestorableParts): Extract<RestoreFailure, { kind: "unrestorable-part" }> | null {
+  const found = new Set<string>();
+  const scan = (text: string): void => { for (const p of findPlaceholders(text)) found.add(p.raw); };
+  if (msg.calendar) scan(msg.calendar.ics);
+  for (const a of msg.attachments ?? []) {
+    scan(a.name);
+    if (TEXTUAL_TYPE.test(a.type)) scan(new TextDecoder().decode(a.data));
+  }
+  return found.size > 0 ? { kind: "unrestorable-part", count: found.size } : null;
 }

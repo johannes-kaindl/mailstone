@@ -284,6 +284,12 @@ The setting *Pseudonymize* hands new mails to the plugin `pseudonymizer` before 
 
 **Fix:** As above.
 
+### "Nothing was sent: the calendar invitation or an attachment contains {0} placeholders of the pseudonymizer. Mailstone does not turn these parts back into the original text."
+
+**Cause:** The ICS part of an invitation (sent through the calendar-notes transport), the name of an attachment or a text attachment contains placeholders of the plugin `pseudonymizer`. Mailstone does not turn these parts back into the original text (a conversion would fold lines and could inject calendar text), and it does not send them with the placeholders in them either. `{0}` is the number of different placeholders; binary attachments are not read.
+
+**Fix:** Create the event or the attachment with the original text instead of the placeholders, then send again.
+
 ### "Nothing was sent: {0} placeholders in the recipients belong to forgotten entries."
 
 **Cause:** A recipient (To, Cc or Bcc) is a placeholder of an entry you made the pseudonymizer forget; its address cannot be restored.

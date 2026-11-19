@@ -33,5 +33,6 @@ export function restoreFailureText(f: RestoreFailure): string {
     }
     case "forgotten-address": return t("restore.forgottenAddress", String(f.count));
     case "address-unresolved": return t("restore.addressUnresolved", String(f.count));
+    case "unrestorable-part": return t("restore.unrestorablePart", String(f.count));
   }
 }

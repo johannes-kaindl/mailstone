@@ -9,7 +9,7 @@ import type { SocketTransport } from "../net/types";
 import { imapConnect } from "../imap/client";
 import type { TimeoutTimers } from "../../vendor/code-kit/timeout";
 import { isLoopbackHost } from "../../vendor/code-kit/loopback";
-import { restoreMessage, type RestorePort } from "../transform/restore";
+import { restoreMessage, unrestorablePlaceholders, type RestorePort } from "../transform/restore";
 
 /** `pseudonym-unresolved` (A5): ein Platzhalter des Pseudonymizers liess sich nicht zurueckwandeln; nichts wurde gesendet. `detail` nennt die Art
  *  (`held`, `forgotten-address`, `address-unresolved`), nie einen Wert. */
@@ -45,7 +45,7 @@ export interface SendService {
     accountId: string,
     msg: OutgoingMessage,
     opts?: SendOptions,
-  ): Promise<{ ok: true; messageId: string; rejected?: string[]; sentCopy: SentCopyResult } | { ok: false; code: SendErrorCode; detail?: string }>;
+  ): Promise<{ ok: true; messageId: string; rejected?: string[]; sentCopy: SentCopyResult } | { ok: false; code: SendErrorCode; detail?: string; /** Nur bei `pseudonym-unresolved`/`unrestorable-part`: die Zahl der Platzhalter im ICS-Teil oder in Anhaengen. */ count?: number }>;
 }
 
 /** Was mit der Kopie im Sent-Ordner geschah. `skipped` heisst: nicht versucht (kein Ordner
@@ -91,6 +91,12 @@ export function createSendService(deps: SendDeps): SendService {
         const r = restoreMessage(original, deps.restore);
         if (!r.ok) return { ok: false, code: "pseudonym-unresolved", detail: r.failure.kind };
         msg = r.msg;
+      }
+      // P13: ICS-Teil und Anhaenge werden nicht zurueckgewandelt; traegt einer einen Platzhalter, geht nichts hinaus (auch nicht, wenn die API schon
+      // zurueckgewandelt hat: sie kennt diese Teile nicht). Ohne Port (Pseudonymisieren nicht verdrahtet) und ohne Treffer bleibt alles wie bisher.
+      if (deps.restore) {
+        const held = unrestorablePlaceholders(msg);
+        if (held) return { ok: false, code: "pseudonym-unresolved", detail: held.kind, count: held.count };
       }
 
       const validation = validateOutgoing(msg);

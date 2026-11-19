@@ -47,6 +47,15 @@ describe("restoreFailureText", () => {
   });
 });
 
+describe("restoreFailureText: ICS-Teil oder Anhang (P13)", () => {
+  it("nennt die Anzahl, in beiden Sprachen, nie einen Wert", () => {
+    initI18n("en");
+    expect(restoreFailureText({ kind: "unrestorable-part", count: 3 })).toBe("Nothing was sent: the calendar invitation or an attachment contains 3 placeholders of the pseudonymizer. Mailstone does not turn these parts back into the original text.");
+    initI18n("de");
+    expect(restoreFailureText({ kind: "unrestorable-part", count: 3 })).toContain("3 Platzhalter");
+  });
+});
+
 describe("keine eigene Tabelle fuer die Kit-Gruende", () => {
   it.each(KIT_GRUENDE)("%s steht nicht mehr in strings.ts", (reason) => {
     expect(Object.keys(enStrings)).not.toContain(`pseudonymize.reason.${reason}`);

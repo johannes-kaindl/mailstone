@@ -4,7 +4,7 @@ import { newAccount } from "../../../src/core/settings";
 import { createSendService, type SendDeps } from "../../../src/core/send/service";
 import type { OutgoingMessage } from "../../../src/core/send/outgoing";
 import type { RestorePort } from "../../../src/core/transform/restore";
-import { fakeRestorePort, MAIL, NAME, GONE_MAIL } from "../../helpers/restore-port";
+import { fakeRestorePort, GONE, MAIL, NAME, GONE_MAIL } from "../../helpers/restore-port";
 
 // A5, Schritt 5: der Versanddienst wandelt Platzhalter zurueck, BEVOR er die Nachricht baut (iMIP-Bruecke, Testmail und jeder Aufrufer ohne Modal).
 
@@ -111,5 +111,75 @@ describe("SendService: Rueckwandlung vor dem Bauen (A5, Schritt 5)", () => {
     const { send } = setup(port);
     expect(await send({ ...base, from: "nope" })).toEqual({ ok: false, code: "unknown-identity" });
     expect(port.calls).toEqual([]);
+  });
+});
+
+// P13: ICS-Teil und Textanhaenge werden nicht zurueckgewandelt (Zeilenfaltung, Injektionsrisiko), aber ein Platzhalter darin haelt den Versand an.
+describe("SendService: Platzhalter im ICS-Teil oder in Anhaengen halten den Versand an (P13)", () => {
+  const ICS = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Treffen\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+  const einladung = (ics: string): OutgoingMessage => ({ from: "mail", to: ["gast@example.org"], subject: "Termin", text: "Hallo", calendar: { method: "REQUEST", ics } });
+  const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
+
+  it("Platzhalter im ICS: nichts wird gesendet, kein Connect, Code pseudonym-unresolved mit Anzahl", async () => {
+    const { send, t } = setup(fakePort());
+    const r = await send(einladung(ICS.replace("Treffen", `Treffen mit ${NAME} und ${GONE}`)));
+    expect(r).toEqual({ ok: false, code: "pseudonym-unresolved", detail: "unrestorable-part", count: 2 });
+    expect(t.connectCalls.length).toBe(0);
+  });
+
+  it("derselbe Platzhalter mehrfach zaehlt einmal; die Meldung traegt nie den Platzhalter", async () => {
+    const { send } = setup(fakePort());
+    const r = await send(einladung(ICS.replace("Treffen", `${NAME} ${NAME} ${NAME}`)));
+    expect(r).toMatchObject({ ok: false, count: 1 });
+    expect(JSON.stringify(r)).not.toContain(NAME);
+  });
+
+  it("Platzhalter in einem Textanhang (text/*, ics, json, xml): nichts wird gesendet", async () => {
+    for (const type of ["text/plain", "text/calendar", "application/ics", "application/json", "application/ld+json", "application/xml"]) {
+      const { send, t } = setup(fakePort());
+      const r = await send({ ...base, to: ["gast@example.org"], subject: "s", text: "t", attachments: [{ name: "a.txt", type, data: bytes(`Gruss ${NAME}`) }] });
+      expect(r).toEqual({ ok: false, code: "pseudonym-unresolved", detail: "unrestorable-part", count: 1 });
+      expect(t.connectCalls.length).toBe(0);
+    }
+  });
+
+  it("Platzhalter im Namen eines Anhangs: nichts wird gesendet", async () => {
+    const { send, t } = setup(fakePort());
+    const r = await send({ ...base, to: ["gast@example.org"], subject: "s", text: "t", attachments: [{ name: `${NAME}.pdf`, type: "application/pdf", data: bytes("%PDF") }] });
+    expect(r).toMatchObject({ ok: false, code: "pseudonym-unresolved", detail: "unrestorable-part" });
+    expect(t.connectCalls.length).toBe(0);
+  });
+
+  it("Binaeranhang (kein Textformat) wird nicht gelesen, auch wenn Bytes wie ein Platzhalter aussehen", async () => {
+    const { send } = setup(fakePort());
+    const r = await send({ ...base, to: ["gast@example.org"], subject: "s", text: "t", attachments: [{ name: "a.bin", type: "application/octet-stream", data: bytes(NAME) }] });
+    expect(r.ok).toBe(true);
+  });
+
+  it("zaehlt ICS und Anhaenge zusammen", async () => {
+    const { send } = setup(fakePort());
+    const r = await send({ ...einladung(ICS.replace("Treffen", NAME)), attachments: [{ name: "a.txt", type: "text/plain", data: bytes(GONE) }] });
+    expect(r).toMatchObject({ ok: false, count: 2 });
+  });
+
+  it("restored: true schuetzt nicht: die API wandelt ICS und Anhaenge nie zurueck", async () => {
+    const { send, t } = setup(fakePort());
+    const r = await send(einladung(ICS.replace("Treffen", NAME)), { restored: true });
+    expect(r).toMatchObject({ ok: false, code: "pseudonym-unresolved", detail: "unrestorable-part" });
+    expect(t.connectCalls.length).toBe(0);
+  });
+
+  it("ICS und Textanhang ohne Platzhalter: byte-gleich zu einem Versand ohne Port", async () => {
+    const msg: OutgoingMessage = { ...einladung(ICS), attachments: [{ name: "n.txt", type: "text/plain", data: bytes("Notiz") }] };
+    const mit = setup(fakePort());
+    const ohne = setup();
+    expect((await mit.send(msg)).ok).toBe(true);
+    expect((await ohne.send(msg)).ok).toBe(true);
+    expect(mit.t.written.join("\n")).toBe(ohne.t.written.join("\n"));
+  });
+
+  it("ohne Port (kein Pseudonymisieren verdrahtet) geht ein ICS wie bisher hinaus", async () => {
+    const { send } = setup();
+    expect((await send(einladung(ICS.replace("Treffen", NAME)))).ok).toBe(true);
   });
 });
