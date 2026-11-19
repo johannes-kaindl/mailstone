@@ -130,7 +130,7 @@ describe("syncFailureStatus", () => {
   it("liefert null, wenn mindestens ein Konto erfolgreich war (das \"synced\"-Event hat den Status schon gesetzt)", () => {
     const results: SyncRunResult[] = [
       { ok: false, accountId: "a1", code: "auth" },
-      { ok: true, accountId: "a2", counts: { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
+      { ok: true, accountId: "a2", counts: { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 } },
     ];
     expect(syncFailureStatus(results)).toBeNull();
   });
@@ -144,7 +144,7 @@ describe("syncFailureStatus", () => {
 // Intervall-Lauf unsichtbar — genau dort, wo der Fall auftritt und wo niemand zusieht. Die
 // Auswahl der Meldungen ist jetzt eine reine Funktion, damit sie ohne Obsidian pruefbar ist.
 function okRun(counts: Partial<Extract<SyncRunResult, { ok: true }>["counts"]>): SyncRunResult {
-  return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0, ...counts } };
+  return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0, ...counts } };
 }
 
 describe("syncNotices", () => {
@@ -171,6 +171,30 @@ describe("syncNotices", () => {
       { key: "notice.sync.done", args: [3, 0, 0, 0] },
       { key: "notice.sync.detachSkipped", args: [4] },
     ]);
+  });
+
+  it("haengt wartende Mails als eigenen Satzteil an die Zusammenfassung, nur bei N > 0 und ohne zweite Notice (A5, Schritt 4a)", () => {
+    expect(syncNotices([okRun({ created: 1, waiting: 2 })], false).notices).toEqual([
+      { key: "notice.sync.doneWaiting", args: [1, 0, 0, 0, 2] },
+    ]);
+    // summiert ueber Konten
+    expect(syncNotices([okRun({ waiting: 1 }), okRun({ waiting: 2 })], false).notices).toEqual([
+      { key: "notice.sync.doneWaiting", args: [0, 0, 0, 0, 3] },
+    ]);
+    // ohne Wartende bleibt die Notice byte-gleich
+    expect(syncNotices([okRun({ created: 1 })], false).notices).toEqual([{ key: "notice.sync.done", args: [1, 0, 0, 0] }]);
+  });
+
+  it("der stille Lauf schweigt auch bei Wartenden (der Stand steht im Cockpit)", () => {
+    expect(syncNotices([okRun({ waiting: 4 })], true).notices).toEqual([]);
+  });
+
+  it("die Texte der Zusammenfassung mit Wartenden stehen in beiden Sprachen", () => {
+    expect(t("notice.sync.doneWaiting", 1, 2, 3, 4, 5)).toBe("1 neu, 2 wieder verbunden, 3 abgelöst, 5 warten (4 Fehler)");
+    initI18n("en");
+    try {
+      expect(t("notice.sync.doneWaiting", 1, 2, 3, 4, 5)).toBe("1 new, 2 reattached, 3 detached, 5 waiting for pseudonymization (4 errors)");
+    } finally { initI18n("de"); }
   });
 
   it("meldet nichts, wenn kein Konto erfolgreich war (der Fehlertext kommt aus syncFailureStatus)", () => {
@@ -242,7 +266,7 @@ describe("createPersister", () => {
 // Review-Befunde (2026-08-30) zur Fix-Welle selbst:
 describe("syncNotices — Wiederholungssperre im stillen Lauf", () => {
   function okRun2(detachSkipped: number): SyncRunResult {
-    return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped, errors: 0 } };
+    return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped, waiting: 0, errors: 0 } };
   }
 
   // `undetermined > 0` haelt sich von Natur aus ueber viele Laeufe: ein Erstbestand braucht

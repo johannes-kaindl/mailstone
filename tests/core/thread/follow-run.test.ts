@@ -27,7 +27,7 @@ function session(folders: Record<string, [number, string][]>, opts: { throwOn?: 
 }
 
 const konto = (id: string, inbox = "INBOX", sent = "Sent"): FollowAccount => ({ id, label: `Konto ${id}`, folders: { inbox, sent } });
-const index = groupThreads([{ mailId: "wurzel@example.org", path: "Mail/wurzel", date: "2026-11-01", time: "10:00", inReplyTo: [], references: [] }]);
+const index = groupThreads([{ mailId: "wurzel@example.org", path: "Mail/wurzel", date: "2026-11-01", time: "10:00", inReplyTo: [], references: [], subject: "Start" }], null);
 
 function deps(over: Partial<FollowRunDeps> & { sessions: Record<string, ReturnType<typeof session>> }): FollowRunDeps {
   const { sessions, ...rest } = over;

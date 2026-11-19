@@ -3,6 +3,7 @@ import { fmKeyFor, type MailProfile } from "../core/mirror/profile";
 import { followStopped } from "../core/thread/field";
 import type { FollowContext } from "../core/thread/follow-run";
 import { groupThreads, type ThreadEntry } from "../core/thread/group";
+import { noteSubject, tokenRegexOf } from "../core/thread/token";
 import { threadRefsFor } from "./thread-index";
 
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -14,7 +15,7 @@ export interface VaultFollowContext extends FollowContext {
 
 /**
  * Der Vault-Stand fuer „Folge-Mails anzeigen“ (A1): die Vorgaenge aller Mail-Notizen (`groupThreads` ueber die aus
- * dem Metadata-Cache aufgeloesten Verweise, E6) und die Wurzeln, an denen die Markierung „nicht mehr folgen“ steht.
+ * dem Metadata-Cache aufgeloesten Verweise, E6, und die Kennung im Betreff) und die Wurzeln, an denen die Markierung „nicht mehr folgen“ steht.
  * Liest nur den Cache, nicht die Dateien.
  */
 export function followContext(app: App, profile: MailProfile): VaultFollowContext {
@@ -36,12 +37,13 @@ export function followContext(app: App, profile: MailProfile): VaultFollowContex
       time: timeKey === null ? "" : text(fm[timeKey]),
       inReplyTo: refs.inReplyTo,
       references: refs.references,
+      subject: noteSubject(profile, fm),
     });
     frontmatterOf.set(id, fm);
     paths.set(id, f.path);
   }
 
-  const index = groupThreads(entries);
+  const index = groupThreads(entries, tokenRegexOf(profile));
   const stopped = new Set<string>();
   for (const [id, root] of index.rootOf) {
     if (id === root && followStopped(profile, frontmatterOf.get(id) ?? {})) stopped.add(id);

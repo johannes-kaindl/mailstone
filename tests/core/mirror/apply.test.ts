@@ -200,8 +200,35 @@ describe("planSync — Vorgangswert beim Anlegen", () => {
   it("uebernimmt den Wert der Vorgaengerin im Vault", () => {
     const b = at("b@x", "09", { inReplyTo: "p@x" });
     const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]),
-      threadNotes: () => [{ mailId: "p@x", path: "Mail/2026/p", value: "[[Mail/2026/wurzel]]" }] });
+      threadNotes: () => [{ mailId: "p@x", path: "Mail/2026/p", subject: "Betreff p@x", date: "2026-08-01", time: "10:00", value: "[[Mail/2026/wurzel]]" }] });
     expect(vorgang(create(plans, "b@x"))).toBe('vorgang: "[[Mail/2026/wurzel]]"');
+  });
+
+  describe("Kennung im Betreff", () => {
+    const tNote = (mailId: string, value: string, subject: string) => ({ mailId, path: `Mail/2026/${mailId}`, subject, date: "2026-08-01", time: "10:00", value });
+    const planFor = (p: typeof on, m: ParsedMail, known: ReturnType<typeof tNote>[]) =>
+      vorgang(create(planSync({ ...base, profile: p, fetched: [{ mail: m, eml }], onServer: new Set([m.id]), threadNotes: () => known }), m.id));
+
+    it("uebernimmt ohne Header-Bezug den Wert der juengsten fruehere Notiz mit derselben Kennung", () => {
+      const m = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker" });
+      expect(planFor(on, m, [tNote("t@x", "[[Mail/2026/wurzel]]", "[Ticket#7] Drucker"), tNote("o@x", "[[Mail/2026/fremd]]", "[Ticket#8] Monitor")]))
+        .toBe('vorgang: "[[Mail/2026/wurzel]]"');
+    });
+
+    it("ein Header, der auf eine Notiz trifft, geht der Kennung vor", () => {
+      const m = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker", inReplyTo: "p@x" });
+      expect(planFor(on, m, [tNote("t@x", "[[Mail/2026/ticket]]", "[Ticket#7] Drucker"), tNote("p@x", "[[Mail/2026/header]]", "Anderes")]))
+        .toBe('vorgang: "[[Mail/2026/header]]"');
+    });
+
+    it("leerer oder unbrauchbarer Ausdruck: nur die Header gelten, die Mail ist ihre eigene Wurzel", () => {
+      const m = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker" });
+      const known = [tNote("t@x", "[[Mail/2026/wurzel]]", "[Ticket#7] Drucker")];
+      for (const pattern of ["", "[", "(a+)+$"]) {
+        expect(planFor({ ...on, threadTokenPattern: pattern }, m, known), JSON.stringify(pattern)).toMatch(/^vorgang: "\[\[Mail\//);
+        expect(planFor({ ...on, threadTokenPattern: pattern }, m, known), JSON.stringify(pattern)).not.toContain("wurzel");
+      }
+    });
   });
 
   it("die Vorgaengerin darf eine Notiz desselben Laufs sein, auch wenn die Antwort zuerst geliefert wird", () => {
@@ -229,3 +256,150 @@ describe("planSync — Vorgangswert beim Anlegen", () => {
   });
 });
 
+
+// A5, Schritt 1: Werte aus dem Original-Mail, vorberechnet, bevor ein Transformer `from` und `subject` ersetzt.
+describe("planSync — Werte aus dem Original (facts)", () => {
+  const own = { ...profile, ownAddresses: ["ich@example.org"], threadField: "vorgang" };
+  const base = { source: SOURCE, syncedAt, index: new Map() as MailIndex, takenPaths: new Set<string>() };
+  const create = (plans: ReturnType<typeof planSync>, id: string) => {
+    const p = plans.find((x) => x.mailId === id);
+    if (!p || p.kind !== "create") throw new Error(`kein create-Plan fuer ${id}`);
+    return p;
+  };
+  const platzhalter = (id: string, over: Partial<ParsedMail> = {}): ParsedMail => ({
+    ...mail(id), from: { name: "Person_k3x9m2ab7q", address: "Person_k3x9m2ab7q_Mail" }, subject: "Person_x Re: Anfrage", ...over,
+  });
+
+  it("Charakterisierung: ohne facts ist alles wie bisher (richtung aus from, Kennung aus dem Betreff)", () => {
+    const m = { ...mail("a@x"), from: { name: "Ich", address: "ich@example.org" } };
+    const p = create(planSync({ ...base, profile: own, fetched: [{ mail: m, eml }], onServer: new Set(["a@x"]) }), "a@x");
+    expect(p.content).toContain("richtung: ausgehend");
+    const q = create(planSync({ ...base, profile: own, fetched: [{ mail: platzhalter("b@x"), eml }], onServer: new Set(["b@x"]) }), "b@x");
+    expect(q.content).toContain("richtung: eingehend");
+  });
+  it("Platzhalter-from plus facts aus dem Original mit eigener Adresse: richtung ausgehend", () => {
+    const facts = new Map([["b@x", { direction: "ausgehend" as const, threadToken: null }]]);
+    const q = create(planSync({ ...base, profile: own, fetched: [{ mail: platzhalter("b@x"), eml }], onServer: new Set(["b@x"]), facts }), "b@x");
+    expect(q.content).toContain("richtung: ausgehend");
+  });
+  it("facts einer anderen Mail gelten nicht", () => {
+    const facts = new Map([["anders@x", { direction: "ausgehend" as const, threadToken: null }]]);
+    const q = create(planSync({ ...base, profile: own, fetched: [{ mail: platzhalter("b@x"), eml }], onServer: new Set(["b@x"]), facts }), "b@x");
+    expect(q.content).toContain("richtung: eingehend");
+  });
+  it("Platzhalter-Betreff plus Kennung aus dem Original: die Vorgaengerin wird wie aus dem Original gefunden", () => {
+    const known = [{ mailId: "t@x", path: "Mail/2026/t", subject: "[Ticket#1] Anfrage", date: "2026-08-01", time: "10:00", value: "[[Mail/2026/wurzel]]" }];
+    const m = platzhalter("n@x", { date: new Date("2026-08-10T08:00:00Z") });
+    const ohne = create(planSync({ ...base, profile: own, fetched: [{ mail: m, eml }], onServer: new Set(["n@x"]), threadNotes: () => known }), "n@x");
+    expect(ohne.content).not.toContain("wurzel");
+    const facts = new Map([["n@x", { direction: "eingehend" as const, threadToken: "[Ticket#1]" }]]);
+    const mit = create(planSync({ ...base, profile: own, fetched: [{ mail: m, eml }], onServer: new Set(["n@x"]), threadNotes: () => known, facts }), "n@x");
+    expect(mit.content).toContain('vorgang: "[[Mail/2026/wurzel]]"');
+  });
+});
+
+// A2 (Welle 36): Felder erben beim Anlegen.
+describe("planSync — geerbte Felder beim Anlegen", () => {
+  const on = { ...profile, inheritFields: ["projekt"] };
+  const base = { source: SOURCE, syncedAt, index: new Map() as MailIndex, takenPaths: new Set<string>() };
+  const at = (id: string, day: string, extra: Partial<ParsedMail> = {}): ParsedMail => ({ ...mail(id), date: new Date(`2026-08-${day}T08:00:00Z`), ...extra });
+  const create = (plans: ReturnType<typeof planSync>, id: string) => {
+    const p = plans.find((x) => x.mailId === id);
+    if (!p || p.kind !== "create") throw new Error(`kein create-Plan fuer ${id}`);
+    return p;
+  };
+  const line = (p: { content: string }, key: string): string | undefined => p.content.split("\n").find((l) => l.startsWith(`${key}:`));
+  const vorgaengerin = (inherit: Record<string, unknown>) => () => [{ mailId: "p@x", path: "Mail/2026/p", value: null, inherit, subject: "Betreff p@x", date: "2026-08-01", time: "10:00" }];
+
+  it("eine neue Notiz traegt eine Liste von Wikilinks unveraendert als Liste von ihrer Vorgaengerin", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]), threadNotes: vorgaengerin({ projekt: ["[[A]]", "[[B]]"] }) });
+    expect(line(create(plans, "b@x"), "projekt")).toBe('projekt: ["[[A]]", "[[B]]"]');
+  });
+
+  it("ein Wahrheitswert kommt als Wahrheitswert an: true ohne Anfuehrungszeichen (E2)", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: { ...profile, inheritFields: ["privat", "offen"] }, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]), threadNotes: vorgaengerin({ privat: true, offen: false }) });
+    const p = create(plans, "b@x");
+    expect(line(p, "privat")).toBe("privat: true");
+    expect(line(p, "offen")).toBe("offen: false");
+  });
+
+  it("ein Text und eine Zahl kommen unveraendert an", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: { ...profile, inheritFields: ["projekt", "prio"] }, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]), threadNotes: vorgaengerin({ projekt: "Alpha", prio: 2 }) });
+    const p = create(plans, "b@x");
+    expect(line(p, "projekt")).toBe("projekt: Alpha");
+    expect(line(p, "prio")).toBe("prio: 2");
+  });
+
+  it("ein verschachtelter Wert wird uebersprungen", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]), threadNotes: vorgaengerin({ projekt: { a: 1 } }) });
+    expect(create(plans, "b@x").content).not.toContain("projekt");
+  });
+
+  it("die Vorgaengerin darf eine Notiz desselben Laufs sein: deren geerbter Wert gilt, auch wenn die Antwort zuerst geliefert wird", () => {
+    const b = at("b@x", "10", { inReplyTo: "a@x" });
+    const a = at("a@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: b, eml }, { mail: a, eml }], onServer: new Set(["a@x", "b@x"]), threadNotes: vorgaengerin({ projekt: ["[[A]]"] }) });
+    expect(line(create(plans, "a@x"), "projekt")).toBe('projekt: ["[[A]]"]');
+    expect(line(create(plans, "b@x"), "projekt")).toBe('projekt: ["[[A]]"]');
+  });
+
+  it("onCreate verliert gegen das Geerbte, das Geerbte verliert nie gegen onCreate", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: { ...on, onCreate: { type: "mail", projekt: "preset" } }, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]), threadNotes: vorgaengerin({ projekt: "Alpha" }) });
+    const p = create(plans, "b@x");
+    expect(line(p, "projekt")).toBe("projekt: Alpha");
+    expect(p.content).not.toContain("preset");
+  });
+
+  it("ein verwalteter Schluessel in der Liste wirkt nicht: die Mail behaelt ihre eigenen Werte", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: { ...profile, inheritFields: ["mail_id", "subject", "projekt"] }, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]),
+      threadNotes: vorgaengerin({ mail_id: "p@x", subject: "Fremd", projekt: "Alpha" }) });
+    const p = create(plans, "b@x");
+    expect(p.content.match(/^mail_id:/gm)).toHaveLength(1);
+    expect(line(p, "mail_id")).toBe("mail_id: b@x");
+    expect(p.content).not.toContain("Fremd");
+    expect(line(p, "projekt")).toBe("projekt: Alpha");
+  });
+
+  it("ohne Vorgaengerin erbt eine Mail nichts", () => {
+    const plans = planSync({ ...base, profile: on, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]), threadNotes: vorgaengerin({ projekt: "Alpha" }) });
+    expect(create(plans, "a@x").content).not.toContain("projekt");
+  });
+
+  it("traegt Vorgangsfeld und geerbte Felder zugleich, das Vorgangsfeld bleibt Wikilink auf die Wurzel", () => {
+    const b = at("b@x", "09", { inReplyTo: "p@x" });
+    const plans = planSync({ ...base, profile: { ...on, threadField: "vorgang" }, fetched: [{ mail: b, eml }], onServer: new Set(["b@x"]),
+      threadNotes: () => [{ mailId: "p@x", path: "Mail/2026/p", value: "[[Mail/2026/wurzel]]", inherit: { projekt: "Alpha" }, subject: "Betreff p@x", date: "2026-08-01", time: "10:00" }] });
+    const p = create(plans, "b@x");
+    expect(line(p, "vorgang")).toBe('vorgang: "[[Mail/2026/wurzel]]"');
+    expect(line(p, "projekt")).toBe("projekt: Alpha");
+  });
+
+  it("ohne Header erbt eine Mail ueber die Kennung im Betreff, und die Kennung aus dem Original geht dem Betreff vor (A5)", () => {
+    const known = () => [{ mailId: "t@x", path: "Mail/2026/t", value: null, inherit: { projekt: "Alpha" }, subject: "[Ticket#7] Drucker", date: "2026-08-01", time: "10:00" }];
+    const n = at("n@x", "09", { subject: "AW: [Ticket#7] Drucker" });
+    const mitBetreff = planSync({ ...base, profile: on, fetched: [{ mail: n, eml }], onServer: new Set(["n@x"]), threadNotes: known });
+    expect(line(create(mitBetreff, "n@x"), "projekt")).toBe("projekt: Alpha");
+    const facts = new Map([["n@x", { direction: "eingehend" as const, threadToken: "[Ticket#8]" }]]);
+    const mitFacts = planSync({ ...base, profile: on, fetched: [{ mail: n, eml }], onServer: new Set(["n@x"]), threadNotes: known, facts });
+    expect(create(mitFacts, "n@x").content).not.toContain("projekt");
+  });
+
+  it("baut den Index nur, wenn inheritFields nicht leer ist und der Lauf neue Mails hat", () => {
+    let gebaut = 0;
+    const zaehle = () => { gebaut++; return []; };
+    planSync({ ...base, profile, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]), threadNotes: zaehle });
+    expect(gebaut).toBe(0);
+    planSync({ ...base, profile: on, fetched: [], onServer: new Set(), threadNotes: zaehle });
+    expect(gebaut).toBe(0);
+    planSync({ ...base, profile: { ...profile, inheritFields: ["mail_id"] }, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]), threadNotes: zaehle });
+    expect(gebaut).toBe(0); // nur ein abgelehnter Name: nichts zu erben
+    planSync({ ...base, profile: on, fetched: [{ mail: mail("a@x"), eml }], onServer: new Set(["a@x"]), threadNotes: zaehle });
+    expect(gebaut).toBe(1);
+  });
+});

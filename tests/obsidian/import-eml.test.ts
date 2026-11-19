@@ -5,6 +5,8 @@ import { makeApp } from "../helpers/memory-vault";
 import { loadFixture } from "../helpers/fixtures";
 import { parseEml } from "../../src/core/mime/parse";
 import { mailFilename, mailFolder } from "../../src/core/render/filename";
+import type { PortOutcome, TransformPort } from "../../src/core/transform/transform-mail";
+import type { TransformRequest } from "../../src/vendor/kit/pseudonymizer-source";
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s.replace(/\n/g, "\r\n")).buffer as ArrayBuffer;
 const eml = (id: string, extra: string): string =>
@@ -118,5 +120,124 @@ describe("importEmlFolder", () => {
     await importEmlFolder({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
     const note = [...app.__files.keys()].find((p: string) => p.endsWith(".md"))!;
     expect(await app.vault.adapter.read(note)).not.toContain("vorgang");
+  });
+
+  // A2 (Welle 36): geerbte Felder beim Import.
+  describe("geerbte Felder (A2)", () => {
+    const hashes = { get: () => null, set: () => {} };
+    it("erbt von einer Notiz im Vault: eine Liste von Wikilinks bleibt eine Liste", async () => {
+      const app = makeApp([{ path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.org", projekt: ["[[A]]", "[[B]]"] } }]);
+      await app.vault.createBinary("Import/neu.eml", enc(eml("neu@example.org", "In-Reply-To: <alt@example.org>\n")));
+      const profile = { ...defaultMailProfile(), inheritFields: ["projekt"] };
+      const r = await importEmlFolder({ app, profile, hashes, now: () => new Date(0) }, "Import");
+      expect(r.errors).toEqual([]);
+      expect(r.created).toBe(1);
+      const neu = [...app.__files.keys()].find((p: string) => p.endsWith(".md") && p !== "Mail/2026/alt.md")!;
+      expect((await app.vault.adapter.read(neu)).split("\n").find((l: string) => l.startsWith("projekt:"))).toBe('projekt: ["[[A]]", "[[B]]"]');
+    });
+
+    it("erbt in einer Kette im selben Import, die Antwort liegt vor der Bezugsmail", async () => {
+      const app = makeApp([{ path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.org", projekt: "Alpha" } }]);
+      await app.vault.createBinary("Import/1-c.eml", enc(eml("c@example.org", "In-Reply-To: <b@example.org>\n")));
+      await app.vault.createBinary("Import/2-b.eml", enc(eml("b@example.org", "In-Reply-To: <alt@example.org>\n")));
+      const profile = { ...defaultMailProfile(), inheritFields: ["projekt"] };
+      await importEmlFolder({ app, profile, hashes, now: () => new Date(0) }, "Import");
+      const neue = [...app.__files.keys()].filter((p: string) => p.endsWith(".md") && p !== "Mail/2026/alt.md");
+      expect(neue).toHaveLength(2);
+      for (const p of neue) expect((await app.vault.adapter.read(p)).split("\n")).toContain("projekt: Alpha");
+    });
+
+    it("erbt nichts ohne eingestellte Schluessel", async () => {
+      const app = makeApp([{ path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.org", projekt: "Alpha" } }]);
+      await app.vault.createBinary("Import/neu.eml", enc(eml("neu@example.org", "In-Reply-To: <alt@example.org>\n")));
+      await importEmlFolder({ app, profile: defaultMailProfile(), hashes, now: () => new Date(0) }, "Import");
+      const neu = [...app.__files.keys()].find((p: string) => p.endsWith(".md") && p !== "Mail/2026/alt.md")!;
+      expect(await app.vault.adapter.read(neu)).not.toContain("projekt");
+    });
+  });
+  // A5, Schritt 1: vorberechnete Werte aus dem Original gehen der Ableitung aus der (spaeter transformierten) Mail vor.
+  it("facts je Mail-ID: richtung kommt aus dem Original, ohne facts wie bisher", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", enc(eml("a@example.org", "")));
+    const mk = (facts?: Map<string, { direction: "eingehend" | "ausgehend"; threadToken: string | null }>) =>
+      ({ app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0), ...(facts ? { facts } : {}) });
+    const r = await importEmlFolder(mk(new Map([["a@example.org", { direction: "ausgehend", threadToken: null }]])), "Import");
+    expect(r.errors).toEqual([]);
+    const pfad = (await app.vault.getMarkdownFiles())[0]!.path;
+    expect(await app.vault.adapter.read(pfad)).toContain("richtung: ausgehend");
+    const app2 = makeApp();
+    await app2.vault.createBinary("Import/a.eml", enc(eml("a@example.org", "")));
+    await importEmlFolder({ app: app2, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0) }, "Import");
+    expect(await app2.vault.adapter.read((await app2.vault.getMarkdownFiles())[0]!.path)).toContain("richtung: eingehend");
+  });
+});
+
+// A5, Schritt 3: derselbe Transformer wie im Sync, aber als Befehl eines Menschen (interactive: true).
+describe("importEmlFolder — Pseudonymisieren (A5)", () => {
+  const nowFn = () => new Date(0);
+  const ersetze = (seen: boolean[] = []): TransformPort => (req: TransformRequest): Promise<PortOutcome> => {
+    seen.push(req.interactive);
+    return Promise.resolve({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.id === "body" ? "Person_k3 schreibt" : p.id === "subject" ? "Betreff Person_k3" : p.value })), entities: [], applied: 2 } });
+  };
+  it("Aus: der Port wird nie gerufen, die .eml wird wie bisher angelegt", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    let calls = 0;
+    const r = await importEmlFolder({ app, profile: { ...defaultMailProfile(), pseudonymize: "off" }, hashes: { get: () => null, set: () => {} }, now: nowFn, pseudonymize: () => { calls += 1; return Promise.resolve({ kind: "plain", reason: "off" }); } }, "Import");
+    expect(calls).toBe(0);
+    expect(r.created).toBe(1);
+    expect(r.held).toEqual([]);
+    expect(await app.vault.adapter.exists("Mail/2026/_eml/2026-08-19-1432-hallo-welt.eml")).toBe(true);
+  });
+  it("pseudonymisiert: die Notiz traegt die Platzhalter, keine .eml neben ihr, der Port bekommt interactive: true", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const seen: boolean[] = [];
+    const r = await importEmlFolder({ app, profile: { ...defaultMailProfile(), pseudonymize: "required" }, hashes: { get: () => null, set: () => {} }, now: nowFn, pseudonymize: ersetze(seen) }, "Import");
+    expect(r.errors).toEqual([]);
+    expect(r.created).toBe(1);
+    expect(seen).toEqual([true]);
+    const pfad = [...app.__files.keys()].find((x: string) => x.endsWith(".md"))!;
+    const inhalt = (await app.vault.adapter.read(pfad)) as string;
+    expect(inhalt).toContain("Person_k3 schreibt");
+    expect(inhalt).toContain("Betreff Person_k3");
+    expect([...app.__files.keys()].some((x: string) => x.endsWith(".eml") && !x.startsWith("Import/"))).toBe(false);
+  });
+  it("wait: nichts wird geschrieben, die Mail steht mit Grund in `held`, die Quelldatei bleibt", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const r = await importEmlFolder({ app, profile: { ...defaultMailProfile(), pseudonymize: "required" }, hashes: { get: () => null, set: () => {} }, now: nowFn, pseudonymize: () => Promise.resolve({ kind: "wait", reason: "absent", message: "fehlt" }) }, "Import");
+    expect(r.created).toBe(0);
+    expect(r.errors).toEqual([]);
+    expect(r.held).toEqual([{ path: "Import/a.eml", kind: "wait", reason: "absent", message: "fehlt" }]);
+    expect([...app.__files.keys()].filter((x: string) => !x.startsWith("Import/"))).toEqual([]);
+    expect(await app.vault.adapter.exists("Import/a.eml")).toBe(true);
+  });
+  it("error: nichts wird geschrieben, die Datei steht in errors mit dem Grund", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const r = await importEmlFolder({ app, profile: { ...defaultMailProfile(), pseudonymize: "if-available" }, hashes: { get: () => null, set: () => {} }, now: nowFn, pseudonymize: () => Promise.resolve({ kind: "error", reason: "invalid-input", message: "kaputt" }) }, "Import");
+    expect(r.created).toBe(0);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatchObject({ path: "Import/a.eml" });
+    expect(r.errors[0]!.message).toContain("invalid-input");
+    expect([...app.__files.keys()].filter((x: string) => !x.startsWith("Import/"))).toEqual([]);
+  });
+  it("ein Schalter ungleich Aus ohne gebundenen Port schreibt nie Klartext", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const r = await importEmlFolder({ app, profile: { ...defaultMailProfile(), pseudonymize: "if-available" }, hashes: { get: () => null, set: () => {} }, now: nowFn }, "Import");
+    expect(r.created).toBe(0);
+    expect(r.held).toHaveLength(1);
+  });
+  it("richtung und Vorgangs-Token stammen aus dem Original, nicht aus der transformierten Mail", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", enc(eml("t@example.org", "").replace("Subject: Betreff t@example.org", "Subject: [Ticket#9] Frage")));
+    const profile = { ...defaultMailProfile(), pseudonymize: "required" as const, ownAddresses: ["a@example.org"], threadField: "vorgang" };
+    const port: TransformPort = (req) => Promise.resolve({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.id === "subject" ? "Person_x" : p.id.startsWith("from.") ? "Person_k3" : p.value })), entities: [], applied: 1 } });
+    const r = await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: nowFn, pseudonymize: port }, "Import");
+    expect(r.created).toBe(1);
+    const pfad = [...app.__files.keys()].find((x: string) => x.endsWith(".md"))!;
+    expect(await app.vault.adapter.read(pfad)).toContain("richtung: ausgehend");
   });
 });

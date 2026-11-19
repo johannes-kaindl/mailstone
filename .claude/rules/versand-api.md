@@ -6,6 +6,7 @@ paths:
   - "src/core/api/trust.ts"
   - "src/core/api/types.ts"
   - "src/core/api/calendar-notes-transport.ts"
+  - "src/core/transform/restore.ts"
 ---
 
 # Versand-API — eine deklarierte Abweichung vom Anbieter-Muster
@@ -49,3 +50,7 @@ hätte gar keinen Zugriff auf den Transport. Der Test sichert zweierlei — der 
 `sendService.send` direkt, und die Bridge importiert `plugin-api` nicht. ⓘ Die zweite Hälfte
 prüft Importzeilen als Text und sieht deshalb **keine dynamischen** Importe; die Grenze steht im
 Testkommentar.
+
+**Rückwandlung vor dem Modal (A5, Schritt 5).** `createMailstoneApi` bekommt optional `restore` (Port) und wandelt `to`, `cc`, `subject` und `body` des Schnappschusses zurück, BEVOR das Bestätigungs-Modal oder die Abkürzung für vertraute Plugins etwas sieht; das Modal zeigt damit den Klartext, der wirklich hinausgeht. Reihenfolge im Adapter: Typprüfung (`eingabeForm`) → Rückwandlung → Adressgrammatik (`adressenGueltig`) → Vertrauensentscheidung. Ein Platzhalter-Empfänger `Person_…_Mail` ist vor der Rückwandlung keine Adresse, deshalb darf die Grammatik nicht vor ihr laufen. Der Aufruf von `deps.send` trägt dann `{ restored: true }`, damit der Dienst nicht ein zweites Mal zurückwandelt (ein Klartext, der zufällig wie ein Platzhalter aussieht, würde sonst NACH dem Modal als `hold` scheitern); ohne `restore` ist der Aufruf wie vor A5.
+
+**Neuer Fehlercode `pseudonym-unresolved`** (`ApiSendErrorCode`) mit optionalem `message` im Fehlerfall von `ApiSendResult`: nichts gesendet, kein Modal. Auslöser: `hold` bei irgendeinem Teil (Empfänger, Betreff, Text), ein vergessener Platzhalter (`forgotten`) in `to`/`cc`, eine Adresse, die einen Platzhalter trug und nach der Rückwandlung kein `@` hat. `message` nennt Art und Anzahl (`restoreFailureText`), nie den Klartext oder den Platzhalter. Vergessene Platzhalter in Betreff und Text gehen als Platzhalter hinaus (Spec 8.7), das Modal zeigt dann einen Hinweis (`SendConsentOptions.forgotten`); ein vertrautes Plugin sendet ohne Modal und damit ohne Hinweis (Spec 8.8: „der Satz ‚der Nutzer sieht, was hinausgeht‘ gilt dort nicht“). Der iMIP-Weg (`calendar-notes-bridge.ts`) geht weiter ohne Modal direkt in `sendService.send` und wird dort zurückgewandelt. **ICS-Teil und Anhänge werden nie zurückgewandelt (Zeilenfaltung, Injektionsrisiko), aber angehalten (P13):** `send()` prüft sie mit `unrestorablePlaceholders` (`restore.ts`, `findPlaceholders` aus dem Kit; ICS-Text, Anhangnamen, Textanhänge `text/*` und `json`/`xml`/`ics`/`yaml`; Binäranhänge nicht) und antwortet bei einem Treffer `{ ok: false, code: "pseudonym-unresolved", detail: "unrestorable-part", count }` ohne Verbindung, auch bei `{ restored: true }`; ohne gebundenen `restore`-Port und ohne Treffer bleibt der Versand byte-gleich. `count` zählt verschiedene Platzhalter, nie einen Wert. Die API selbst kennt weder ICS noch Anhänge.

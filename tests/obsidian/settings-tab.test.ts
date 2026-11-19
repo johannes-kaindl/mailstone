@@ -94,6 +94,62 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
     expect(tab.getControlValue("profile.saveEml")).toBe(false);
   });
 
+  it("bietet die Zeile Pseudonymisieren mit drei Stellungen, Standard Aus, hinter der .eml-Zeile (A5)", async () => {
+    type Hatch = { name?: string; desc?: string; render?: (s: Setting) => void; control?: { key?: string } };
+    const tab = newTab({ accounts: [] });
+    (tab as unknown as { update: () => void }).update = () => {};
+    const defs = tab.getSettingDefinitions() as unknown as Hatch[];
+    const i = defs.findIndex((d) => d.name === "Pseudonymisieren");
+    expect(i).toBe(defs.findIndex((d) => d.control?.key === "profile.saveEml") + 1);
+    expect(defs[i]?.desc).toContain("Verlangt");
+    expect(defs[i]?.desc).toContain("pseudonymizer");
+    expect(typeof defs[i]?.render).toBe("function");
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("off");
+    await tab.setControlValue("profile.pseudonymize", "required");
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("required");
+    // Ein Wert ausserhalb der drei Stellungen faellt auf Aus, nie auf Verlangt.
+    await tab.setControlValue("profile.pseudonymize", "banane");
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("off");
+  });
+
+  it("die .eml-Zeile traegt bei Pseudonymisieren != Aus den Hinweis, dass keine .eml entsteht, und der Tab zeichnet beim Wechsel neu (A5)", async () => {
+    const tab = newTab({ accounts: [] });
+    // Der Obsidian-Mock kennt kein PluginSettingTab.update(); ein Spion zaehlt die Neuzeichnungen.
+    const update = vi.fn();
+    (tab as unknown as { update: () => void }).update = update;
+    const emlDesc = (): string => (tab.getSettingDefinitions() as { desc?: string; control?: { key?: string } }[]).find((d) => d.control?.key === "profile.saveEml")?.desc ?? "";
+    expect(emlDesc()).not.toContain("keine .eml geschrieben");
+    await tab.setControlValue("profile.pseudonymize", "if-available");
+    expect(emlDesc()).toContain("keine .eml geschrieben");
+    expect(update).toHaveBeenCalledTimes(1);
+    // Wechsel zwischen den zwei aktiven Stellungen: der Hinweis bleibt, kein Neuzeichnen (der Fokus am Schalter bleibt).
+    await tab.setControlValue("profile.pseudonymize", "required");
+    expect(emlDesc()).toContain("keine .eml geschrieben");
+    expect(update).toHaveBeenCalledTimes(1);
+    await tab.setControlValue("profile.pseudonymize", "off");
+    expect(emlDesc()).not.toContain("keine .eml geschrieben");
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it("rendert den Segment-Schalter mit drei Stellungen; ein Klick speichert die Stellung (A5)", async () => {
+    type Hatch = { name?: string; render?: (s: Setting) => void };
+    const tab = newTab({ accounts: [] });
+    (tab as unknown as { update: () => void }).update = () => {};
+    const row = (tab.getSettingDefinitions() as unknown as Hatch[]).find((d) => d.name === "Pseudonymisieren")!;
+    const setting = new Setting(undefined as never);
+    row.render?.(setting);
+    // Der Mock-DOM ist kein echtes DOM: die Knoepfe liegen als `children` der Gruppe, Klicks als `_listeners`.
+    type Fake = { children: Fake[]; textContent: string; className: string; getAttribute(n: string): string | null; _listeners: Record<string, Array<() => void>> };
+    const control = (setting as unknown as { controlEl: Fake }).controlEl;
+    const group = control.children.find((c) => c.className.includes("okit-segmented"))!;
+    expect(group.getAttribute("role")).toBe("radiogroup");
+    expect(group.children.map((b) => b.textContent)).toEqual(["Aus", "Wenn verfügbar", "Verlangt"]);
+    expect(group.children.map((b) => b.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
+    group.children[2]!._listeners["click"]![0]!();
+    await Promise.resolve();
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("required");
+  });
+
   it("bietet einen Schalter fuer das Debug-Protokoll", () => {
     const tab = newTab({ accounts: [] });
     const defs = tab.getSettingDefinitions() as { name?: string; control?: { key?: string } }[];
@@ -169,10 +225,10 @@ describe("MailstoneSettingTab — taskPreset", () => {
   function presetList(tab: MailstoneSettingTab) {
     const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; items?: unknown[] }[];
     // Seit Welle 2 (onCreate-Enum) gibt es vier Listen (Konten, taskPreset, onCreateAllowedValues,
-    // Vertrauensliste). Beide neuen/bestehenden Ohne-Heading-Listen (taskPreset,
+    // Vertrauensliste), seit A2 (Welle 36) eine fuenfte (weitergegebene Felder). Beide neuen/bestehenden Ohne-Heading-Listen (taskPreset,
     // onCreateAllowedValues) tragen einen addItem-Knopf — unterschieden ueber dessen Beschriftung.
     const lists = defs.filter((d): d is { type: string; addItem?: { name?: string }; items: unknown[] } => d.type === "list");
-    expect(lists.length).toBe(4);
+    expect(lists.length).toBe(5);
     const preset = lists.find((d) => d.addItem?.name === t("settings.taskPreset.add"));
     expect(preset).toBeDefined();
     return preset as { items: { name: string }[] };
@@ -195,8 +251,8 @@ describe("MailstoneSettingTab — taskPreset", () => {
     // Der Obsidian-Mock kennt kein PluginSettingTab.update() (echtes Obsidian ruft es fuer
     // einen Re-Render) — hier reicht ein No-op, da nur die Settings-Mutation geprueft wird.
     (tab as unknown as { update: () => void }).update = () => {};
-    const defs = tab.getSettingDefinitions() as { type?: string; heading?: string; addItem?: { action: (el: HTMLElement) => void } }[];
-    const list = defs.find((d) => d.type === "list" && d.addItem && d.heading === undefined)!;
+    const defs = tab.getSettingDefinitions() as { type?: string; heading?: string; addItem?: { name?: string; action: (el: HTMLElement) => void } }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.taskPreset.add"))!;
     list.addItem!.action({} as HTMLElement);
     await Promise.resolve();
     expect(tab["host"].settings.taskPreset).toEqual({ field: "x", "field-2": "" });
@@ -305,8 +361,8 @@ describe("MailstoneSettingTab — Sync-Stand auf Mobile (Welle 7)", () => {
     Platform.isMobile = true;
     try {
       const runState: RunState = {
-        a: { at: 1000, ok: true, counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
-        b: { at: 2000, ok: false, code: "auth", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
+        a: { at: 1000, ok: true, counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 } },
+        b: { at: 2000, ok: false, code: "auth", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 } },
       };
       const defs = newTab({ runState }).getSettingDefinitions() as { name?: string; desc?: string }[];
       const zeile = defs.find((d) => d.name === t("settings.lastSync"));
@@ -358,23 +414,29 @@ describe("MailstoneSettingTab — Vorgang (A3, E7)", () => {
   type Def = { name?: string; desc?: string; control?: { key?: string } };
   const defs = (tab: MailstoneSettingTab): Def[] => tab.getSettingDefinitions() as Def[];
   const field = (tab: MailstoneSettingTab) => defs(tab).find((d) => d.control?.key === "profile.threadField");
+  const token = (tab: MailstoneSettingTab) => defs(tab).find((d) => d.control?.key === "profile.threadTokenPattern");
 
-  it("zeigt die Zeile im Profil-Abschnitt, nach dem Schalter fuer die .eml", () => {
+  it("zeigt beide Zeilen im Profil-Abschnitt, nach dem Schalter fuer die .eml", () => {
     const tab = newTab();
     const keys = defs(tab).map((d) => d.control?.key);
     expect(keys.indexOf("profile.saveEml")).toBeLessThan(keys.indexOf("profile.threadField"));
+    expect(keys.indexOf("profile.threadField")).toBeLessThan(keys.indexOf("profile.threadTokenPattern"));
     expect(field(tab)?.name).toBe(t("settings.threadField"));
+    expect(token(tab)?.name).toBe(t("settings.threadTokenPattern"));
   });
 
-  it("der Wert steht im Profil: Vorgabe aus", () => {
+  it("die Werte stehen im Profil: Vorgabe aus und `\\[Ticket#\\d+\\]`", () => {
     const tab = newTab();
     expect(tab.getControlValue("profile.threadField")).toBe("");
+    expect(tab.getControlValue("profile.threadTokenPattern")).toBe("\\[Ticket#\\d+\\]");
   });
 
-  it("speichert den Wert getrimmt im Profil", async () => {
+  it("speichert beide Werte getrimmt im Profil", async () => {
     const tab = newTab();
     await tab.setControlValue("profile.threadField", "  vorgang ");
+    await tab.setControlValue("profile.threadTokenPattern", "\\bINC\\d+\\b");
     expect(tab["host"].settings.profile.threadField).toBe("vorgang");
+    expect(tab["host"].settings.profile.threadTokenPattern).toBe("\\bINC\\d+\\b");
   });
 
   it("kein Hinweis bei brauchbaren Werten", () => {
@@ -400,6 +462,46 @@ describe("MailstoneSettingTab — Vorgang (A3, E7)", () => {
     expect(list[i + 1]?.desc).toBe(t("settings.threadField.problem.unreadable", "vorgäng"));
   });
 
+  it("ein ungueltiger Regex zeigt den Hinweis unter der Token-Zeile", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadTokenPattern = "[";
+    const list = defs(tab);
+    const i = list.findIndex((d) => d.control?.key === "profile.threadTokenPattern");
+    expect(list[i + 1]?.desc).toBe(t("settings.threadTokenPattern.problem.syntax"));
+  });
+
+  it("ein Regex, den das Risiko-Veto ablehnt, zeigt einen eigenen Hinweis", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadTokenPattern = "(a+)+$";
+    const list = defs(tab);
+    const i = list.findIndex((d) => d.control?.key === "profile.threadTokenPattern");
+    expect(list[i + 1]?.desc).toBe(t("settings.threadTokenPattern.problem.risky"));
+  });
+
+  it("leer und die Vorgabe zeigen keinen Hinweis", () => {
+    const tab = newTab();
+    for (const v of ["", "\\[Ticket#\\d+\\]"]) {
+      tab["host"].settings.profile.threadTokenPattern = v;
+      const list = defs(tab);
+      const i = list.findIndex((d) => d.control?.key === "profile.threadTokenPattern");
+      expect(list[i + 1]?.name, JSON.stringify(v)).not.toBe(t("settings.threadHint"));
+    }
+  });
+
+  it("die Aenderung des Ausdrucks zeichnet nur neu, wenn der Hinweis wechselt", async () => {
+    const tab = newTab();
+    let neu = 0;
+    (tab as unknown as { update: () => void }).update = () => { neu++; };
+    await tab.setControlValue("profile.threadTokenPattern", "\\bINC\\d+\\b");
+    expect(neu).toBe(0);
+    await tab.setControlValue("profile.threadTokenPattern", "[");
+    expect(neu).toBe(1);
+    await tab.setControlValue("profile.threadTokenPattern", "(a+)+$");
+    expect(neu).toBe(2);
+    await tab.setControlValue("profile.threadTokenPattern", "");
+    expect(neu).toBe(3);
+  });
+
   it("nach einer Aenderung, die den Hinweis ein- oder ausblendet, zeichnet der Tab neu", async () => {
     const tab = newTab();
     let neu = 0;
@@ -421,10 +523,10 @@ describe("MailstoneSettingTab — Folgen-Feld (A1, E7)", () => {
     return list[list.findIndex((d) => d.control?.key === key) + 1];
   };
 
-  it("zeigt die Zeile direkt nach dem Vorgangsfeld, Vorgabe mail_follow", () => {
+  it("zeigt die Zeile direkt nach der Kennung im Betreff, Vorgabe mail_follow", () => {
     const tab = newTab();
     const keys = defs(tab).map((d) => d.control?.key);
-    expect(keys.indexOf("profile.followField")).toBe(keys.indexOf("profile.threadField") + 1);
+    expect(keys.indexOf("profile.followField")).toBe(keys.indexOf("profile.threadTokenPattern") + 1);
     expect(defs(tab).find((d) => d.control?.key === "profile.followField")?.name).toBe(t("settings.followField"));
     expect(tab.getControlValue("profile.followField")).toBe("mail_follow");
   });
@@ -469,5 +571,130 @@ describe("MailstoneSettingTab — Folgen-Feld (A1, E7)", () => {
     expect(neu).toBe(2);
     await tab.setControlValue("profile.threadField", "gleich");
     expect(neu).toBe(3);
+  });
+});
+
+describe("MailstoneSettingTab — weitergegebene Felder (A2, E7)", () => {
+  type Def = { name?: string; desc?: string; type?: string; control?: { key?: string }; items?: { name: string }[]; addItem?: { name?: string; action: () => void }; onDelete?: (i: number) => void; emptyState?: string };
+  const defs = (tab: MailstoneSettingTab): Def[] => tab.getSettingDefinitions() as Def[];
+  const listIn = (all: Def[]): Def => {
+    const l = all.find((d) => d.type === "list" && d.addItem?.name === t("settings.inheritFields.add"));
+    expect(l).toBeDefined();
+    return l!;
+  };
+  const list = (tab: MailstoneSettingTab): Def => listIn(defs(tab));
+  /** Die Hinweiszeilen unter der Liste. */
+  const hints = (tab: MailstoneSettingTab): string[] => {
+    const all = defs(tab);
+    const i = all.indexOf(listIn(all));
+    const out: string[] = [];
+    for (let j = i + 1; all[j]?.name === t("settings.threadHint"); j++) out.push(all[j]!.desc ?? "");
+    return out;
+  };
+  const noUpdate = (tab: MailstoneSettingTab) => { (tab as unknown as { update: () => void }).update = () => {}; };
+
+  it("zeigt eine erklaerende Zeile und danach die Liste, leer mit Leerzustand", () => {
+    const tab = newTab();
+    const all = defs(tab);
+    const i = all.indexOf(listIn(all));
+    expect(all[i - 1]).toMatchObject({ name: t("settings.inheritFields"), desc: t("settings.inheritFields.desc") });
+    expect(list(tab).items).toEqual([]);
+    expect(list(tab).emptyState).toBe(t("settings.inheritFields.empty"));
+  });
+
+  it("steht nach dem Folgen-Feld und vor den Konten", () => {
+    const tab = newTab();
+    const all = defs(tab);
+    const i = all.indexOf(listIn(all));
+    expect(all.findIndex((d) => d.control?.key === "profile.followField")).toBeLessThan(i);
+    expect(i).toBeLessThan(all.findIndex((d) => (d as { heading?: string }).heading === t("settings.accounts")));
+  });
+
+  it("zeigt die Eintraege als Zeilen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    expect(list(tab).items!.map((i) => i.name)).toEqual(["projekt", "kunde"]);
+  });
+
+  it("kein Hinweis bei brauchbaren Namen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    expect(hints(tab)).toEqual([]);
+  });
+
+  it("addItem haengt eine leere Zeile an und speichert", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    let gespeichert = 0;
+    tab["host"].saveSettings = async () => { gespeichert++; };
+    list(tab).addItem!.action();
+    await Promise.resolve();
+    expect(tab["host"].settings.profile.inheritFields).toEqual([""]);
+    expect(gespeichert).toBe(1);
+  });
+
+  it("onDelete entfernt die Zeile am Index", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["a", "b", "c"];
+    list(tab).onDelete!(1);
+    await Promise.resolve();
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["a", "c"]);
+  });
+
+  type Rename = { renameInheritField: (i: number, v: string) => Promise<void> };
+  it("eine Umbenennung speichert den getrimmten Namen", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["projekt"];
+    await (tab as unknown as Rename).renameInheritField(0, "  kunde ");
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["kunde"]);
+  });
+
+  it("ein leerer Name entfernt die Zeile", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    await (tab as unknown as Rename).renameInheritField(0, "   ");
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["kunde"]);
+  });
+
+  it("eine Umbenennung auf einen vorhandenen Namen wird abgelehnt, mit Notice, kein Eintrag geht verloren", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    const NoticeSpy = (await import("obsidian")).Notice as unknown as { instances: unknown[] };
+    NoticeSpy.instances.length = 0;
+    await (tab as unknown as Rename).renameInheritField(0, "kunde");
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["projekt", "kunde"]);
+    expect(NoticeSpy.instances.length).toBe(1);
+  });
+
+  it("ein verwalteter Schluessel, ein Name mit Umlaut und das Vorgangsfeld zeigen je ihren Hinweis unter der Liste; der Eintrag bleibt stehen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadField = "vorgang";
+    tab["host"].settings.profile.inheritFields = ["mail_id", "prüfung", "vorgang", "mail_follow", "projekt"];
+    expect(hints(tab)).toEqual([
+      t("settings.inheritFields.problem.managed", "mail_id"),
+      t("settings.inheritFields.problem.unreadable", "prüfung"),
+      t("settings.inheritFields.problem.collision", "vorgang"),
+      t("settings.inheritFields.problem.collision", "mail_follow"),
+    ]);
+    expect(list(tab).items!.map((i) => i.name)).toEqual(["mail_id", "prüfung", "vorgang", "mail_follow", "projekt"]);
+  });
+
+  it("ein leerer Eintrag (frisch angelegte Zeile) ist kein Problem", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = [""];
+    expect(hints(tab)).toEqual([]);
+  });
+
+  it("aendert sich das Vorgangsfeld so, dass ein Eintrag kollidiert, zeichnet der Tab neu", async () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = ["vorgang"];
+    let neu = 0;
+    (tab as unknown as { update: () => void }).update = () => { neu++; };
+    await tab.setControlValue("profile.threadField", "vorgang");
+    expect(neu).toBe(1);
   });
 });

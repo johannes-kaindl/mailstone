@@ -3,6 +3,8 @@ import type { MailNoteRef } from "../core/commands/types";
 import { normalizeMessageId } from "../core/mime/headers";
 import { fmKeyFor, type MailProfile } from "../core/mirror/profile";
 import type { KnownThreadNote } from "../core/thread/create-links";
+import { effectiveInheritFields } from "../core/thread/field";
+import { noteSubject } from "../core/thread/token";
 
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
@@ -43,12 +45,15 @@ export function threadRefsFor(app: App, profile: MailProfile, path: string, fm: 
   };
 }
 
-/** Die Mail-Notizen des Vaults fuer den Vorgangswert beim Anlegen (E24): Pfad und der
- *  Wert, der schon in `threadField` steht. Aus dem Metadata-Cache; wird nur gebaut, wenn der Lauf neue
- *  Mails hat. */
+/** Die Mail-Notizen des Vaults fuer den Vorgangswert und die geerbten Felder beim Anlegen (E24, A2): Pfad, Datum, Betreff,
+ *  der Wert, der schon in `threadField` steht, und die Rohwerte der Schluessel aus `inheritFields`. Aus dem
+ *  Metadata-Cache; wird nur gebaut, wenn der Lauf neue Mails hat. */
 export function threadNotes(app: App, profile: MailProfile): KnownThreadNote[] {
   const out: KnownThreadNote[] = [];
   const key = profile.threadField.trim();
+  const dateKey = fmKeyFor(profile, "date");
+  const timeKey = fmKeyFor(profile, "time");
+  const inheritKeys = effectiveInheritFields(profile);
   for (const f of app.vault.getMarkdownFiles()) {
     const fm = app.metadataCache.getFileCache(f)?.frontmatter ?? {};
     const id: unknown = fm[profile.idField];
@@ -57,7 +62,11 @@ export function threadNotes(app: App, profile: MailProfile): KnownThreadNote[] {
     out.push({
       mailId: id,
       path: f.path.replace(/\.md$/, ""),
+      subject: noteSubject(profile, fm),
+      date: dateKey === null ? "" : text(fm[dateKey]),
+      time: timeKey === null ? "" : text(fm[timeKey]),
       value: value === "" ? null : value,
+      ...(inheritKeys.length > 0 ? { inherit: Object.fromEntries(inheritKeys.filter((k) => fm[k] !== undefined).map((k) => [k, fm[k]])) } : {}),
     });
   }
   return out;

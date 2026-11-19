@@ -2,6 +2,7 @@ import type { ParsedMail } from "../mime/types";
 import { formatAddress } from "../mime/headers";
 import { wikilinkOf } from "../../vendor/kit/frontmatter";
 import { localDate, localIso, localTime } from "../../vendor/code-kit/local-stamp";
+import type { OriginalFacts } from "../transform/original-facts";
 import { fmKeyFor, identityKeys, MAIL_SERVER_FIELDS, type FmVal, type MailProfile, type MailServerField } from "../mirror/profile";
 
 export interface MailFrontmatterInput {
@@ -10,6 +11,8 @@ export interface MailFrontmatterInput {
   state: "live" | "detached";
   syncedAt: Date;
   linkFor?: (id: string) => string | null; // Wikilink-Ziel oder null
+  /** Vorberechnet aus der Original-Mail (A5): hat Vorrang vor der Ableitung aus `mail.from`. Fehlt es, gilt die Mail. */
+  facts?: Pick<OriginalFacts, "direction">;
 }
 
 // Bewusst NICHT code-kit `formatBytes`: dessen Basis ist 1000, dieses Format steht persistiert im Frontmatter
@@ -22,7 +25,7 @@ function humanSize(n: number): string {
 
 /** `ausgehend`, wenn der Absender eine der eigenen Adressen ist (Gross-/Kleinschreibung und Namensteil egal), sonst `eingehend`.
  *  Nur der Absender zaehlt: eine Mail an die eigene Adresse ist eingehend. Ohne Identitaeten oder ohne Absender: eingehend. */
-function directionOf(from: ParsedMail["from"], own: readonly string[] | undefined): "eingehend" | "ausgehend" {
+export function directionOf(from: ParsedMail["from"], own: readonly string[] | undefined): "eingehend" | "ausgehend" {
   if (!from || !own) return "eingehend";
   const sender = from.address.trim().toLowerCase();
   return sender !== "" && own.some((a) => a.trim().toLowerCase() === sender) ? "ausgehend" : "eingehend";
@@ -50,7 +53,7 @@ export function buildDerivedFrontmatter(p: MailProfile, input: MailFrontmatterIn
     in_reply_to: mail.inReplyTo ? link(mail.inReplyTo) : "",
     references: mail.references.map(link),
     attachments: mail.attachments.filter((a) => !a.inline).map((a) => `${a.name} (${a.type}, ${humanSize(a.size)})`),
-    richtung: directionOf(mail.from, p.ownAddresses),
+    richtung: input.facts?.direction ?? directionOf(mail.from, p.ownAddresses),
   };
 
   const [idK, srcK, stK, syK] = identityKeys(p) as [string, string, string, string];

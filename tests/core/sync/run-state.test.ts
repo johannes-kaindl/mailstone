@@ -6,7 +6,7 @@ import { newAccount, type Account } from "../../../src/core/settings";
 import type { SyncCounts } from "../../../src/core/sync/events";
 
 const MIN = 60_000;
-const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 };
 
 function acc(id: string, intervalMin: number, enabled = true): Account {
   const a = newAccount(id);
@@ -52,6 +52,12 @@ describe("recordRun", () => {
 });
 
 describe("parseRunState", () => {
+  it("ein Eintrag aus einer Version vor A5 (ohne `waiting`) bleibt erhalten, waiting ist 0; ein fehlender anderer Zaehler laesst ihn weiter fallen", () => {
+    const alt = { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+    expect(parseRunState({ a: { at: 5, ok: true, counts: alt } })).toEqual({ a: { at: 5, ok: true, counts: { ...alt, waiting: 0 } } });
+    const { errors: _weg, ...ohneErrors } = alt;
+    expect(parseRunState({ a: { at: 5, ok: true, counts: ohneErrors } })).toEqual({});
+  });
   it("liefert leer bei Unsinn statt zu werfen", () => {
     expect(parseRunState(undefined)).toEqual({});
     expect(parseRunState(null)).toEqual({});

@@ -4,6 +4,7 @@
 import type { ParsedMail } from "../mime/types";
 import { assignRunPaths, planMailNote, type NotePlan } from "./plan";
 import type { MailProfile } from "./profile";
+import type { OriginalFacts } from "../transform/original-facts";
 import type { KnownThreadNote } from "../thread/create-links";
 import { threadExtrasForRun } from "../thread/for-run";
 
@@ -32,6 +33,9 @@ export interface ApplyInput {
   /** Die Notizen im Vault fuer den Vorgangswert (A3). Wird nur gerufen, wenn `threadField` gilt und der
    *  Lauf neue Mails hat. */
   threadNotes?: () => readonly KnownThreadNote[];
+  /** Mail-ID -> Werte aus der Original-Mail, vor einem Transformer berechnet (A5, Schritt 1). Fehlt eine Mail darin,
+   *  gilt fuer sie die Ableitung aus der Mail selbst. */
+  facts?: ReadonlyMap<string, OriginalFacts>;
 }
 
 export function planSync(input: ApplyInput): NotePlan[] {
@@ -63,7 +67,7 @@ export function planSync(input: ApplyInput): NotePlan[] {
   const run = assignRunPaths(profile, fresh.map((f) => f.mail), taken);
   const linkFor = (id: string): string | null => run.targets.get(id) ?? input.linkFor?.(id) ?? null;
 
-  const extras = threadExtrasForRun(profile, fresh.map((f) => f.mail), run.targets, input.threadNotes);
+  const extras = threadExtrasForRun(profile, fresh.map((f) => f.mail), run.targets, input.threadNotes, input.facts);
 
   // Zweiter Durchgang: planen.
   fresh.forEach(({ mail, eml }, i) => {
@@ -76,6 +80,7 @@ export function planSync(input: ApplyInput): NotePlan[] {
       allowUpdate: false,
       paths: run.paths[i]!,
       linkFor,
+      ...(input.facts?.has(mail.id) ? { facts: input.facts.get(mail.id)! } : {}),
       ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}),
     }));
   });

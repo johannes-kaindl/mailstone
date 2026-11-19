@@ -20,7 +20,8 @@ import { createSyncService } from "../../src/core/sync/service";
 import { createBusyGuard } from "../../src/vendor/code-kit/busy-guard";
 import { createEmitter } from "../../src/core/sync/events";
 import { createUidCache } from "../../src/core/sync/uid-cache";
-import { defaultMailProfile } from "../../src/core/mirror/profile";
+import { defaultMailProfile, type MailProfile } from "../../src/core/mirror/profile";
+import type { TransformPort } from "../../src/core/transform/transform-mail";
 import { nodeSocketTransport } from "../../src/obsidian/tls-transport";
 import { newAccount } from "../../src/core/settings";
 import { testTimers } from "../helpers/timers";
@@ -109,7 +110,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     };
   }
 
-  function service(): { lauf: () => Promise<unknown>; seen: NotePlan[] } {
+  function service(opts: { profile?: MailProfile; pseudonymize?: TransformPort; uidCache?: ReturnType<typeof createUidCache> } = {}): { lauf: () => Promise<unknown>; seen: NotePlan[] } {
     const account = newAccount("acc");
     // Account["imap"]["tls"] ist bewusst auf "implicit"|"starttls" beschraenkt (die Settings-UI
     // bietet unverschluesselt nie an) — der Fake-Server spricht aber kein TLS. Cast im Testcode
@@ -120,7 +121,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     const seen: NotePlan[] = [];
     const svc = createSyncService({
       accounts: () => [account],
-      profile: () => defaultMailProfile(),
+      profile: () => opts.profile ?? defaultMailProfile(),
       secret: () => "geheim",
       transport: () => nodeSocketTransport(),
       index: () => new Map(),
@@ -131,11 +132,12 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
           return Promise.resolve({ created: plans.length, updated: 0, stateChanged: 0, skipped: [], errors: [] });
         },
       }),
-      uidCache: createUidCache(undefined),
+      uidCache: opts.uidCache ?? createUidCache(undefined),
       busy: createBusyGuard(),
       events: createEmitter(),
       timers: testTimers,
       now: () => new Date(),
+      ...(opts.pseudonymize ? { pseudonymize: opts.pseudonymize } : {}),
     });
     return { lauf: () => svc.syncAccount("acc"), seen };
   }
@@ -206,6 +208,40 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     expect(zeilen.some((z) => /^AUTHENTICATE \*+$/i.test(z))).toBe(true);
   });
 
+  // A5, Schritt 3: „Verlangt“ ohne bereites Plugin schreibt nichts (keine Notiz, keine .eml); der zweite Lauf mit bereitem Plugin holt dieselben
+  // Mails wieder und schreibt die pseudonymisierten Notizen ohne .eml. richtung und Vorgangs-Token stammen aus dem Original, auch wenn der Fake
+  // Absender und Betreff durch Platzhalter ersetzt.
+  it("Pseudonymisieren Verlangt: erster Lauf ohne Plugin schreibt nichts, der zweite mit Plugin schreibt Notizen ohne .eml, ohne SELECT und BODY[", async () => {
+    await starteServer();
+    const profile: MailProfile = { ...defaultMailProfile(), pseudonymize: "required", ownAddresses: ["a@example.net"], threadTokenPattern: "(Erste|Zweite|Dritte)" };
+    const uidCache = createUidCache(undefined);
+    const absent = service({ profile, uidCache, pseudonymize: () => Promise.resolve({ kind: "wait", reason: "absent", message: "fehlt" }) });
+    expect(await absent.lauf()).toMatchObject({ ok: true, counts: { created: 0, waiting: 3, errors: 0 } });
+    expect(absent.seen.filter((p) => p.kind === "create")).toEqual([]);
+
+    const keeps: string[][] = [];
+    const bereit: TransformPort = (req) => {
+      keeps.push(req.keep ?? []);
+      return Promise.resolve({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.id === "body" ? `Text von ${req.documentKey}` : p.id === "subject" ? "Person_s" : p.id.startsWith("from.") ? "Person_f" : p.value })), entities: [], applied: 1 } });
+    };
+    const ready = service({ profile, uidCache, pseudonymize: bereit });
+    expect(await ready.lauf()).toMatchObject({ ok: true, counts: { created: 3, waiting: 0, errors: 0 } });
+    const creates = ready.seen.filter((p): p is Extract<NotePlan, { kind: "create" }> => p.kind === "create");
+    expect(creates).toHaveLength(3);
+    for (const c of creates) {
+      expect(c.emlPath).toBeNull();
+      expect(c.content).toContain("richtung: ausgehend");
+      expect(c.content).toContain(`Text von ${c.mailId}`);
+      expect(c.content).not.toContain("Hallo ");
+    }
+    // Das Vorgangs-Token der Original-Betreffs steht in `keep`, obwohl der Fake den Betreff ersetzt.
+    expect(keeps.map((k) => k.filter((v) => ["Erste", "Zweite", "Dritte"].includes(v))).sort()).toEqual([["Dritte"], ["Erste"], ["Zweite"]]);
+    await warteAufKommando(/^LOGOUT$/i);
+    const zeilen = kommandos();
+    expect(zeilen.filter((z) => /\bSELECT\b/i.test(z))).toEqual([]);
+    expect(zeilen.filter((z) => /BODY\[/i.test(z))).toEqual([]);
+  });
+
   // A6 (Welle 36): das Original einer Mail per Message-ID holen. Auch dieser Weg liest nur: der
   // ganze Dialog traegt EXAMINE, UID SEARCH HEADER und BODY.PEEK[], nie SELECT und nie BODY[.
   it("holt ein Original per UID SEARCH HEADER ueber den echten Socket, nur lesend", async () => {
@@ -273,7 +309,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
   // zu alte (faellt aus SEARCH SINCE), nicht die ohne Bezug. Der Dialog bleibt lesend.
   it("findet Folge-Mails in INBOX und Sent, nur lesend: kein SELECT, kein BODY[, kein COPY, STORE oder MOVE", async () => {
     await starteServer();
-    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [], subject: "Start" }], null);
     const r = await runFollowUps({
       accounts: () => [{ id: "acc", label: "Testkonto", folders: { inbox: "INBOX", sent: "Sent" } }],
       connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()),
@@ -301,7 +337,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
 
   it("laesst einen beendeten Vorgang auch ueber den echten Socket aus", async () => {
     await starteServer();
-    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [], subject: "Start" }], null);
     const r = await runFollowUps({
       accounts: () => [{ id: "acc", label: "Testkonto", folders: { inbox: "INBOX", sent: "Sent" } }],
       connect: () => imapConnect(nodeSocketTransport(), verbindungsOptionen()),
@@ -326,7 +362,7 @@ describe("SyncService gegen scripts/fake-imap.mjs (echter Socket, echter Kindpro
     const angelegt = new Map<string, { path: string; state: "live"; source: string }>();
     const plaene: NotePlan[] = [];
     let contextAufrufe = 0;
-    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [] }]);
+    const vault = groupThreads([{ mailId: "eins@example.net", path: "Mail/eins", date: "2026-08-29", time: "08:00", inReplyTo: [], references: [], subject: "Start" }], null);
     const svc = createSyncService({
       accounts: () => [account],
       profile: () => defaultMailProfile(),

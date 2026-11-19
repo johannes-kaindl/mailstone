@@ -69,11 +69,26 @@ export function htmlToMarkdown(html: string): string {
 const FENCE_MARKER_RE = /%%\s*mailstone:(begin|end)\s*%%/gi;
 const FENCE_MARKER_REPLACEMENT = "(mailstone marker removed)";
 
-export function renderMessageBlock(m: Pick<ParsedMail, "text" | "html">, opts: RenderBodyOptions = {}): string {
+/** Der Markdown-Text, den `renderMessageBlock` unter die Ueberschrift setzt: Quellwahl nach `chooseSource`, HTML ueber
+ *  Turndown, CRLF zu LF, getrimmt, Fence-Marker ersetzt, bei leerem Ergebnis die Hinweiszeile.
+ *
+ *  Vorstufe fuer A5 (Anonymizer), verdrahtet mit dem Pseudonymizer-Aufruf: ein Transformer bekommt genau diesen einen
+ *  Markdown-Body und gibt ihn zurueck. Zusage: `renderMessageBlock({ ...m, text: bodyMarkdown(m, opts), html: null }, opts)`
+ *  ist byte-gleich zu `renderMessageBlock(m, opts)`. Die Funktion ist deshalb idempotent unter ihrer eigenen Ausgabe. */
+export function bodyMarkdown(m: Pick<ParsedMail, "text" | "html">, opts: RenderBodyOptions = {}): string {
   const src = chooseSource(m, opts);
   let body: string;
   if (src === "text") body = (m.text ?? "").replace(/\r\n/g, "\n").trim();
   else if (src === "html") body = htmlToMarkdown(m.html ?? "");
-  else body = "*(no text content)*";
-  return `## ${opts.heading ?? "Nachricht"}\n\n${body.replace(FENCE_MARKER_RE, FENCE_MARKER_REPLACEMENT)}`;
+  else body = "";
+  // Leer ist auch ein HTML, das zu nichts rendert (nur Trackingpixel): dieselbe Hinweiszeile wie ohne Body, damit der
+  // Rundlauf ueber `text` (leerer Text waehlt "none") dieselben Bytes ergibt.
+  if (body === "") body = NO_TEXT;
+  return body.replace(FENCE_MARKER_RE, FENCE_MARKER_REPLACEMENT);
+}
+
+const NO_TEXT = "*(no text content)*";
+
+export function renderMessageBlock(m: Pick<ParsedMail, "text" | "html">, opts: RenderBodyOptions = {}): string {
+  return `## ${opts.heading ?? "Nachricht"}\n\n${bodyMarkdown(m, opts)}`;
 }

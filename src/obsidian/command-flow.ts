@@ -6,6 +6,11 @@ import { emptyChoiceField, predeterminedInput } from "../core/commands/schema";
 import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type ContextErrorCode, type MailNoteRef, type MailTarget } from "../core/commands/types";
 import type { FetchOriginalRequest, FetchOriginalResult } from "../core/originals/fetch-original";
 import type { MailProfile } from "../core/mirror/profile";
+import { transformMail, type TransformPort } from "../core/transform/transform-mail";
+import type { OriginalFacts } from "../core/transform/original-facts";
+import type { RestorePort } from "../core/transform/restore";
+import type { ParsedMail } from "../core/mime/types";
+import { noMailText } from "./transform-text";
 import { SchemaFormModal } from "./modals/schema-form-modal";
 import { PlanPreviewModal } from "./modals/plan-preview-modal";
 import { trTitle } from "./command-i18n";
@@ -22,6 +27,11 @@ export interface CommandFlowDeps {
    *  (A6). Fehlt die Dep (Mobile: `networkFeaturesAvailable()` ist false), meldet buildContext
    *  `original-desktop-only`. */
   fetchOriginal?: (req: FetchOriginalRequest) => Promise<FetchOriginalResult>;
+  /** Pseudonymisieren (A5): der Port zum Plugin pseudonymizer. Gerufen wird er nur bei `profile.pseudonymize !== "off"`, mit `interactive: true`
+   *  (ein Befehl ist die Handlung eines Menschen). Fehlt er bei eingeschaltetem Schalter, liefert `buildContext` nie die Klartext-Mail. */
+  pseudonymize?: TransformPort;
+  /** Rueckwandlung (A5, Schritt 5): kommt als `ctx.restore` bei jedem Kommando an, das etwas hinausgibt (`mail.replyExternal`). */
+  restore?: RestorePort;
 }
 
 export type RunResult =
@@ -85,19 +95,21 @@ async function loadOriginal(
   profile: MailProfile,
   file: TFile,
   target: MailTarget,
-): Promise<{ ok: true; mail: Awaited<ReturnType<typeof parseEml>> } | ContextFailure> {
+): Promise<{ ok: true; mail: ParsedMail; facts?: OriginalFacts } | ContextFailure> {
   const { app } = deps;
   let local: CommandErrorCode | null = null;
   const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
   if (emlFile instanceof TFile) {
+    let usable: ParsedMail | null = null;
     try {
       const parsed = await parseEml(new Uint8Array(await app.vault.readBinary(emlFile)));
       const check = verifyEml(parsed, target.mailId);
-      if (check.ok) return { ok: true, mail: parsed };
-      local = check.code;
+      if (check.ok) usable = parsed;
+      else local = check.code;
     } catch {
       local = "eml-unparseable";
     }
+    if (usable) return transformed(deps, profile, usable);
   }
   if (!deps.fetchOriginal) return { ok: false, code: local ?? "original-desktop-only" };
   const r = await deps.fetchOriginal({ mailId: target.mailId, source: target.source });
@@ -111,13 +123,25 @@ async function loadOriginal(
       default: return { ok: false, code: `error.sync.${r.code}` };
     }
   }
+  let parsed: ParsedMail;
   try {
-    const parsed = await parseEml(r.bytes);
-    const check = verifyEml(parsed, target.mailId);
-    return check.ok ? { ok: true, mail: parsed } : { ok: false, code: check.code };
+    parsed = await parseEml(r.bytes);
   } catch {
     return { ok: false, code: "eml-unparseable" };
   }
+  const check = verifyEml(parsed, target.mailId);
+  return check.ok ? transformed(deps, profile, parsed) : { ok: false, code: check.code };
+}
+
+/** Pseudonymisieren (A5): nach jedem `parseEml` und der Pruefung gegen die Notiz geht die Mail durch denselben Transformer wie im Sync
+ *  (hier mit `interactive: true`). Bei „Aus“ geschieht nichts. Wartet oder scheitert er, entsteht kein Kontext: nichts wird geschrieben. */
+async function transformed(deps: CommandFlowDeps, profile: MailProfile, mail: ParsedMail): Promise<{ ok: true; mail: ParsedMail; facts?: OriginalFacts } | ContextFailure> {
+  if (profile.pseudonymize === "off") return { ok: true, mail };
+  const port: TransformPort = deps.pseudonymize ?? (() => Promise.resolve({ kind: "wait", reason: "not-ready", message: "no pseudonymizer port bound" }));
+  const r = await transformMail(mail, profile, port, { interactive: true });
+  if (r.kind === "mail") return { ok: true, mail: r.mail, facts: r.facts };
+  const detail = noMailText(r);
+  return { ok: false, code: r.kind === "wait" ? "error.command.pseudonymize-wait" : "error.command.pseudonymize-error", detail };
 }
 
 export async function buildContext(
@@ -140,12 +164,14 @@ export async function buildContext(
 
   const attachmentPaths = new Map<string, string>();
   const vorhandeneAnhaenge = new Map<string, { path: string; data: Uint8Array }>();
-  let mail: Awaited<ReturnType<typeof parseEml>> | undefined;
+  let mail: ParsedMail | undefined;
+  let facts: OriginalFacts | undefined;
   if (descriptor.needs?.eml) {
     const loaded = await loadOriginal(deps, profile, file, target);
     if (!loaded.ok) return loaded;
     const parsed = loaded.mail;
     mail = parsed;
+    facts = loaded.facts;
     // getAvailablePathForAttachment ist async, `plan()` ist synchron — also hier aufloesen.
     // Nur fuer Kommandos, die es DEKLARIEREN: `mail.rerender` ruft attachmentPathFor nie, zahlte
     // die Vault-Zugriffe aber mit (M3b-Nachlese, geparkter Befund 5).
@@ -192,6 +218,8 @@ export async function buildContext(
         return vorhandeneAnhaenge.get(name) ?? null;
       },
       ...(mail ? { mail } : {}),
+      ...(facts ? { facts } : {}),
+      ...(deps.restore ? { restore: deps.restore } : {}),
       ...(notes ? { notes } : {}),
     },
   };

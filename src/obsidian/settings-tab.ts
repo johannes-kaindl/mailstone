@@ -16,13 +16,16 @@ import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
-import { effectiveFollowField, followFieldProblem, threadFieldProblem } from "../core/thread/field";
+import { effectiveFollowField, followFieldProblem, inheritFieldProblem, threadFieldProblem } from "../core/thread/field";
+import { tokenPatternProblem } from "../core/thread/token";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
 import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
 import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
+import { buildSegmentedControl } from "../vendor/kit-obsidian/segmented-control";
+import { isPseudonymizeMode, isPseudonymizing, type PseudonymizeMode } from "../core/mirror/profile";
 import { statusBarEnabled, statusBarSettingDefinition } from "../vendor/kit-obsidian/status-bar-item";
 
 /** Was der Tab vom Plugin braucht — als Interface, damit Tests eine Attrappe geben können
@@ -67,6 +70,28 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return at === null ? t("settings.lastSync.never") : t("settings.lastSync.value", new Date(at).toLocaleString());
   }
 
+  /** Beschreibung der Zeile „Original als .eml speichern“: mit eingeschaltetem Pseudonymisieren kommt der Hinweis dazu, dass der Wert
+   *  gespeichert bleibt und nicht wirkt (A5). */
+  private saveEmlDesc(): string {
+    const base = t("settings.saveEml.desc");
+    return isPseudonymizing(this.host.settings.profile) ? `${base} ${t("settings.saveEml.pseudonymized")}` : base;
+  }
+
+  /** Der Schalter „Pseudonymisieren“ (A5): drei Stellungen als Segment-Schalter (UI-STANDARD §8). */
+  private renderPseudonymize(setting: Setting): void {
+    setting.setName(t("settings.pseudonymize")).setDesc(t("settings.pseudonymize.desc"));
+    buildSegmentedControl<PseudonymizeMode>(setting.controlEl, {
+      options: [
+        { value: "off", label: t("settings.pseudonymize.off") },
+        { value: "if-available", label: t("settings.pseudonymize.ifAvailable") },
+        { value: "required", label: t("settings.pseudonymize.required") },
+      ],
+      value: this.host.settings.profile.pseudonymize,
+      ariaLabel: t("settings.pseudonymize"),
+      onChange: (v) => { void this.setControlValue("profile.pseudonymize", v); },
+    });
+  }
+
   // ── Die eine Wahrheit ────────────────────────────────────────────────────
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
@@ -109,8 +134,13 @@ export class MailstoneSettingTab extends PluginSettingTab {
       },
       {
         name: t("settings.saveEml"),
-        desc: t("settings.saveEml.desc"),
+        desc: this.saveEmlDesc(),
         control: { type: "toggle", key: "profile.saveEml" },
+      },
+      {
+        name: t("settings.pseudonymize"),
+        desc: t("settings.pseudonymize.desc"),
+        render: (setting: Setting) => { this.renderPseudonymize(setting); },
       },
       {
         name: t("settings.threadField"),
@@ -119,11 +149,20 @@ export class MailstoneSettingTab extends PluginSettingTab {
       },
       ...this.threadHint(this.threadFieldHint()),
       {
+        name: t("settings.threadTokenPattern"),
+        desc: t("settings.threadTokenPattern.desc"),
+        control: { type: "text", key: "profile.threadTokenPattern" },
+      },
+      ...this.threadHint(this.threadTokenHint()),
+      {
         name: t("settings.followField"),
         desc: t("settings.followField.desc"),
         control: { type: "text", key: "profile.followField" },
       },
       ...this.threadHint(this.followFieldHint()),
+      { name: t("settings.inheritFields"), desc: t("settings.inheritFields.desc") },
+      this.inheritFieldsGroup(),
+      ...this.inheritFieldHints().map((text) => ({ name: t("settings.threadHint"), desc: text })),
       this.accountsGroup(),
       // SettingDefinitionList kennt keinen eigenen `desc` (nur `heading`) — die Erklaerung
       // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
@@ -447,6 +486,73 @@ export class MailstoneSettingTab extends PluginSettingTab {
     this.update();
   }
 
+  // ── Im Vorgang weitergegebene Felder (A2, E7) ────────────────────────────────────────────
+  // Eine Zeile je Schluessel, dieselbe native `SettingDefinitionList` wie bei den erlaubten Werten. Ein Name, der nicht
+  // taugt, bleibt in der Liste stehen (der Nutzer sieht, was er getippt hat) und wirkt nicht; darunter steht der Grund.
+  private inheritFieldsGroup(): SettingDefinitionList {
+    const items: SettingGroupItem[] = this.host.settings.profile.inheritFields.map((name, index) => ({
+      name,
+      render: (setting: Setting) => this.renderInheritFieldRow(setting, index),
+    }));
+    return {
+      type: "list",
+      items,
+      emptyState: t("settings.inheritFields.empty"),
+      onDelete: (index) => { void this.removeInheritField(index); },
+      addItem: { name: t("settings.inheritFields.add"), action: () => { void this.addInheritField(); } },
+    };
+  }
+
+  private renderInheritFieldRow(setting: Setting, index: number): void {
+    const name = this.host.settings.profile.inheritFields[index] ?? "";
+    setting.addText((tx) => {
+      tx.setPlaceholder(t("settings.inheritFields.placeholder")).setValue(name);
+      tx.inputEl.setAttribute("aria-label", t("settings.inheritFields.aria"));
+      tx.inputEl.addEventListener("blur", () => { void this.renameInheritField(index, tx.getValue()); });
+    });
+  }
+
+  /** Eine Umbenennung auf einen Namen, der schon in der Liste steht, wird abgelehnt (wie bei den erlaubten Werten); ein
+   *  leerer Name entfernt die Zeile. */
+  private async renameInheritField(index: number, newRaw: string): Promise<void> {
+    const names = this.host.settings.profile.inheritFields;
+    if (index < 0 || index >= names.length) return;
+    const neu = newRaw.trim();
+    if (neu === names[index]) return;
+    if (!neu) { await this.removeInheritField(index); return; }
+    if (names.some((n, i) => i !== index && n.trim() === neu)) {
+      new Notice(t("settings.inheritFields.duplicate", neu));
+      this.update();
+      return;
+    }
+    this.host.settings.profile.inheritFields = names.map((n, i) => (i === index ? neu : n));
+    await this.host.saveSettings();
+    this.update(); // die Hinweise unter der Liste haengen am Namen
+  }
+
+  private async removeInheritField(index: number): Promise<void> {
+    this.host.settings.profile.inheritFields = this.host.settings.profile.inheritFields.filter((_, i) => i !== index);
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  private async addInheritField(): Promise<void> {
+    this.host.settings.profile.inheritFields = [...this.host.settings.profile.inheritFields, ""];
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  /** Je abgelehntem Eintrag ein Hinweis, in der Reihenfolge der Liste. */
+  private inheritFieldHints(): string[] {
+    const profile = this.host.settings.profile;
+    const out: string[] = [];
+    for (const name of profile.inheritFields) {
+      const problem = inheritFieldProblem(profile, name);
+      if (problem !== null) out.push(t(`settings.inheritFields.problem.${problem}`, name.trim()));
+    }
+    return out;
+  }
+
   // ── Vorgang (A3, E7): Hinweis unter der Zeile ───────────────────────────────────────────
   // Ein Wert, der nicht taugt, wird gespeichert (der Nutzer sieht, was er getippt hat) und wirkt nicht:
   // `effectiveThreadField` schaltet den Vorgang dann ab. Die Zeile darunter sagt warum.
@@ -454,6 +560,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
     const profile = this.host.settings.profile;
     const problem = threadFieldProblem(profile);
     return problem === null ? null : t(`settings.threadField.problem.${problem}`, profile.threadField.trim());
+  }
+
+  private threadTokenHint(): string | null {
+    const problem = tokenPatternProblem(this.host.settings.profile);
+    return problem === null ? null : t(`settings.threadTokenPattern.problem.${problem}`);
   }
 
   private followFieldHint(): string | null {
@@ -496,9 +607,18 @@ export class MailstoneSettingTab extends PluginSettingTab {
         get: () => s.profile.saveEml,
         set: (value) => { s.profile.saveEml = Boolean(value); },
       },
+      "profile.pseudonymize": {
+        get: () => s.profile.pseudonymize,
+        set: (value) => { s.profile.pseudonymize = isPseudonymizeMode(value) ? value : "off"; },
+      },
       "profile.threadField": {
         get: () => s.profile.threadField,
         set: (value) => { s.profile.threadField = typeof value === "string" ? value.trim() : ""; },
+      },
+      "profile.threadTokenPattern": {
+        get: () => s.profile.threadTokenPattern,
+        // Leer ist erlaubt: die Regel ist dann aus. Kein Rueckfall auf die Vorgabe wie beim Dateinamen.
+        set: (value) => { s.profile.threadTokenPattern = typeof value === "string" ? value.trim() : ""; },
       },
       "profile.followField": {
         get: () => s.profile.followField,
@@ -531,10 +651,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
     // Nur wenn sich der Hinweis ein- oder ausblendet oder aendert, zeichnet der Tab neu: ein Neuzeichnen
     // bei jedem Tastendruck risse dem Nutzer den Fokus aus dem Textfeld.
     // Beide Feldnamen teilen sich die Kollisionsprobe: eine Aenderung des einen kann den Hinweis des anderen aendern.
-    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}`;
-    const hinweisVorher = key === "profile.threadField" || key === "profile.followField" ? hinweise() : null;
+    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}|${String(this.threadTokenHint())}|${this.inheritFieldHints().join("|")}`;
+    // Der Hinweis an „Original als .eml speichern“ haengt daran, ob ueberhaupt pseudonymisiert wird (Aus gegen die anderen zwei).
+    const pseudoVorher = isPseudonymizing(this.host.settings.profile);
+    const hinweisVorher = key === "profile.threadField" || key === "profile.followField" || key === "profile.threadTokenPattern" ? hinweise() : null;
     entry.set(value);
     await this.host.saveSettings();
-    if (hinweisVorher !== null && hinweisVorher !== hinweise()) this.update();
+    if ((hinweisVorher !== null && hinweisVorher !== hinweise()) || (key === "profile.pseudonymize" && pseudoVorher !== isPseudonymizing(this.host.settings.profile))) this.update();
   }
 }

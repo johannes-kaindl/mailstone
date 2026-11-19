@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.97.0"
+      "ref": "0.103.0"
     },
     "code-kit": {
-      "ref": "0.73.0"
+      "ref": "0.83.0"
     }
   },
   "targets": [
@@ -27,7 +27,8 @@
         "fold-case",
         "rel-path",
         "loopback",
-        "text-window"
+        "text-window",
+        "user-regex"
       ]
     },
     {
@@ -37,7 +38,11 @@
       "modules": [
         "frontmatter",
         "frontmatter-patch",
-        "vault-path"
+        "vault-path",
+        "pseudonymizer-source",
+        "image-gen-provider",
+        "ocr-provider",
+        "describe-provider"
       ],
       "rewrite": [
         [
@@ -55,7 +60,9 @@
       "source": "code-kit",
       "from": "src/ts/pure",
       "modules": [
-        "secrets"
+        "secrets",
+        "error-message",
+        "placeholder"
       ],
       "vendorJson": "src/vendor/code-kit"
     },
@@ -80,12 +87,35 @@
         "secrets",
         "help-setting",
         "status-bar-item",
-        "setting-body-host"
+        "setting-body-host",
+        "plugin-api",
+        "capability-apis",
+        "pseudonymizer-call",
+        "pseudonymizer-call-strings",
+        "segmented-control"
       ],
       "rewrite": [
         [
           "../vendor/code-kit/pure/",
           "../kit/"
+        ],
+        [
+          "../pure/",
+          "../kit/"
+        ]
+      ]
+    },
+    {
+      "dir": "tests/vendor/kit",
+      "source": "obsidian-kit",
+      "from": "tests",
+      "modules": [
+        "pseudonymizer-source.types.test.ts"
+      ],
+      "rewrite": [
+        [
+          "../src/pure/",
+          "../../../src/vendor/kit/"
         ]
       ]
     },

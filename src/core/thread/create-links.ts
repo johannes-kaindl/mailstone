@@ -3,15 +3,18 @@
 // Vorgaengerin ist die neue Notiz ihre eigene Wurzel. Die volle Gruppierung (`group.ts`) laeuft nur im
 // Befehl „Vorgaenge neu berechnen“. Die Vorgaengerin darf eine Notiz desselben Laufs sein.
 import { wikilinkOf } from "../../vendor/kit/frontmatter";
+import type { Dated } from "./order";
 import { buildPredecessorLookup, predecessorOf, type PredecessorMail } from "./predecessor";
+import type { Subjected } from "./token";
 
-/** Eine Notiz, die es im Vault schon gibt. */
-export interface KnownThreadNote {
-  mailId: string;
+/** Eine Notiz, die es im Vault schon gibt. Datum, Uhrzeit und Betreff stehen fuer die Kennung im Betreff da. */
+export interface KnownThreadNote extends Dated, Subjected {
   /** Pfad ohne `.md`. */
   path: string;
   /** Der Vorgangswert, der in der Notiz steht (Wikilink auf die Wurzel), `null` ohne Wert. */
   value: string | null;
+  /** Die Rohwerte der Schluessel aus `inheritFields` (Metadata-Cache), nur gefuellt, wenn welche eingestellt sind (A2). */
+  inherit?: Readonly<Record<string, unknown>>;
 }
 
 /** Eine Notiz, die dieser Lauf anlegt; `path` steht schon fest (`assignRunPaths`). */
@@ -27,16 +30,17 @@ const isWikilink = (v: string): boolean => /^\[\[.+\]\]$/.test(v.trim());
 export function threadValuesForNew(
   fresh: readonly NewThreadMail[],
   known: readonly KnownThreadNote[],
+  tokenPattern: RegExp | null,
 ): Map<string, string> {
   const knownById = new Map<string, KnownThreadNote>();
   for (const k of known) if (!knownById.has(k.mailId)) knownById.set(k.mailId, k);
   const runById = new Map<string, NewThreadMail>();
   for (const f of fresh) if (!runById.has(f.mailId) && !knownById.has(f.mailId)) runById.set(f.mailId, f);
 
-  const lookup = buildPredecessorLookup([
-    ...[...knownById.values()].map((k): PredecessorMail => ({ mailId: k.mailId, inReplyTo: null, references: [] })),
-    ...runById.values(),
-  ]);
+  const lookup = buildPredecessorLookup(
+    [...[...knownById.values()].map((k): PredecessorMail => ({ ...k, inReplyTo: null, references: [] })), ...runById.values()],
+    tokenPattern,
+  );
   const memo = new Map<string, string | null>();
   const visiting = new Set<string>();
 
@@ -50,7 +54,7 @@ export function threadValuesForNew(
     // Ein Kreis in den Verweisen (kaputte Header): die Notiz, an der er sich schliesst, wird Wurzel.
     if (visiting.has(id)) return wikilinkOf(r.path);
     visiting.add(id);
-    const pred = predecessorOf(r, lookup);
+    const pred = predecessorOf(r, lookup, tokenPattern);
     const v = pred === null ? wikilinkOf(r.path) : valueOf(pred);
     visiting.delete(id);
     memo.set(id, v);

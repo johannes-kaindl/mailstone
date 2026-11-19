@@ -49,3 +49,26 @@ export function followStopped(profile: MailProfile, frontmatter: Readonly<Record
   const v = frontmatter[key];
   return v === false || (typeof v === "string" && v.trim().toLowerCase() === "false");
 }
+
+export type InheritFieldProblem = "managed" | "unreadable" | "collision";
+
+/** Warum `name` als zu erbender Schluessel nicht taugt, oder `null` (auch fuer einen leeren Namen, der nur nicht zaehlt).
+ *  Verwaltete Schluessel (damit alle Identitaetsfelder) wuerden einen Wert der Mail ueberschreiben, `threadField` und
+ *  `followField` haben ihre eigene Regel (`collision`), Nicht-ASCII kann der Zeilenleser nicht (E7). */
+export function inheritFieldProblem(profile: MailProfile, name: string): InheritFieldProblem | null {
+  const key = name.trim();
+  if (key === "") return null;
+  if (managedKeys(profile).includes(key)) return "managed";
+  if (!READABLE_KEY.test(key)) return "unreadable";
+  return key === profile.threadField.trim() || key === profile.followField.trim() ? "collision" : null;
+}
+
+/** Die Schluessel, die WIRKLICH gelten: getrimmt, ohne Leeres, ohne Duplikate, ohne die abgelehnten, in der Reihenfolge der Liste. */
+export function effectiveInheritFields(profile: MailProfile): string[] {
+  const out: string[] = [];
+  for (const raw of Array.isArray(profile.inheritFields) ? profile.inheritFields : []) {
+    const key = typeof raw === "string" ? raw.trim() : "";
+    if (key !== "" && !out.includes(key) && inheritFieldProblem(profile, key) === null) out.push(key);
+  }
+  return out;
+}

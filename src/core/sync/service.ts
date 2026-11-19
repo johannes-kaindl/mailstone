@@ -12,6 +12,8 @@ import type { KnownThreadNote } from "../thread/create-links";
 import { planRunRelinks, type RelinkRunDeps } from "../mirror/relink-run";
 import { parseEml } from "../mime/parse";
 import type { ParsedMail } from "../mime/types";
+import { transformMail, type TransformPort } from "../transform/transform-mail";
+import type { OriginalFacts } from "../transform/original-facts";
 import { imapConnect, type ImapConnectOptions, type ImapReadSession } from "../imap/client";
 import { copyFollowUps, followCopyConnections } from "../thread/follow-copy";
 import type { FollowContext } from "../thread/follow-run";
@@ -50,12 +52,22 @@ export interface SyncDeps {
    *  Allowlist-Ordner legt. Wird nur gerufen, wenn `account.sync.followThreads` gilt; ohne diese Dep bleibt die Einstellung
    *  wirkungslos. */
   follow?: { context: () => FollowContext };
+  /** Pseudonymisieren (A5): der Port zum Plugin pseudonymizer (die obsidian-Schicht bindet ihn an `pseudonymizeFor`). Gerufen wird er nur
+   *  bei `profile.pseudonymize !== "off"`, je neuer Mail, NACH der Fetch-Schleife und NACH dem Logout (E17: kein Fenster und kein Warten
+   *  bei offener Verbindung und belegtem Busy-Guard). Fehlt er bei eingeschaltetem Schalter, schreibt der Lauf nie Klartext: die Mail wartet. */
+  pseudonymize?: TransformPort;
+}
+
+/** Optionen eines Laufs. */
+export interface SyncRunOptions {
+  /** Darf der Pseudonymizer ein Pruefenster oeffnen? Standard `false` (Intervall-Lauf, Befehl „Synchronisieren“). */
+  interactive?: boolean;
 }
 
 export interface SyncService {
-  syncAccount(accountId: string): Promise<SyncRunResult>;
+  syncAccount(accountId: string, opts?: SyncRunOptions): Promise<SyncRunResult>;
   /** Alle Konten mit sync.enabled, nacheinander — nie parallel gegen denselben Vault. */
-  syncAll(): Promise<SyncRunResult[]>;
+  syncAll(opts?: SyncRunOptions): Promise<SyncRunResult[]>;
 }
 
 /** Obergrenze neu geholter Mails je Lauf. Der Sync ist fuer einen kuratierten Allowlist-Ordner
@@ -93,7 +105,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
     };
   }
 
-  async function run(account: Account): Promise<SyncRunResult> {
+  async function run(account: Account, opts: SyncRunOptions): Promise<SyncRunResult> {
     const profile = deps.profile();
     const folder = account.folders.allowlist;
     const source = `${account.id}/${folder}`;
@@ -132,6 +144,13 @@ export function createSyncService(deps: SyncDeps): SyncService {
     if (!connected.ok) return { ok: false, accountId: account.id, code: connected.code, detail: connected.detail };
     const session: ImapReadSession = connected.session;
 
+    // Was die lesende Verbindung ergibt; die Verbindung ist danach beendet, Transformation und Planung laufen ohne sie (E17).
+    let index: MailIndex = new Map();
+    const onServer = new Set<string>();
+    const fetched: { mail: ParsedMail; eml: Uint8Array }[] = [];
+    let errors = 0;
+    let undetermined = 0;
+
     try {
       const examined = await session.examine(folder);
       if (!examined.ok) return { ok: false, accountId: account.id, code: examined.code, detail: examined.detail };
@@ -166,23 +185,19 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
       }
 
-      const index = deps.index();
-      const onServer = new Set<string>();
-      const fetched: { mail: ParsedMail; eml: Uint8Array }[] = [];
+      index = deps.index();
       // Mail-IDs, fuer die dieser Lauf schon einen Fetch-Eintrag hat. Zwei UIDs koennen dieselbe
       // normalisierte Message-ID tragen (zurueckkopierte Mail, Sieve-Kopie, an sich selbst
       // weitergeleitete Nachricht) oder ueber fallbackId auf denselben Wert fallen; ohne diesen
       // Riegel bekaeme jede von beiden einen eigenen create-Plan und damit einen eigenen Pfad —
       // zwei Notizen mit identischem mail_id, von denen der mailIndex nur eine wiederfindet.
       const fetchedIds = new Set<string>();
-      let errors = 0;
       // Zaehlt UIDs, deren Mail-ID dieser Lauf NICHT bestimmen konnte (Body zwischenzeitlich
       // verschwunden, unparsbar oder wegen MAX_FETCH_PER_RUN gar nicht geholt) — onServer bleibt
       // fuer genau diese UIDs leer, siehe unten. Bewusst NICHT hochgezaehlt, wenn die ID schon
       // aus dem Cache bekannt war: eine MIME-kaputte Mail, deren Header laengst im Cache steht,
       // macht onServer nicht unvollstaendig und darf den Detach-Zweig nicht stilllegen — sonst
       // legte eine einzige dauerhaft unparsbare Mail ihn fuer immer stumm.
-      let undetermined = 0;
 
       for (const uid of uids) {
         const cachedId = known.get(uid);
@@ -222,47 +237,78 @@ export function createSyncService(deps: SyncDeps): SyncService {
         }
       }
       deps.uidCache.retain(account.id, folder, examined.uidValidity, uids);
-
-      const rawPlans = planSync({
-        profile, source, syncedAt: deps.now(), index,
-        takenPaths: deps.takenPaths(), fetched, onServer,
-        ...(deps.threadNotes ? { threadNotes: deps.threadNotes } : {}),
-        linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null,
-      });
-
-      // Konnte dieser Lauf mindestens eine Server-ID nicht bestimmen, ist `onServer`
-      // unvollstaendig — ein Detach waere dann evtl. falsch (die Mail liegt vielleicht noch
-      // im Ordner, wir wissen es nur nicht). Ein liegengebliebenes Detach holt der naechste
-      // saubere Lauf nach; ein faelschliches Detach schreibt sofort in den Vault — deshalb
-      // bei Unsicherheit lieber keins. reattach/create beruhen auf tatsaechlich gefundenen
-      // IDs, nicht auf Abwesenheit, und bleiben unberuehrt.
-      const isDetach = (p: NotePlan): boolean => p.kind === "setState" && p.state === "detached";
-      const suppressDetach = undetermined > 0;
-      const plans = suppressDetach ? rawPlans.filter((p) => !isDetach(p)) : rawPlans;
-      // Ein unterdrueckter Detach-Durchgang darf von "es gab nichts zu tun" unterscheidbar sein:
-      // sonst sieht der Nutzer nur, dass entfernte Mails nicht mehr abgeloest werden, waehrend
-      // der Lauf ok: true meldet.
-      const detachSkipped = suppressDetach ? rawPlans.filter(isDetach).length : 0;
-
-      const result = await deps.executor().execute(plans);
-      const executedPlans = executed(plans, result);
-      const relinked = await relinkOlderNotes(profile, executedPlans);
-      const counts: SyncCounts = {
-        created: result.created,
-        reattached: executedPlans.filter((p) => p.kind === "setState" && p.state === "live").length,
-        detached: executedPlans.filter(isDetach).length,
-        skipped: result.skipped.length + relinked.skipped,
-        detachSkipped,
-        errors: errors + followErrors + result.errors.length + relinked.errors,
-      };
-      for (const p of [...executedPlans, ...relinked.executed]) {
-        deps.events.emit("changed", { path: p.path, kind: p.kind, mailId: p.mailId });
-      }
-      deps.events.emit("synced", { accountId: account.id, counts });
-      return { ok: true, accountId: account.id, counts };
     } finally {
       await session.logout();
     }
+
+    // Pseudonymisieren (A5, E17): nach der Fetch-Schleife und nach dem Logout, vor planSync. Bei „Aus“ geschieht nichts, das Verhalten ist
+    // byte-gleich zu vorher. Sonst geht jede neue Mail durch den Port: eine Mail, die wartet oder scheitert, faellt aus `fetched` (es
+    // entsteht keine Notiz, `onServer` ist schon gefuellt, `undetermined` waechst nicht; der naechste Lauf holt sie wieder, denn der
+    // Index kennt sie nicht).
+    let toPlan = fetched;
+    let facts: Map<string, OriginalFacts> | undefined;
+    let waiting = 0;
+    let transformErrors = 0;
+    if (profile.pseudonymize !== "off") {
+      toPlan = [];
+      facts = new Map();
+      // Ohne gebundenen Port nie Klartext: die Mail wartet (Verweigern als Vorgabe).
+      const port: TransformPort = deps.pseudonymize ?? (() => Promise.resolve({ kind: "wait", reason: "not-ready", message: "no pseudonymizer port bound" }));
+      for (const item of fetched) {
+        const r = await transformMail(item.mail, profile, port, { interactive: opts.interactive === true });
+        if (r.kind === "mail") {
+          // Die Original-Bytes sind Klartext: bei eingeschaltetem Schalter schreibt kein Plan eine .eml, also reisen sie auch nicht mit.
+          toPlan.push({ mail: r.mail, eml: new Uint8Array(0) });
+          facts.set(item.mail.id, r.facts);
+        } else if (r.kind === "wait") {
+          waiting += 1;
+          deps.log?.(`transform: waiting ${item.mail.id}: ${r.reason}: ${r.message}`);
+        } else {
+          transformErrors += 1;
+          deps.log?.(`transform: failed ${item.mail.id}: ${r.reason}: ${r.message}`);
+        }
+      }
+    }
+
+    const rawPlans = planSync({
+      profile, source, syncedAt: deps.now(), index,
+      takenPaths: deps.takenPaths(), fetched: toPlan, onServer,
+      ...(facts ? { facts } : {}),
+      ...(deps.threadNotes ? { threadNotes: deps.threadNotes } : {}),
+      linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null,
+    });
+
+    // Konnte dieser Lauf mindestens eine Server-ID nicht bestimmen, ist `onServer`
+    // unvollstaendig — ein Detach waere dann evtl. falsch (die Mail liegt vielleicht noch
+    // im Ordner, wir wissen es nur nicht). Ein liegengebliebenes Detach holt der naechste
+    // saubere Lauf nach; ein faelschliches Detach schreibt sofort in den Vault — deshalb
+    // bei Unsicherheit lieber keins. reattach/create beruhen auf tatsaechlich gefundenen
+    // IDs, nicht auf Abwesenheit, und bleiben unberuehrt.
+    const isDetach = (p: NotePlan): boolean => p.kind === "setState" && p.state === "detached";
+    const suppressDetach = undetermined > 0;
+    const plans = suppressDetach ? rawPlans.filter((p) => !isDetach(p)) : rawPlans;
+    // Ein unterdrueckter Detach-Durchgang darf von "es gab nichts zu tun" unterscheidbar sein:
+    // sonst sieht der Nutzer nur, dass entfernte Mails nicht mehr abgeloest werden, waehrend
+    // der Lauf ok: true meldet.
+    const detachSkipped = suppressDetach ? rawPlans.filter(isDetach).length : 0;
+
+    const result = await deps.executor().execute(plans);
+    const executedPlans = executed(plans, result);
+    const relinked = await relinkOlderNotes(profile, executedPlans);
+    const counts: SyncCounts = {
+      created: result.created,
+      reattached: executedPlans.filter((p) => p.kind === "setState" && p.state === "live").length,
+      detached: executedPlans.filter(isDetach).length,
+      skipped: result.skipped.length + relinked.skipped,
+      detachSkipped,
+      waiting,
+      errors: errors + followErrors + transformErrors + result.errors.length + relinked.errors,
+    };
+    for (const p of [...executedPlans, ...relinked.executed]) {
+      deps.events.emit("changed", { path: p.path, kind: p.kind, mailId: p.mailId });
+    }
+    deps.events.emit("synced", { accountId: account.id, counts });
+    return { ok: true, accountId: account.id, counts };
   }
 
   /** Merge-Regel 5, eine enge Ausnahme (Entscheidung Johannes 2026-11-18): nach dem Anlegen ersetzt
@@ -310,12 +356,12 @@ export function createSyncService(deps: SyncDeps): SyncService {
 
   // Benannte Funktion statt Methode am Rueckgabeobjekt: syncAll ruft sie direkt, nicht ueber
   // `this` — sonst braeche `const { syncAll } = createSyncService(...)` mit einem TypeError.
-  async function syncAccount(accountId: string): Promise<SyncRunResult> {
+  async function syncAccount(accountId: string, opts: SyncRunOptions = {}): Promise<SyncRunResult> {
     const account = deps.accounts().find((a) => a.id === accountId);
     if (!account) return { ok: false, accountId, code: "no-account" };
     if (!deps.busy.tryAcquire()) return { ok: false, accountId, code: "busy" };
     try {
-      return await run(account);
+      return await run(account, opts);
     } catch (e) {
       // Nach dem Connect uebersetzt niemand mehr: examine/uidSearchAll/uidFetchBody werfen ihren
       // NetError bis hierher durch. Dessen Code ist die Diagnose, die der Nutzer lesen soll
@@ -328,11 +374,11 @@ export function createSyncService(deps: SyncDeps): SyncService {
     }
   }
 
-  async function syncAll(): Promise<SyncRunResult[]> {
+  async function syncAll(opts: SyncRunOptions = {}): Promise<SyncRunResult[]> {
     const out: SyncRunResult[] = [];
     // Nacheinander, nie parallel: der Busy-Guard laesst ohnehin nur einen Lauf zu, und zwei
     // gleichzeitige Laeufe wuerden dieselben freien Pfade doppelt vergeben.
-    for (const a of deps.accounts().filter((x) => x.sync.enabled)) out.push(await syncAccount(a.id));
+    for (const a of deps.accounts().filter((x) => x.sync.enabled)) out.push(await syncAccount(a.id, opts));
     return out;
   }
 

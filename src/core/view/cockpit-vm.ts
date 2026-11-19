@@ -45,6 +45,8 @@ const COUNT_KEYS: ReadonlyArray<readonly [keyof SyncCounts, string]> = [
   ["detached", "cockpit.counts.detached"],
   ["skipped", "cockpit.counts.skipped"],
   ["detachSkipped", "cockpit.counts.detachSkipped"],
+  /** Mails, die der Pseudonymizer zurueckgestellt hat (A5): kein Fehler, deshalb auch kein `warning`, aber sichtbar. */
+  ["waiting", "cockpit.counts.waiting"],
   ["errors", "cockpit.counts.errors"],
 ];
 

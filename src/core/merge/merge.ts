@@ -48,7 +48,10 @@ export function newNote(
   const data: Record<string, FmValue> = {};
   const order: string[] = [];
   for (const [k, v] of Object.entries({ ...onCreate, ...extra, ...derived })) {
-    data[k] = toFm(v);
+    // Ein Wahrheitswert unter den Anlage-Werten bleibt einer und wird als `true`/`false` geschrieben (E2, Kit 0.100.0: `FmValue` traegt
+    // `boolean`); `toFm` machte `"true"` daraus, ein Text. Nur fuer `extra` und nur, wenn `derived` den Schluessel nicht belegt.
+    const fromExtra = Object.hasOwn(extra, k) && !Object.hasOwn(derived, k);
+    data[k] = typeof v === "boolean" && fromExtra ? v : toFm(v);
     order.push(k);
   }
   return { content: `${fmBlock(data, order)}\n${userHead}${wrapBlock(block)}\n`, zoneHash: zoneHash(block) };

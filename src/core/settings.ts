@@ -1,7 +1,7 @@
 import { slugify } from "../vendor/code-kit/slug";
 import { mergeSettings } from "../vendor/code-kit/settings";
 import { secretIdFor as kitSecretIdFor } from "../vendor/kit/secrets";
-import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
+import { defaultMailProfile, isPseudonymizeMode, type FmVal, type MailProfile } from "./mirror/profile";
 import type { TlsMode } from "./net/types";
 import type { TrustedSender } from "./api/types";
 
@@ -139,6 +139,14 @@ function repairOnCreateAllowedValues(raw: unknown): string[] {
   return eindeutig.length > 0 ? eindeutig : [...DEFAULT_SETTINGS.onCreateAllowedValues];
 }
 
+/** Wirft nie: `inheritFields` aus einer alten oder von Hand bearbeiteten `data.json` (A2). Kein Array wird zur leeren Liste,
+ *  Nicht-Texte und doppelte Eintraege fliegen raus, die Reihenfolge bleibt. Ob ein Name taugt, prueft `effectiveInheritFields`
+ *  zur Laufzeit; ein unbrauchbarer Name bleibt stehen, damit die Einstellung ihn mit Hinweis zeigen kann. */
+function repairInheritFields(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((v): v is string => typeof v === "string"))];
+}
+
 /** Wirft nie: ein alteres `data.json` (oder ein Hand-Edit) kann `taskPreset`-Werte tragen, die
  *  der aktuelle Typ nicht mehr kennt — ein `boolean` (Fix-Runde 1, s. Kommentar an
  *  `MailstoneSettings`) oder Fremdes (Array, Objekt, `null`). Ein solcher Eintrag wird beim
@@ -190,10 +198,15 @@ export function loadSettings(raw: unknown): MailstoneSettings {
     fields: { ...defaultMailProfile().fields, ...(isObj(rawProfile.fields) ? rawProfile.fields : {}) },
     // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt die .eml (an).
     saveEml: typeof rawProfile.saveEml === "boolean" ? rawProfile.saveEml : true,
+    // Nur eine der drei Stellungen gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus.
+    pseudonymize: isPseudonymizeMode(rawProfile.pseudonymize) ? rawProfile.pseudonymize : "off",
     // Nur Text gilt; fehlt der Schluessel (alte data.json), bleibt der Vorgang aus.
     threadField: typeof rawProfile.threadField === "string" ? rawProfile.threadField : defaultMailProfile().threadField,
+    // Nur Text gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, gilt die Vorgabe. Ein bewusst leerer Text bleibt leer: die Regel ist aus.
+    threadTokenPattern: typeof rawProfile.threadTokenPattern === "string" ? rawProfile.threadTokenPattern : defaultMailProfile().threadTokenPattern,
     // Nur Text gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, gilt mail_follow. Ein leerer Text schaltet die Markierung aus.
     followField: typeof rawProfile.followField === "string" ? rawProfile.followField : defaultMailProfile().followField,
+    inheritFields: repairInheritFields(rawProfile.inheritFields),
     onCreate: onCreateRoh && onCreateUngueltig.length === 0 ? { ...(onCreateRoh as Record<string, FmVal>) } : { ...defaultMailProfile().onCreate },
   };
   return s;

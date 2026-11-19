@@ -36,6 +36,36 @@ describe("newNote — Anlage-Werte zwischen onCreate und derived (A3)", () => {
     expect(newNote(derived, { type: "mail" }, "## Nachricht\n\nText", "## Notizen\n\n", {}).content).toBe(newNote(derived, { type: "mail" }, "## Nachricht\n\nText").content);
   });
 });
+describe("newNote — Wahrheitswerte unter den Anlage-Werten (A2, E2)", () => {
+  const neu = (extra: Record<string, boolean | string | number | string[]>, onCreate = { type: "mail" } as Record<string, string | boolean>) =>
+    newNote(derived, onCreate, "## Nachricht\n\nText", "## Notizen\n\n", extra).content;
+  it("true und false stehen als YAML-Literal da, ohne Anfuehrungszeichen", () => {
+    const c = neu({ privat: true, offen: false });
+    expect(c).toMatch(/^privat: true$/m);
+    expect(c).toMatch(/^offen: false$/m);
+    expect(c).not.toContain('"true"');
+    expect(c).not.toContain('"false"');
+  });
+  it("ein Wahrheitswert gewinnt gegen onCreate und behaelt dessen Zeile", () => {
+    const c = neu({ privat: true }, { type: "mail", privat: "nein" });
+    expect(c.match(/^privat:/gm)).toHaveLength(1);
+    expect(c).toMatch(/^privat: true$/m);
+    expect(c.indexOf("privat:")).toBeLessThan(c.indexOf("mail_id:"));
+  });
+  it("derived gewinnt auch gegen einen Wahrheitswert", () => {
+    const c = neu({ title: true, mail_state: false });
+    expect(c).toContain("title: Hi");
+    expect(c).toContain("mail_state: live");
+    expect(c).not.toMatch(/^title: true$/m);
+  });
+  it("ein Wahrheitswert bringt Text, Zahl und Liste nicht durcheinander; die Zone bleibt, wie sie ist", () => {
+    const { content, zoneHash: h } = newNote(derived, { type: "mail" }, "## Nachricht\n\nText", "## Notizen\n\n", { privat: true, projekt: ["[[A]]", "[[B]]"], prio: 2 });
+    expect(content).toMatch(/^projekt: \["\[\[A\]\]", "\[\[B\]\]"\]$/m);
+    expect(content).toMatch(/^prio: 2$/m);
+    expect(content).toContain("## Notizen\n\n%% mailstone:begin %%\n## Nachricht\n\nText\n%% mailstone:end %%");
+    expect(h).toBe(zoneHash("## Nachricht\n\nText"));
+  });
+});
 describe("mergeNote", () => {
   const base = newNote(derived, { type: "mail" }, "## Nachricht\n\nalt");
   it("ersetzt nur die Zone, Aussenbereich byte-identisch, unbekannte Keys bleiben", () => {

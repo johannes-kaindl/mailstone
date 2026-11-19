@@ -22,7 +22,7 @@ function head(m: Mail): Uint8Array {
 }
 
 const entry = (mailId: string, over: Partial<ThreadEntry> = {}): ThreadEntry =>
-  ({ mailId, path: `Mail/${mailId}`, date: "2026-11-01", time: "10:00", inReplyTo: [], references: [], ...over });
+  ({ mailId, path: `Mail/${mailId}`, date: "2026-11-01", time: "10:00", inReplyTo: [], references: [], subject: `Betreff ${mailId}`, ...over });
 
 class Server {
   boxes = new Map<string, Mail[]>();
@@ -95,7 +95,7 @@ class Server {
   allowlist(): Mail[] { return this.boxes.get(ALLOW) ?? []; }
 }
 
-const vault = groupThreads([entry("wurzel@example.org")]);
+const vault = groupThreads([entry("wurzel@example.org")], null);
 const FOLDERS = { inbox: "INBOX", sent: "Sent", allowlist: ALLOW };
 
 function deps(server: Server, over: Partial<FollowCopyDeps> = {}): FollowCopyDeps {

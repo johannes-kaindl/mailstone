@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_SETTINGS, loadSettings, newAccount, onCreateInvalidValues, rawOnCreate, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
+import { defaultMailProfile } from "../../src/core/mirror/profile";
 import type { TrustedSender } from "../../src/core/api/types";
 
 describe("settings", () => {
@@ -104,6 +105,20 @@ describe("saveEml (A6)", () => {
   });
   it("ein Wert, der kein Boolean ist, faellt auf true zurueck (kein stilles Abschalten)", () => {
     for (const v of ["false", 0, null, "nein", []]) expect(loadSettings({ profile: { saveEml: v } }).profile.saveEml, JSON.stringify(v)).toBe(true);
+  });
+});
+
+describe("pseudonymize (A5, Schritt 2)", () => {
+  it("eine alte data.json ohne den Schluessel ergibt off: Vorgabe, kein Vault wird ungefragt umgestellt", () => {
+    expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail" } }).profile.pseudonymize).toBe("off");
+    expect(loadSettings(undefined).profile.pseudonymize).toBe("off");
+    expect(defaultMailProfile().pseudonymize).toBe("off");
+  });
+  it("alle drei gueltigen Stellungen bleiben, wie gespeichert", () => {
+    for (const v of ["off", "if-available", "required"]) expect(loadSettings({ profile: { pseudonymize: v } }).profile.pseudonymize, v).toBe(v);
+  });
+  it("ein unbekannter Wert faellt auf off zurueck (kein stilles Einschalten, kein stilles Verlangen)", () => {
+    for (const v of ["on", "Required", "", 1, true, null, [], {}]) expect(loadSettings({ profile: { pseudonymize: v } }).profile.pseudonymize, JSON.stringify(v)).toBe("off");
   });
 });
 
@@ -243,22 +258,32 @@ describe("showStatusBar (UI-STANDARD § 8 Statusleisten-Eintrag)", () => {
   });
 });
 
-describe("threadField (A3)", () => {
-  it("eine alte data.json ohne das Feld ergibt: Vorgang aus", () => {
+describe("threadField und threadTokenPattern (A3)", () => {
+  it("eine alte data.json ohne die Felder ergibt: Vorgang aus, Token-Regex der Vorgabe", () => {
     const alt = loadSettings({ schemaVersion: 1, profile: { folder: "Mail", saveEml: false } });
     expect(alt.profile.threadField).toBe("");
+    expect(alt.profile.threadTokenPattern).toBe("\\[Ticket#\\d+\\]");
     expect(loadSettings(undefined).profile.threadField).toBe("");
   });
-  it("ein gespeicherter Wert bleibt", () => {
-    expect(loadSettings({ profile: { threadField: "vorgang" } }).profile.threadField).toBe("vorgang");
+  it("gespeicherte Werte bleiben", () => {
+    const s = loadSettings({ profile: { threadField: "vorgang", threadTokenPattern: "\\bINC\\d+\\b" } });
+    expect(s.profile.threadField).toBe("vorgang");
+    expect(s.profile.threadTokenPattern).toBe("\\bINC\\d+\\b");
   });
   it("ein Wert, der kein Text ist, faellt auf die Vorgabe zurueck", () => {
     for (const v of [5, true, null, [], {}]) {
-      expect(loadSettings({ profile: { threadField: v } }).profile.threadField, JSON.stringify(v)).toBe("");
+      const s = loadSettings({ profile: { threadField: v, threadTokenPattern: v } });
+      expect(s.profile.threadField, JSON.stringify(v)).toBe("");
+      expect(s.profile.threadTokenPattern, JSON.stringify(v)).toBe("\\[Ticket#\\d+\\]");
     }
   });
-  it("ein unbrauchbarer Feldname bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
-    expect(loadSettings({ profile: { threadField: "mail_id" } }).profile.threadField).toBe("mail_id");
+  it("ein bewusst leerer Token-Regex bleibt leer: die Regel ist aus", () => {
+    expect(loadSettings({ profile: { threadTokenPattern: "" } }).profile.threadTokenPattern).toBe("");
+  });
+  it("ein ungueltiger Regex und ein unbrauchbarer Feldname bleiben stehen (die Einstellung zeigt den Hinweis), laden aber ohne Wurf", () => {
+    const s = loadSettings({ profile: { threadField: "mail_id", threadTokenPattern: "[" } });
+    expect(s.profile.threadField).toBe("mail_id");
+    expect(s.profile.threadTokenPattern).toBe("[");
   });
 });
 
@@ -279,5 +304,31 @@ describe("followField (A1)", () => {
   });
   it("ein unbrauchbarer Feldname bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
     expect(loadSettings({ profile: { followField: "mail_id" } }).profile.followField).toBe("mail_id");
+  });
+});
+
+describe("inheritFields (A2)", () => {
+  it("eine alte data.json ohne das Feld ergibt die leere Liste", () => {
+    expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail", saveEml: false } }).profile.inheritFields).toEqual([]);
+    expect(loadSettings(undefined).profile.inheritFields).toEqual([]);
+  });
+  it("eine gespeicherte Liste bleibt", () => {
+    expect(loadSettings({ profile: { inheritFields: ["projekt", "kunde"] } }).profile.inheritFields).toEqual(["projekt", "kunde"]);
+  });
+  it("kein Array wird zur leeren Liste", () => {
+    for (const v of ["projekt", 5, true, null, {}]) {
+      expect(loadSettings({ profile: { inheritFields: v } }).profile.inheritFields, JSON.stringify(v)).toEqual([]);
+    }
+  });
+  it("Nicht-Texte und Duplikate fliegen raus, die Reihenfolge bleibt", () => {
+    expect(loadSettings({ profile: { inheritFields: ["a", 5, null, "b", "a", { x: 1 }, ["c"], "b"] } }).profile.inheritFields).toEqual(["a", "b"]);
+  });
+  it("ein unbrauchbarer Name bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
+    expect(loadSettings({ profile: { inheritFields: ["mail_id", "prüfung"] } }).profile.inheritFields).toEqual(["mail_id", "prüfung"]);
+  });
+  it("die Standardliste ist je Aufruf ein eigenes Array", () => {
+    const a = loadSettings(undefined).profile.inheritFields;
+    a.push("x");
+    expect(loadSettings(undefined).profile.inheritFields).toEqual([]);
   });
 });

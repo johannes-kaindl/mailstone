@@ -7,7 +7,7 @@
 // nicht — die Felder, die `runSync`/`saveSettings`/`cockpitHost` anfassen, werden hier direkt
 // gesetzt. `as any` fuer die privaten Methoden: sie sind der Gegenstand, nicht ein Umweg.
 import { describe, it, expect, vi } from "vitest";
-import MailstonePlugin, { syncTargets } from "../../src/main";
+import MailstonePlugin, { syncTargets, waitingCheckAvailable } from "../../src/main";
 import { makeFakeEl } from "../vendor/kit/obsidian-mock";
 import { CockpitPanel, type CockpitHost } from "../../src/obsidian/views/cockpit-panel";
 import { newAccount, type Account } from "../../src/core/settings";
@@ -17,7 +17,7 @@ import { initI18n } from "../../src/i18n/strings";
 
 initI18n("de");
 
-const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 };
 
 function acc(id: string, enabled = true): Account {
   const a = newAccount(id);
@@ -132,6 +132,109 @@ describe("Befund 2 — manuell heisst manuell", () => {
     expect(syncAccount).not.toHaveBeenCalled();
     expect(results).toEqual([]);
     expect(notify.info).toHaveBeenCalledWith("notice.sync.noAccounts");
+  });
+});
+
+// A5, Schritt 4b: „Wartende Mails pruefen“ ist ein Sync-Lauf ueber alle Konten mit interactive: true; der Befehl „Synchronisieren“, der
+// Wecker und das Cockpit laufen mit false (kein Pruefenster). onload() ist nicht testbar, deshalb steht der Befehl als Methode da.
+describe("Wartende Mails pruefen (A5, Schritt 4b)", () => {
+  const opts = (spy: ReturnType<typeof vi.fn>): unknown[] => spy.mock.calls.map((c) => (c[1] as { interactive?: boolean } | undefined)?.interactive === true);
+
+  it("der Befehl fuehrt einen Lauf ueber alle aktiven Konten mit interactive: true und derselben Notice", async () => {
+    const { plugin, notify, syncAccount } = aufbau([acc("a"), acc("b"), acc("c", false)]);
+    plugin.settings.profile.pseudonymize = "required";
+    const cmd = plugin.waitingCommand(notify);
+    expect(cmd.checkCallback(false)).toBe(true);
+    await vi.waitFor(() => { expect(syncAccount).toHaveBeenCalledTimes(2); });
+    expect(syncAccount.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
+    expect(syncAccount.mock.calls.every((c) => (c[1] as { interactive?: boolean }).interactive === true)).toBe(true);
+    await vi.waitFor(() => { expect(notify.info).toHaveBeenCalledWith("notice.sync.done", 0, 0, 0, 0); });
+  });
+
+  it("der normale Sync (runSync ohne Angabe) und der Intervall-Lauf fragen nie interaktiv", async () => {
+    const { plugin, notify, syncAccount } = aufbau([acc("a")]);
+    plugin.settings.profile.pseudonymize = "required";
+    await plugin.runSync(notify);
+    await plugin.runSync(notify, true, ["a"]);
+    plugin.lastRun = {};
+    await plugin.runDueSyncs(notify, {});
+    await plugin.runSync(notify, false, ["a"]);
+    expect(syncAccount).toHaveBeenCalledTimes(4);
+    expect(opts(syncAccount)).toEqual([false, false, false, false]);
+  });
+
+  it("der Befehl fehlt bei Aus (checkCallback false, kein Lauf), steht bei Wenn verfuegbar und Verlangt", async () => {
+    const { plugin, notify, syncAccount } = aufbau([acc("a")]);
+    plugin.settings.profile.pseudonymize = "off";
+    const cmd = plugin.waitingCommand(notify);
+    expect(cmd.checkCallback(true)).toBe(false);
+    expect(cmd.checkCallback(false)).toBe(false);
+    expect(syncAccount).not.toHaveBeenCalled();
+    plugin.settings.profile.pseudonymize = "if-available";
+    expect(cmd.checkCallback(true)).toBe(true);
+    plugin.settings.profile.pseudonymize = "required";
+    expect(cmd.checkCallback(true)).toBe(true);
+    expect(syncAccount).not.toHaveBeenCalled();
+  });
+
+  it("nur am Desktop und nur bei eingeschaltetem Schalter sichtbar", () => {
+    expect(waitingCheckAvailable("required", { isMobile: false })).toBe(true);
+    expect(waitingCheckAvailable("if-available", { isMobile: false })).toBe(true);
+    expect(waitingCheckAvailable("off", { isMobile: false })).toBe(false);
+    expect(waitingCheckAvailable("required", { isMobile: true })).toBe(false);
+  });
+});
+
+// A5, Schritt 5: der Port der Rueckwandlung ist das echte Kit `restoreFor`, gebunden an den Schalter des Profils und die Plugin-API, frisch je Aufruf.
+describe("Port der Rueckwandlung (A5, Schritt 5)", () => {
+  const api = {
+    version: 1,
+    status: () => ({ state: "ready" }),
+    transform: async () => ({ error: "not-ready", message: "x" }),
+    restore: (text: string) => ({ text: text.replace("Person_k3x9m2ab7q", "Max"), restored: 1, unknown: [], forgotten: [] }),
+    containsPlaceholder: () => true,
+  };
+  const mitApp = (pluginApi?: unknown): any => ({ plugins: { plugins: pluginApi ? { pseudonymizer: { api: pluginApi } } : {} } });
+
+  it("mit bereitem Plugin loest er auf, auch bei Aus (eine alte Notiz kann Platzhalter tragen)", () => {
+    const { plugin } = aufbau([], undefined, mitApp(api));
+    plugin.settings.profile.pseudonymize = "off";
+    expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toEqual({ kind: "release", text: "Hallo Max", forgotten: [] });
+  });
+
+  it("bei Aus ohne Plugin bleibt der Text unveraendert, auch mit Platzhalter", () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    plugin.settings.profile.pseudonymize = "off";
+    expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toEqual({ kind: "release", text: "Hallo Person_k3x9m2ab7q", forgotten: [] });
+  });
+
+  it("bei Verlangt ohne Plugin haelt ein Text mit Platzhalter (hold), einer ohne geht durch", () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    plugin.settings.profile.pseudonymize = "required";
+    expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toMatchObject({ kind: "hold", reason: "absent", unknown: ["Person_k3x9m2ab7q"] });
+    expect(plugin.restorePort()("Hallo Welt")).toEqual({ kind: "release", text: "Hallo Welt", forgotten: [] });
+  });
+
+  it("die Meldung des Kits folgt der Oberflaechensprache (restore und transform)", async () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    plugin.settings.profile.pseudonymize = "required";
+    try {
+      initI18n("en");
+      expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toMatchObject({ message: expect.stringContaining("The pseudonymizer plugin is missing or disabled.") });
+      expect(await plugin.pseudonymizePort()({ parts: [] })).toMatchObject({ kind: "wait", reason: "absent", message: "The pseudonymizer plugin is missing or disabled." });
+      initI18n("de");
+      expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toMatchObject({ message: expect.stringContaining("Das Plugin pseudonymizer fehlt oder ist abgeschaltet.") });
+      expect(await plugin.pseudonymizePort()({ parts: [] })).toMatchObject({ kind: "wait", reason: "absent", message: "Das Plugin pseudonymizer fehlt oder ist abgeschaltet." });
+    } finally { initI18n("de"); }
+  });
+
+  it("liest den Schalter frisch je Aufruf", () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    const port = plugin.restorePort();
+    plugin.settings.profile.pseudonymize = "off";
+    expect(port("Person_k3x9m2ab7q").kind).toBe("release");
+    plugin.settings.profile.pseudonymize = "if-available";
+    expect(port("Person_k3x9m2ab7q").kind).toBe("hold");
   });
 });
 

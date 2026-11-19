@@ -18,7 +18,9 @@ export interface RunInfo {
 
 export type RunState = Record<string, RunInfo>;
 
-const COUNT_KEYS = ["created", "reattached", "detached", "skipped", "detachSkipped", "errors"] as const;
+const COUNT_KEYS = ["created", "reattached", "detached", "skipped", "detachSkipped", "waiting", "errors"] as const;
+/** Zaehler, die ein aelterer Lauf in `data.json` noch nicht kannte: fehlen sie, gelten sie als 0, der Eintrag faellt nicht weg. */
+const COUNT_KEYS_OPTIONAL: ReadonlySet<string> = new Set(["waiting"]);
 
 /** Aus der Code-Liste gebaut, nicht danebengeschrieben — s. SYNC_ERROR_CODES. */
 const GUELTIGE_CODES: ReadonlySet<string> = new Set<string>(SYNC_ERROR_CODES);
@@ -31,7 +33,7 @@ function parseCounts(v: unknown): SyncCounts | null {
   if (!isObj(v)) return null;
   const out = {} as Record<string, number>;
   for (const k of COUNT_KEYS) {
-    const n = v[k];
+    const n = v[k] ?? (COUNT_KEYS_OPTIONAL.has(k) ? 0 : undefined);
     if (typeof n !== "number" || !Number.isFinite(n)) return null;
     out[k] = n;
   }
@@ -56,7 +58,7 @@ export function recordRun(state: RunState, results: readonly SyncRunResult[], at
 }
 
 function emptyCounts(): SyncCounts {
-  return { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+  return { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 };
 }
 
 /** Liest das Register aus `data.json`. Defensiv wie `parseState` in calendar-notes: ein

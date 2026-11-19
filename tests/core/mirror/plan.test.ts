@@ -3,6 +3,7 @@ import { planMailNote } from "../../../src/core/mirror/plan";
 import { defaultMailProfile, withOwnAddresses, withTaskPreset } from "../../../src/core/mirror/profile";
 import { parseEml } from "../../../src/core/mime/parse";
 import { loadFixture } from "../../helpers/fixtures";
+import { originalFactsOf } from "../../../src/core/transform/original-facts";
 
 const common = async () => {
   const eml = loadFixture("utf8-plain");
@@ -65,6 +66,21 @@ describe("planMailNote", () => {
       const mail = { ...c.mail, id: "noid-0123456789abcdef0123456789abcdef" };
       const p = planMailNote({ ...c, mail, profile: { ...c.profile, saveEml: false }, existing: null });
       expect(p.kind === "create" && p.emlPath).toBe("Mail/2026/_eml/2026-08-19-1432-hallo-welt.eml");
+    });
+    it("pseudonymize != off: keine .eml, auch bei saveEml: true und auch ohne Message-ID (A5: ein Original ist Klartext)", async () => {
+      const c = await common();
+      for (const mode of ["if-available", "required"] as const) {
+        const profile = { ...c.profile, saveEml: true, pseudonymize: mode };
+        const normal = planMailNote({ ...c, profile, existing: null });
+        expect(normal.kind === "create" && normal.emlPath, mode).toBeNull();
+        const noid = planMailNote({ ...c, mail: { ...c.mail, id: "noid-0123456789abcdef0123456789abcdef" }, profile, existing: null });
+        expect(noid.kind === "create" && noid.emlPath, `${mode} noid`).toBeNull();
+      }
+    });
+    it("pseudonymize off: saveEml entscheidet wie bisher", async () => {
+      const c = await common();
+      const p = planMailNote({ ...c, profile: { ...c.profile, saveEml: true, pseudonymize: "off" }, existing: null });
+      expect(p.kind === "create" && p.emlPath).not.toBeNull();
     });
     it("Standard und Profil ohne das Feld: .eml wird gespeichert", async () => {
       expect(defaultMailProfile().saveEml).toBe(true);
@@ -199,5 +215,28 @@ describe("taskPreset", () => {
     const p = planMailNote({ ...c, existing: null });
     expect(p.kind === "create" && p.content).toContain("mail_id: utf8-plain-001@mail.example.org");
     expect(p.kind === "create" && p.content).not.toContain("evil-override");
+  });
+});
+
+describe("planMailNote — Werte aus dem Original (facts, A5 Schritt 1)", () => {
+  it("facts.direction geht dem Absender der Mail vor, in neuer Notiz und im Re-Render", async () => {
+    const c = await common();
+    const platz = { ...c.mail, from: { name: "Person_k3x9m2ab7q", address: "Person_k3x9m2ab7q_Mail" } };
+    const profile = withOwnAddresses(c.profile, ["erika@example.org"]);
+    const ohne = planMailNote({ ...c, mail: platz, profile, existing: null });
+    expect(ohne.kind === "create" && ohne.content).toContain("richtung: eingehend");
+    const facts = { direction: "ausgehend" as const, threadToken: null };
+    const mit = planMailNote({ ...c, mail: platz, profile, facts, existing: null });
+    expect(mit.kind === "create" && mit.content).toContain("richtung: ausgehend");
+    if (ohne.kind !== "create") return;
+    const upd = planMailNote({ ...c, mail: platz, profile, facts, existing: { path: ohne.path, content: ohne.content, zoneHash: ohne.zoneHash } });
+    expect(upd.kind === "update" && upd.content).toContain("richtung: ausgehend");
+  });
+  it("Charakterisierung: facts, die dem Original entsprechen, aendern nichts (byte-gleich)", async () => {
+    const c = await common();
+    const profile = withOwnAddresses(c.profile, ["erika@example.org"]);
+    const a = planMailNote({ ...c, profile, existing: null });
+    const b = planMailNote({ ...c, profile, facts: originalFactsOf(c.mail, profile), existing: null });
+    expect(b).toEqual(a);
   });
 });

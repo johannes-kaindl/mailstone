@@ -1,5 +1,7 @@
 import { addressOf } from "../mime/headers";
 import { fmKeyFor } from "../mirror/profile";
+import { restoreFormatted, restoreText } from "../transform/restore";
+import { findPlaceholders } from "../../vendor/kit/placeholder";
 import { validateInput } from "./schema";
 import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type PlanResult } from "./types";
 
@@ -21,10 +23,16 @@ export function buildMailtoUrl(input: { to: string; subject: string; inReplyTo: 
   return `mailto:${to}?${params.join("&")}`;
 }
 
-function recipientOf(probe: CommandProbe): string | null {
+/** Der Wert des Absenderfeldes, wie die Notiz ihn fuehrt (in einer pseudonymisierten Notiz: Platzhalter statt Name und Adresse). */
+function fromOf(probe: CommandProbe): string | null {
   const key = fmKeyFor(probe.profile, "from");
   const raw = key ? probe.frontmatter[key] : undefined;
-  return typeof raw === "string" ? addressOf(raw) : null;
+  return typeof raw === "string" ? raw : null;
+}
+
+function recipientOf(probe: CommandProbe): string | null {
+  const raw = fromOf(probe);
+  return raw === null ? null : addressOf(raw);
 }
 
 export const REPLY_EXTERNAL_COMMAND: CommandDescriptor = {
@@ -36,17 +44,37 @@ export const REPLY_EXTERNAL_COMMAND: CommandDescriptor = {
   schema: EMPTY_SCHEMA,
 
   appliesTo(probe: CommandProbe): boolean {
-    return recipientOf(probe) !== null;
+    if (recipientOf(probe) !== null) return true;
+    // A5: eine pseudonymisierte Notiz fuehrt "Person_… <Person_…_Mail>", und `addressOf` findet dort kein `@`. Der Befehl ist trotzdem anwendbar;
+    // ob sich der Platzhalter aufloesen laesst, zeigt erst `plan` (synchron geht das hier nicht, `checkCallback` kennt den Port nicht).
+    const raw = fromOf(probe);
+    return raw !== null && findPlaceholders(raw).length > 0;
   },
 
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult {
     if (!validateInput(EMPTY_SCHEMA, input).ok) return { ok: false, code: "invalid-input" };
-    const to = recipientOf(ctx);
-    if (!to) return { ok: false, code: "no-recipient" };
+    const rawFrom = fromOf(ctx);
+    if (rawFrom === null) return { ok: false, code: "no-recipient" };
+
+    // A5, Schritt 5: Absender und Betreff werden zurueckgewandelt, bevor die URL entsteht. Ein Platzhalter, der sich nicht aufloesen laesst (hold),
+    // ein vergessener Platzhalter im Absender (er wird zur Adresse) oder eine Zeile, die nach der Rueckwandlung keine Adresse hat: keine URL.
+    let from = rawFrom;
+    if (ctx.restore) {
+      const r = restoreFormatted(rawFrom, ctx.restore);
+      if (!r.ok) return { ok: false, code: "restore-held" };
+      from = r.text;
+    }
+    const to = addressOf(from);
+    if (!to) return { ok: false, code: findPlaceholders(rawFrom).length > 0 ? "restore-held" : "no-recipient" };
 
     const subjectKey = fmKeyFor(ctx.profile, "subject");
     const rawSubject = subjectKey ? ctx.frontmatter[subjectKey] : undefined;
-    const subject = typeof rawSubject === "string" ? rawSubject : "";
+    let subject = typeof rawSubject === "string" ? rawSubject : "";
+    if (ctx.restore && subject !== "") {
+      const r = restoreText(subject, ctx.restore);
+      if (!r.ok) return { ok: false, code: "restore-held" };
+      subject = r.text;
+    }
 
     // In-Reply-To ist die ID DIESER Mail, nicht der Wert des Feldes `in_reply_to` (das ist
     // der Vorgaenger). Eine Ersatz-ID (Praefix "noid-", Spec § 2.2) ist keine echte

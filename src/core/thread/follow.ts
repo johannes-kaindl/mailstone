@@ -1,6 +1,6 @@
 // Mails auf dem Server finden, die zu einem Vorgang im Vault gehoeren, aber noch keine Notiz haben
 // (A1, Welle 36, gemeinsamer Lesepfad). Rein lesend und ohne Schreibzugriff: examine, search since,
-// BODY.PEEK-Koepfe. Die Zuordnung laeuft nur ueber Header (`threadOf`); eine Betreff-Kennung gibt es hier noch nicht.
+// BODY.PEEK-Koepfe. Die Zuordnung (`threadOf`) laeuft ueber die Header, dann ueber die Kennung im Betreff.
 // Zwei Abnehmer: „Folge-Mails anzeigen“ (`follow-run.ts`) und das Kopieren in den Allowlist-Ordner (`follow-copy.ts`).
 import type { ImapReadSession } from "../imap/client";
 import type { ImapErrorCode } from "../imap/types";
@@ -71,7 +71,7 @@ export async function findFollowUps(
       const mail = await parseEml(bytes).catch(() => null);
       if (mail === null) continue;
       if (req.index.rootOf.has(mail.id)) continue; // hat schon eine Notiz
-      const root = threadOf({ mailId: mail.id, inReplyTo: mail.inReplyTo, references: mail.references }, req.index);
+      const root = threadOf({ mailId: mail.id, inReplyTo: mail.inReplyTo, references: mail.references, subject: mail.subject }, req.index);
       if (root === null || req.stopped.has(root)) continue;
       followUps.push({ folder, uid, mailId: mail.id, root, subject: mail.subject, date: mail.date === null ? "" : mail.date.toISOString() });
     }

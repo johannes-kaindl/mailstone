@@ -96,6 +96,24 @@ describe("SendConsentModal — Form", () => {
   });
 });
 
+describe("SendConsentModal — Hinweis auf vergessene Platzhalter (A5, Schritt 5)", () => {
+  function absaetze(): string[] {
+    return (letztesModal().contentEl.querySelectorAll("p") as { textContent: string }[]).map((p) => p.textContent);
+  }
+
+  it("zeigt den Hinweis mit der Zahl, wenn Platzhalter vergessener Eintraege hinausgehen", () => {
+    void askSendConsent(new App(), optionen({ forgotten: 2 }), stilleTimer());
+    expect(absaetze()).toContain("2 Platzhalter vergessener Einträge werden als Platzhalter gesendet.");
+    closeOpenSendConsent();
+  });
+
+  it("zeigt ohne vergessene Platzhalter keinen Hinweis", () => {
+    void askSendConsent(new App(), optionen(), stilleTimer());
+    expect(absaetze().some((t) => t.includes("vergessener"))).toBe(false);
+    closeOpenSendConsent();
+  });
+});
+
 describe("closeOpenSendConsent", () => {
   // Important 1, zweite Haelfte: `onunload` setzte nur ein Flag. Das Modal haengt an keinem
   // Lifecycle und stand danach weiter da — ein Dialog, dessen Frage niemand mehr beantworten

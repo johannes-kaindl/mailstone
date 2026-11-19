@@ -23,6 +23,9 @@ import { RERENDER_COMMAND } from "../../src/core/commands/rerender";
 import { RELINK_COMMAND } from "../../src/core/commands/relink";
 import { REMOVE_EML_COMMAND } from "../../src/core/commands/remove-eml";
 import { EXTRACT_ATTACHMENT_COMMAND } from "../../src/core/commands/extract";
+import type { PortOutcome, TransformPort } from "../../src/core/transform/transform-mail";
+import { noMailText } from "../../src/obsidian/transform-text";
+import { initI18n } from "../../src/i18n/strings";
 
 const profile = defaultMailProfile();
 const ZONE = "%% mailstone:begin %%\n## Nachricht\nHallo\n%% mailstone:end %%\n";
@@ -90,6 +93,15 @@ describe("buildContext", () => {
     const r = await buildContext(deps(app), RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
     expect(r.ok && r.ctx.notes?.map((n) => n.mailId).sort()).toEqual(["a@x", "b@x"]);
     expect(r.ok && r.ctx.notes?.[0]?.frontmatter["mail_id"]).toBeDefined();
+  });
+
+  it("reicht den Port der Rueckwandlung als ctx.restore weiter (A5, Schritt 5); ohne Port fehlt das Feld", async () => {
+    const app = await vaultWithNote();
+    const restore = (text: string) => ({ kind: "release" as const, text, forgotten: [] });
+    const mit = await buildContext({ ...deps(app), restore }, RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(mit.ok && mit.ctx.restore).toBe(restore);
+    const ohne = await buildContext(deps(app), RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(ohne.ok && "restore" in ohne.ctx).toBe(false);
   });
 
   it("laedt KEINE .eml fuer ein Kommando ohne needs.eml", async () => {
@@ -338,5 +350,71 @@ describe("runCommand: bei genau einer Option gibt es nichts zu fragen", () => {
     expect(formularGeoeffnet).toHaveBeenCalledTimes(1);
     expect(vorschauGeoeffnet).not.toHaveBeenCalled(); // die Formular-Attrappe bricht ab
     expect(r).toEqual({ kind: "cancelled" });
+  });
+});
+
+// A5, Schritt 3: dieselbe Transformation nach jedem parseEml, auch im Kontext der Befehle (lokale .eml und Original vom Server).
+describe("buildContext: Pseudonymisieren (A5)", () => {
+  initI18n("de");
+  const ersetze = (seen: boolean[] = []): TransformPort => (req) => {
+    seen.push(req.interactive);
+    return Promise.resolve<PortOutcome>({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.id === "subject" ? "Person_x" : p.id.startsWith("from.name") ? "Person_k3" : p.id.startsWith("from.address") ? "Person_k3_Mail" : p.value })), entities: [], applied: 2 } });
+  };
+  const pseudo = (mode: "if-available" | "required" | "off") => ({ ...defaultMailProfile(), pseudonymize: mode, ownAddresses: ["erika@example.org"] });
+  const fileOf = (app: Awaited<ReturnType<typeof vaultWithNote>>) => app.vault.getAbstractFileByPath("Mail/2026/x.md");
+
+  it("Aus: der Port wird nie gerufen, kein facts im Kontext", async () => {
+    const app = await vaultWithNote();
+    let calls = 0;
+    const r = await buildContext({ ...deps(app), profile: () => pseudo("off"), pseudonymize: () => { calls += 1; return ersetze()({} as never); } }, RERENDER_COMMAND, fileOf(app));
+    expect(calls).toBe(0);
+    expect(r.ok && r.ctx.facts).toBeUndefined();
+    expect(r.ok && r.ctx.mail?.subject).toBe("Termin");
+  });
+
+  it("lokale .eml: der Kontext traegt die transformierte Mail und die Fakten des Originals; interactive ist true", async () => {
+    const app = await vaultWithNote();
+    const seen: boolean[] = [];
+    const r = await buildContext({ ...deps(app), profile: () => pseudo("required"), pseudonymize: ersetze(seen) }, RERENDER_COMMAND, fileOf(app));
+    expect(seen).toEqual([true]);
+    expect(r.ok && r.ctx.mail?.subject).toBe("Person_x");
+    expect(r.ok && r.ctx.mail?.id).toBe("a@x");
+    expect(r.ok && r.ctx.facts).toEqual({ direction: "ausgehend", threadToken: null });
+  });
+
+  it("Original vom Server: dieselbe Transformation", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/x.md", `---\nmail_id: a@x\nmail_source: acc/Vault\nmail_state: live\n---\n## Notizen\n\n${ZONE}`);
+    const r = await buildContext({ ...deps(app), profile: () => pseudo("required"), pseudonymize: ersetze(), fetchOriginal: async () => ({ ok: true, bytes: new TextEncoder().encode(EML) }) }, RERENDER_COMMAND, fileOf(app));
+    expect(r.ok && r.ctx.mail?.subject).toBe("Person_x");
+    expect(r.ok && r.ctx.facts?.direction).toBe("ausgehend");
+  });
+
+  it("wait: kein Kontext, ein Code mit Grund; die Notiz bleibt unberuehrt", async () => {
+    const app = await vaultWithNote();
+    const r = await buildContext({ ...deps(app), profile: () => pseudo("required"), pseudonymize: () => Promise.resolve({ kind: "wait", reason: "locked", message: "gesperrt" }) }, RERENDER_COMMAND, fileOf(app));
+    expect(r).toEqual({ ok: false, code: "error.command.pseudonymize-wait", detail: noMailText({ kind: "wait", reason: "locked", message: "gesperrt" }) });
+    expect(noMailText({ kind: "wait", reason: "locked", message: "gesperrt" })).toBe("gesperrt"); // Kit-Grund: die Meldung des Kits (Sprache reicht main.ts hinein)
+    expect(noMailText({ kind: "wait", reason: "deferred", message: "Meldung des Plugins" })).not.toBe("Meldung des Plugins"); // Mailstones Kontext: der uebersetzte Text
+    expect(noMailText({ kind: "wait", reason: "unbekannt-xyz", message: "Meldung des Plugins" })).toBe("Meldung des Plugins"); // unbekannter Grund: die Meldung selbst
+  });
+
+  it("error: kein Kontext, ein Code mit Grund", async () => {
+    const app = await vaultWithNote();
+    const r = await buildContext({ ...deps(app), profile: () => pseudo("if-available"), pseudonymize: () => Promise.resolve({ kind: "error", reason: "threw", message: "boom" }) }, RERENDER_COMMAND, fileOf(app));
+    expect(r).toEqual({ ok: false, code: "error.command.pseudonymize-error", detail: noMailText({ kind: "error", reason: "threw", message: "boom" }) });
+  });
+
+  it("ein Schalter ungleich Aus ohne gebundenen Port liefert nie die Klartext-Mail", async () => {
+    const app = await vaultWithNote();
+    const r = await buildContext({ ...deps(app), profile: () => pseudo("if-available") }, RERENDER_COMMAND, fileOf(app));
+    expect(r.ok).toBe(false);
+  });
+
+  it("ein Kommando ohne needs.eml ruft den Port nicht", async () => {
+    const app = await vaultWithNote();
+    let calls = 0;
+    await buildContext({ ...deps(app), profile: () => pseudo("required"), pseudonymize: () => { calls += 1; return ersetze()({} as never); } }, RELINK_COMMAND, fileOf(app));
+    expect(calls).toBe(0);
   });
 });

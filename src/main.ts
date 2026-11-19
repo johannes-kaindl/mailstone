@@ -1,7 +1,7 @@
 import { Notice, Platform, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
 import { loadSettings, onCreateInvalidValues, rawOnCreate, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
-import { t } from "./vendor/code-kit/i18n";
+import { getLang, t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
 import { importEmlFolder } from "./obsidian/import-eml";
 import { noticeNotifier, type Notifier } from "./obsidian/notifier";
@@ -29,7 +29,7 @@ import { threadNotes } from "./obsidian/thread-index";
 import { openFollowUps } from "./obsidian/follow-ups";
 import { followContext } from "./obsidian/follow-context";
 import { findNotePathForMailId, mailIndex, trashEml, vaultPlanExecutor, writeAttachment, type ZoneHashStore } from "./obsidian/vault-notes";
-import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile } from "./core/mirror/profile";
+import { withNoteHeadings, withOwnAddresses, withTaskPreset, type MailProfile, type PseudonymizeMode } from "./core/mirror/profile";
 import { commandRegistry, ensureDefaultCommands } from "./core/commands/registry";
 import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
@@ -37,6 +37,10 @@ import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/e
 import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type CommandFlowDeps, type RunResult } from "./obsidian/command-flow";
 import { fetchOriginal } from "./core/originals/fetch-original";
+import { pseudonymizeFor, restoreFor } from "./vendor/kit-obsidian/pseudonymizer-call";
+import { TRANSFORM_CALLER, type TransformPort } from "./core/transform/transform-mail";
+import type { RestorePort } from "./core/transform/restore";
+import { noMailText } from "./obsidian/transform-text";
 import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-bridge";
 import { errorKey, trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
@@ -230,6 +234,12 @@ export function syncIdleStatus(counts: { created: number; reattached: number }, 
   return n > 0 ? t("status.sync.idle", String(n), time) : t("status.sync.idleNoChange", time);
 }
 
+/** Steht der Befehl „Wartende Mails pruefen“ in der Palette? Nur wenn der Schalter nicht Aus ist (sonst wartet nie eine Mail) und die
+ *  Netzfunktionen verfuegbar sind (Desktop). Wie bei den uebrigen netzabhaengigen Befehlen: fehlt er, statt ausgegraut zu stehen. */
+export function waitingCheckAvailable(mode: PseudonymizeMode, platform: Pick<typeof Platform, "isMobile"> = Platform): boolean {
+  return mode !== "off" && networkFeaturesAvailable(platform);
+}
+
 /** Welche Meldungen ein beendeter Sync-Lauf ausgibt. Reine Funktion (kein Obsidian-Zugriff),
  *  damit die Auswahl ohne Plugin-Mock pruefbar ist — dieselbe Begruendung wie bei
  *  `syncFailureStatus`.
@@ -251,10 +261,16 @@ export function syncNotices(
     reattached: acc.reattached + r.counts.reattached,
     detached: acc.detached + r.counts.detached,
     detachSkipped: acc.detachSkipped + r.counts.detachSkipped,
+    waiting: acc.waiting + r.counts.waiting,
     errors: acc.errors + r.counts.errors,
-  }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
+  }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, waiting: 0, errors: 0 });
   const out: SyncNotice[] = [];
-  if (!silent) out.push({ key: "notice.sync.done", args: [sum.created, sum.reattached, sum.detached, sum.errors] });
+  // Wartende Mails (A5) sind ein eigener Satzteil derselben Notice, keine zweite: ohne sie bleibt der Text byte-gleich.
+  if (!silent) {
+    out.push(sum.waiting > 0
+      ? { key: "notice.sync.doneWaiting", args: [sum.created, sum.reattached, sum.detached, sum.errors, sum.waiting] }
+      : { key: "notice.sync.done", args: [sum.created, sum.reattached, sum.detached, sum.errors] });
+  }
   // Im stillen Lauf nur bei VERAENDERTEM Stand: `undetermined > 0` haelt sich von Natur aus ueber
   // viele Laeufe (ein Erstbestand braucht Dutzende, eine Mail ohne bestimmbare ID bleibt es
   // dauerhaft). Bei einem Takt von einer Minute waere die Meldung sonst ein Popup pro Minute —
@@ -302,6 +318,17 @@ export default class MailstonePlugin extends Plugin {
   private writeProfile(): MailProfile {
     return withNoteHeadings(withOwnAddresses(withTaskPreset(this.settings.profile, this.settings.taskPreset), this.ownAddresses()), { notes: t("note.heading.notes"), message: t("note.heading.message") });
   }
+  /** Der Port zum Plugin pseudonymizer (A5): liest die Stellung des Schalters und die Plugin-API frisch je Aufruf. Aus ruft die API nie;
+   *  Verlangt schreibt ohne bereites Plugin nichts (der Kit-Aufruf kapselt den Rueckfall, kein Verbraucher entscheidet ihn selbst). */
+  private pseudonymizePort(): TransformPort {
+    return (req) => pseudonymizeFor(this.app, this.settings.profile.pseudonymize, req, { strings: { lang: getLang() } });
+  }
+
+  /** Der Port der Rueckwandlung (A5, Schritt 5): synchron, liest Stellung und Plugin-API frisch je Aufruf. Bei Aus ohne bereites Plugin bleibt der Text
+   *  unveraendert; mit bereitem Plugin loest auch Aus auf (Kit: eine alte Notiz kann Platzhalter tragen). */
+  private restorePort(): RestorePort {
+    return (text) => restoreFor(this.app, this.settings.profile.pseudonymize, text, TRANSFORM_CALLER, { strings: { lang: getLang() } });
+  }
   api: MailstoneApi | null = null;
   private entladen = false;
 
@@ -345,6 +372,8 @@ export default class MailstonePlugin extends Plugin {
       timers: window,
       now: () => new Date(),
       randomId: () => crypto.randomUUID(),
+      // Rueckwandlung (A5, Schritt 5): gilt fuer jeden Versand ueber den Dienst (iMIP-Bruecke, Testmail); die Plugin-API wandelt vor dem Modal selbst zurueck.
+      restore: this.restorePort(),
       ...(this.settings.debugLog ? { log: (l: string) => console.debug("[mailstone smtp]", l) } : {}),
     });
     this.wireApi();
@@ -365,6 +394,8 @@ export default class MailstonePlugin extends Plugin {
       relink: vaultRelinkDeps(this.app, () => this.settings.profile, hashes),
       // Vorgang-Folgen (A1): nur gerufen, wenn das Konto die Einstellung eingeschaltet hat (Standard aus).
       follow: { context: () => followContext(this.app, this.settings.profile) },
+      // Pseudonymisieren (A5): gerufen nur bei Schalter ungleich Aus, nach dem Logout, vor dem Planen.
+      pseudonymize: this.pseudonymizePort(),
       uidCache: this.uidCache,
       busy: this.busy,
       events: this.syncEvents,
@@ -382,6 +413,7 @@ export default class MailstonePlugin extends Plugin {
 
     if (networkFeaturesAvailable()) {
       this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
+      this.addCommand(this.waitingCommand(notify));
       // Lesend, nur Desktop (A1): zeigt Mails in Posteingang und Gesendet, die zu einem Vorgang im Vault gehoeren.
       this.addCommand({
         id: "mail-showFollowUps",
@@ -481,11 +513,14 @@ export default class MailstonePlugin extends Plugin {
               profile: this.writeProfile(),
               hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
               now: () => new Date(),
+              pseudonymize: this.pseudonymizePort(),
             },
             folder,
           );
           notify.info("import.done", r.created, r.updated, r.skipped.length, r.errors.length);
           if (r.errors.length > 0) notify.error("import.errors", r.errors.length);
+          // Eine Mail, die der Pseudonymizer zurueckstellt, wird nicht importiert (keine halbe Notiz); der Grund der ersten steht in der Meldung.
+          if (r.held.length > 0) notify.error("import.held", r.held.length, noMailText(r.held[0]!));
         } finally {
           await this.saveSettings();
         }
@@ -516,7 +551,8 @@ export default class MailstonePlugin extends Plugin {
       },
       callerLabel: (id) => pluginName(this.app, id),
       consent: (opts) => askSendConsent(this.app, opts, window),
-      send: (accountId, msg) => this.sendService.send(accountId, msg),
+      send: (accountId, msg, opts) => (opts ? this.sendService.send(accountId, msg, opts) : this.sendService.send(accountId, msg)),
+      restore: this.restorePort(),
     });
   }
 
@@ -714,6 +750,8 @@ export default class MailstonePlugin extends Plugin {
       profile: () => this.commandProfile(),
       hashes: this.hashStore(),
       now: () => new Date(),
+      pseudonymize: this.pseudonymizePort(),
+      restore: this.restorePort(),
       ...(networkFeaturesAvailable() ? {
         fetchOriginal: (req) => fetchOriginal({
           accounts: () => this.settings.accounts.map((a) => ({ id: a.id, label: a.label || a.id, folders: { allowlist: a.folders.allowlist, archive: a.folders.archive } })),
@@ -836,12 +874,27 @@ export default class MailstonePlugin extends Plugin {
     }
   }
 
+  /** Der Befehl „Wartende Mails pruefen“ (A5, Schritt 4b): derselbe Lauf wie „Synchronisieren“ (gleicher Busy-Guard, dieselbe Notice), aber
+   *  mit `interactive: true`, damit der Pseudonymizer das Pruefenster fuer die wartenden Mails oeffnen darf. Der Wecker und der normale Befehl
+   *  fragen nie. Als Methode statt im onload(), damit der Befehl testbar ist. */
+  private waitingCommand(notify: Notifier): { id: string; name: string; checkCallback: (checking: boolean) => boolean } {
+    return {
+      id: "check-waiting-mails",
+      name: t("cmd.checkWaiting.name"),
+      checkCallback: (checking: boolean): boolean => {
+        if (!waitingCheckAvailable(this.settings.profile.pseudonymize)) return false;
+        if (!checking) void this.runSync(notify, false, undefined, true);
+        return true;
+      },
+    };
+  }
+
   /** `silent` = Intervall-Lauf: kein Notice bei Erfolg, nur bei Fehlern — sonst poppt alle
    *  fuenf Minuten eine Meldung auf. Der Nutzer sieht das Ergebnis in der Statusleiste.
    *  `only` schraenkt auf bestimmte Konten ein (der Wecker uebergibt die faelligen, das Cockpit
    *  das angeklickte) und laeuft dann OHNE `sync.enabled`-Filter; ohne Angabe laufen alle
    *  aktivierten. Die Auswahl selbst trifft `syncTargets`, dort steht auch die Begruendung. */
-  private async runSync(notify: Notifier, silent = false, only?: readonly string[]): Promise<SyncRunResult[]> {
+  private async runSync(notify: Notifier, silent = false, only?: readonly string[], interactive = false): Promise<SyncRunResult[]> {
     const ziele = syncTargets(this.settings.accounts, only);
     if (ziele.length === 0) { if (!silent) notify.info("notice.sync.noAccounts"); return []; }
     this.status.set(t("status.sync.running"));
@@ -859,7 +912,8 @@ export default class MailstonePlugin extends Plugin {
       // statt sich auf zwei Filter in zwei Modulen zu verteilen — genau die Aufteilung, aus der
       // Befund 2 entstand.
       const results: SyncRunResult[] = [];
-      for (const id of ziele) results.push(await this.syncService.syncAccount(id));
+      // `interactive` (A5, „Wartende Mails pruefen“) erlaubt dem Pseudonymizer sein Pruefenster; ohne Angabe bleibt der Aufruf wie vor A5.
+      for (const id of ziele) results.push(await (interactive ? this.syncService.syncAccount(id, { interactive: true }) : this.syncService.syncAccount(id)));
       for (const r of results) if (!r.ok && !(silent && r.code === "busy")) notify.error(`error.sync.${r.code}`);
       // Scheitern ALLE aktivierten Konten, feuert kein "synced"-Event — die Statusleiste
       // bliebe sonst dauerhaft bei "synchronisiert…" stehen (Fund Fix-Runde 1).

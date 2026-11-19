@@ -40,6 +40,7 @@ export const RERENDER_COMMAND: CommandDescriptor = {
       source: ctx.target.source,
       state: ctx.target.state === "detached" ? "detached" : "live",
       syncedAt: ctx.now,
+      ...(ctx.facts ? { facts: ctx.facts } : {}),
       // ⚠️ Gegenlaeufig zu `mail.relink`, und beides ist so gewollt: dieses Kommando LEITET
       // `in_reply_to`/`references` aus der .eml NEU ab. Ist die Zielnotiz inzwischen geloescht,
       // ersetzt es einen bestehenden Wikilink wieder durch die rohe Message-ID. `relinkOne`

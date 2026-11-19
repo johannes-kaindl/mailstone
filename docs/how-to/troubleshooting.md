@@ -6,6 +6,7 @@
 - [The inbox tab](#the-inbox-tab)
 - [Commands on a mail note](#commands-on-a-mail-note)
 - [Follow threads (copies on the server)](#follow-threads-copies-on-the-server)
+- [Pseudonymization](#pseudonymization)
 - [Sending](#sending)
 - [No network](#no-network)
 - [Mobile](#mobile)
@@ -113,6 +114,24 @@
 
 **Fix:** Enter a plain field name such as `mail_follow` under Settings → Mailstone → Follow field, then run the command again.
 
+### "This is not a valid regular expression. The subject token is ignored until you fix it."
+
+**Cause:** This note appears under Settings → Mailstone → *Thread token in the subject*. The text there is not a regular expression the engine can read (an unclosed bracket or parenthesis, a stray backslash at the end). Until it is fixed, mails are matched by their headers only; the other thread settings are not affected.
+
+**Fix:** Correct the expression, or empty the field to switch the subject token off. The default is `\[Ticket#\d+\]`.
+
+### "This expression could run very long on some subjects (a repeat inside a repeat, or repeats that overlap). The subject token is ignored until you rewrite it."
+
+**Cause:** Mailstone checks the expression before it uses it and refuses shapes that can make a regular expression take exponentially long on some text, such as `(a+)+` or `(\w+\s?)+`. The check is cautious, so a harmless expression can be refused too: several reply prefixes written as one repeated group, `^(?:(?:Re|AW):\s*)+`, are an example. The token is ignored until it is rewritten.
+
+**Fix:** Write the part you need without a repeat inside a repeat, for example `^(?:Re|AW):\s*` for one prefix. For a ticket number, a plain expression such as `\[Ticket#\d+\]` or `Ticket ?#(\d+)` is enough.
+
+### "No fields are passed on. Add a field name under Settings → Fields passed on in a thread first."
+
+**Cause:** *Align fields in thread* copies the fields listed under *Fields passed on in a thread*. The list is empty, or every entry in it is refused: one of the fields Mailstone manages itself (such as `mail_id` or `subject`), the *Thread field* or the *Follow field*, or a name with accents or special characters. The settings page says which, under the list.
+
+**Fix:** Add a plain field name such as `projekt` under Settings → Mailstone → Fields passed on in a thread, then run the command again.
+
 ### "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link."
 
 **Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted. Normally Mailstone then fetches the original from the server instead (desktop), so you see this message only in the rare case where no lookup was attempted.
@@ -185,7 +204,7 @@
 
 ### "No follow-up mails found."
 
-**Cause:** Nothing in the last 60 days in the inbox or sent folder has a `In-Reply-To` or `References` header that points to a mail with a note in your vault, or every such thread is stopped. A mail only counts if its thread is already in the vault; mails of unrelated threads are not listed.
+**Cause:** Nothing in the last 60 days in the inbox or sent folder has an `In-Reply-To` or `References` header that points to a mail with a note in your vault, or a subject token (setting *Thread token in the subject*) that a mail with a note carries, or every such thread is stopped. A mail only counts if its thread is already in the vault; mails of unrelated threads are not listed.
 
 **Fix:** Nothing is broken. To see a stopped thread again, run *Follow this thread again* on any note of it.
 
@@ -215,9 +234,91 @@ The *Sent* folder deserves a second look: the default is `Sent`, and some provid
 
 ### A follow-up mail is never copied
 
-**Cause:** Either its thread is not in your vault yet (a mail only counts if it answers a mail that has a note), the thread is stopped, the mail is older than 60 days, or it has no usable Message-ID (missing, or with characters an IMAP search cannot carry): such a mail cannot be checked for a copy that already exists, so Mailstone leaves it alone. At most 50 mails are copied per run; the rest follows in the next ones.
+**Cause:** Either its thread is not in your vault yet (a mail only counts if it answers a mail that has a note or carries the subject token of one), the thread is stopped, the mail is older than 60 days, or it has no usable Message-ID (missing, or with characters an IMAP search cannot carry): such a mail cannot be checked for a copy that already exists, so Mailstone leaves it alone. At most 50 mails are copied per run; the rest follows in the next ones.
 
 **Fix:** *Show follow-up mails* lists what Mailstone sees. Move a mail into the allowlist folder by hand if it cannot be followed automatically.
+
+## Pseudonymization
+
+The setting *Pseudonymize* hands new mails to the plugin `pseudonymizer` before a note is written. A mail that cannot be pseudonymized is not written at all (no half note, no `.eml`). The plugin `pseudonymizer` is not published yet.
+
+### New mails do not appear as notes while Pseudonymize is on Required
+
+**Cause:** *Required* writes nothing without a ready plugin `pseudonymizer`: it is missing, switched off, not set up or locked, or it wants you to review the mail first (the background sync never opens that window). The mail stays on the server, the sync run counts it as waiting, not as an error, and the next run fetches it again. With *Debug log* on, the console shows a line starting with `transform: waiting` and the reason.
+
+**Fix:** Set up and unlock the plugin `pseudonymizer`, or set *Pseudonymize* to *If available* (plain text while the plugin is not ready) or *Off*. To review a mail the plugin has held back, run *Check waiting mails* (a sync over all accounts that may open the review window), import it with *Import .eml files from a vault folder* or open its note and run *Re-render mail note from its original*: all three may open the review window.
+
+### The sidebar says "{0} waiting", or the sync notice says "{4} waiting for pseudonymization"
+
+**Cause:** That many new mails did not become notes in the last run because the plugin `pseudonymizer` is not ready for them (see the entry above). It is not an error: they are still on the server and the next run fetches them again. In the notice the part reads "… , {4} waiting for pseudonymization ({3} errors)"; in the panel the account line reads "{0} waiting".
+
+**Fix:** Run *Check waiting mails*, or fix the reason as described above.
+
+### "{0} mails were not imported and left untouched: {1}"
+
+**Cause:** *Pseudonymize* is on, and the plugin `pseudonymizer` gave no result for these files. `{1}` names the reason of the first one: "The pseudonymizer plugin is missing or disabled." / "The pseudonymizer plugin is not set up yet." / "The pseudonymizer plugin is locked." / "The plugin pseudonymizer is not ready yet." / "The mail has passages the pseudonymizer wants you to review first." / "The review in the pseudonymizer was cancelled." / "The pseudonymizer could not store its table." The files in the vault folder are not changed.
+
+**Fix:** Fix the reason (set up or unlock the plugin, finish the review) and run the import again; mails that were written already are skipped as unchanged.
+
+### "Nothing was changed: the mail is waiting for pseudonymization. {0}"
+
+**Cause:** A command that reads the original (*Re-render mail note from its original*, *Extract an attachment*) runs the same step as the sync, and the plugin `pseudonymizer` gave no result; `{0}` names the reason (the same texts as in the entry above). The note and the vault are untouched.
+
+**Fix:** Fix the reason and run the command again, or set *Pseudonymize* to *Off*.
+
+### "Nothing was changed: pseudonymization failed. {0}"
+
+**Cause:** The plugin `pseudonymizer` rejected the mail or failed: "The pseudonymizer rejected the mail." / "The pseudonymizer failed unexpectedly." / "The pseudonymizer changed fields Mailstone needs unchanged." / "The pseudonymizer did not return every part of the mail." / "The pseudonymizer gave an unknown answer." During a sync run the same failure counts as one error and the mail is fetched again next time.
+
+**Fix:** Update the plugin `pseudonymizer`. If it persists, switch on *Debug log* and report the reason from the console line starting with `transform: failed`.
+
+### "Nothing was sent: {0} placeholders could not be resolved to the original text. {1}"
+
+**Cause:** A message (sent through the plugin API, the calendar-notes transport or the test mail) contained placeholders of the plugin `pseudonymizer` that Mailstone could not turn back into the original text, so it sent nothing and opened no confirmation dialog. `{0}` is the number of placeholders, `{1}` the reason: "The pseudonymizer plugin is missing or disabled." / "The pseudonymizer plugin is not set up yet." / "The pseudonymizer plugin is locked." / "The plugin pseudonymizer is not ready yet." / "The placeholders are not in the pseudonymizer's table." / "The pseudonymizer reported an error." / "The pseudonymizer failed unexpectedly." A text can also carry placeholders that another device has not synchronised yet. Sending through the plugin API answers `pseudonym-unresolved` with the same text as `message`; the calendar-notes transport and the test mail show "Nothing was sent: a placeholder of the pseudonymizer could not be resolved to the original text."
+
+**Fix:** Unlock or set up the plugin `pseudonymizer`, wait until the device has synchronised its table, and send again.
+
+### "Nothing was sent: placeholders could not be resolved to the original text. {0}"
+
+**Cause:** The same as above, but the plugin gave no number (it is locked, not ready or failed). `{0}` is the reason.
+
+**Fix:** As above.
+
+### "Nothing was sent: the calendar invitation or an attachment contains {0} placeholders of the pseudonymizer. Mailstone does not turn these parts back into the original text."
+
+**Cause:** The ICS part of an invitation (sent through the calendar-notes transport), the name of an attachment or a text attachment contains placeholders of the plugin `pseudonymizer`. Mailstone does not turn these parts back into the original text (a conversion would fold lines and could inject calendar text), and it does not send them with the placeholders in them either. `{0}` is the number of different placeholders; binary attachments are not read.
+
+**Fix:** Create the event or the attachment with the original text instead of the placeholders, then send again.
+
+### "Nothing was sent: {0} placeholders in the recipients belong to forgotten entries."
+
+**Cause:** A recipient (To, Cc or Bcc) is a placeholder of an entry you made the pseudonymizer forget; its address cannot be restored.
+
+**Fix:** Enter the address again, as an address, in the message you send.
+
+### "Nothing was sent: {0} recipient addresses have no usable address after resolving the placeholders."
+
+**Cause:** A recipient was a placeholder, and the entry behind it holds a name or a value that is not an e-mail address (for example a placeholder that belongs to nobody).
+
+**Fix:** Give the recipient as an address, or add the address to the entry in the pseudonymizer.
+
+### "{0} placeholders of forgotten entries are sent as placeholders."
+
+**Cause:** This line in the confirmation dialog for a plugin's message says that the subject or text contains placeholders of forgotten entries: they cannot be turned back and go out as they are. A trusted plugin sends without a dialog, so without this line.
+
+**Fix:** Cancel and ask the sending plugin to leave the passage out, or send as is.
+
+### "Nothing was opened: the sender address or the subject still contains placeholders that cannot be resolved to the original text."
+
+**Cause:** *Reply to a mail in the external mail client* turns the sender and subject of the note back into the original text before it builds the link. A placeholder could not be resolved (unknown, the plugin is locked or missing, an entry was forgotten, or the sender has no address after the conversion), so no mail client opened.
+
+**Fix:** Unlock or set up the plugin `pseudonymizer` and run the command again, or write to the sender by hand.
+
+### There is no .eml next to a new note although *Save original as .eml* is on
+
+**Cause:** While *Pseudonymize* is not *Off*, no `.eml` is stored, because an original is plain text. The choice under *Save original as .eml* stays saved and has no effect.
+
+**Fix:** Nothing is broken. Set *Pseudonymize* to *Off* to get stored originals again. *Remove stored .eml files* moves the ones you already have to the trash.
 
 ## Sending
 
