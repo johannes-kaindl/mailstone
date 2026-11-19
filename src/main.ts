@@ -254,10 +254,16 @@ export function syncNotices(
     reattached: acc.reattached + r.counts.reattached,
     detached: acc.detached + r.counts.detached,
     detachSkipped: acc.detachSkipped + r.counts.detachSkipped,
+    waiting: acc.waiting + r.counts.waiting,
     errors: acc.errors + r.counts.errors,
-  }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, errors: 0 });
+  }), { created: 0, reattached: 0, detached: 0, detachSkipped: 0, waiting: 0, errors: 0 });
   const out: SyncNotice[] = [];
-  if (!silent) out.push({ key: "notice.sync.done", args: [sum.created, sum.reattached, sum.detached, sum.errors] });
+  // Wartende Mails (A5) sind ein eigener Satzteil derselben Notice, keine zweite: ohne sie bleibt der Text byte-gleich.
+  if (!silent) {
+    out.push(sum.waiting > 0
+      ? { key: "notice.sync.doneWaiting", args: [sum.created, sum.reattached, sum.detached, sum.errors, sum.waiting] }
+      : { key: "notice.sync.done", args: [sum.created, sum.reattached, sum.detached, sum.errors] });
+  }
   // Im stillen Lauf nur bei VERAENDERTEM Stand: `undetermined > 0` haelt sich von Natur aus ueber
   // viele Laeufe (ein Erstbestand braucht Dutzende, eine Mail ohne bestimmbare ID bleibt es
   // dauerhaft). Bei einem Takt von einer Minute waere die Meldung sonst ein Popup pro Minute —

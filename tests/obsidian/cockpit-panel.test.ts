@@ -122,6 +122,23 @@ describe("CockpitPanel — Zeileninhalt", () => {
     expect(text).toBe("3 neu · 7 abgelöst");
   });
 
+  it("zeigt wartende Mails in der Statuszeile des Kontos, deutsch und englisch, nur bei N > 0 (A5, Schritt 4a)", () => {
+    const rs: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 1, waiting: 2 } } };
+    const el = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")], runState: () => rs })).mount(el);
+    expect(String(findAll(el, "mailstone-cockpit-counts")[0].textContent)).toBe("1 neu · 2 warten");
+    const ohne: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 1 } } };
+    const el2 = makeFakeEl();
+    new CockpitPanel(fakeHost({ accounts: () => [acc("a")], runState: () => ohne })).mount(el2);
+    expect(String(findAll(el2, "mailstone-cockpit-counts")[0].textContent)).not.toContain("warten");
+    initI18n("en");
+    try {
+      const el3 = makeFakeEl();
+      new CockpitPanel(fakeHost({ accounts: () => [acc("a")], runState: () => rs })).mount(el3);
+      expect(String(findAll(el3, "mailstone-cockpit-counts")[0].textContent)).toBe("1 new · 2 waiting");
+    } finally { initI18n("de"); }
+  });
+
   it("sagt bei abgeschaltetem Auto-Abgleich, dass er aus ist — statt eine Uhrzeit zu erfinden", () => {
     const el = makeFakeEl();
     new CockpitPanel(fakeHost({ accounts: () => [acc("a", "Konto", false)], nextDueAt: () => null })).mount(el);

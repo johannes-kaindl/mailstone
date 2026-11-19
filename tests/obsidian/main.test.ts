@@ -173,6 +173,30 @@ describe("syncNotices", () => {
     ]);
   });
 
+  it("haengt wartende Mails als eigenen Satzteil an die Zusammenfassung, nur bei N > 0 und ohne zweite Notice (A5, Schritt 4a)", () => {
+    expect(syncNotices([okRun({ created: 1, waiting: 2 })], false).notices).toEqual([
+      { key: "notice.sync.doneWaiting", args: [1, 0, 0, 0, 2] },
+    ]);
+    // summiert ueber Konten
+    expect(syncNotices([okRun({ waiting: 1 }), okRun({ waiting: 2 })], false).notices).toEqual([
+      { key: "notice.sync.doneWaiting", args: [0, 0, 0, 0, 3] },
+    ]);
+    // ohne Wartende bleibt die Notice byte-gleich
+    expect(syncNotices([okRun({ created: 1 })], false).notices).toEqual([{ key: "notice.sync.done", args: [1, 0, 0, 0] }]);
+  });
+
+  it("der stille Lauf schweigt auch bei Wartenden (der Stand steht im Cockpit)", () => {
+    expect(syncNotices([okRun({ waiting: 4 })], true).notices).toEqual([]);
+  });
+
+  it("die Texte der Zusammenfassung mit Wartenden stehen in beiden Sprachen", () => {
+    expect(t("notice.sync.doneWaiting", 1, 2, 3, 4, 5)).toBe("1 neu, 2 wieder verbunden, 3 abgelöst, 5 warten (4 Fehler)");
+    initI18n("en");
+    try {
+      expect(t("notice.sync.doneWaiting", 1, 2, 3, 4, 5)).toBe("1 new, 2 reattached, 3 detached, 5 waiting for pseudonymization (4 errors)");
+    } finally { initI18n("de"); }
+  });
+
   it("meldet nichts, wenn kein Konto erfolgreich war (der Fehlertext kommt aus syncFailureStatus)", () => {
     expect(syncNotices([{ ok: false, accountId: "a1", code: "auth" }], false).notices).toEqual([]);
   });

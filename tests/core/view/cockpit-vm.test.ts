@@ -93,6 +93,22 @@ describe("buildCockpitViewModel — Zaehlerverdichtung", () => {
     expect(vm.rows[0]?.countsArgs).toEqual([]);
   });
 
+  it("nennt wartende Mails nur bei N > 0 und vor den Fehlern (A5, Schritt 4a)", () => {
+    const rs: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 1, waiting: 3, errors: 2 } } };
+    const vm = buildCockpitViewModel({ accounts: [acc("a")], runState: rs, nextDue: keineFaelligkeit, busy: false });
+    expect(vm.rows[0]?.countsKey).toBe("cockpit.counts.created cockpit.counts.waiting cockpit.counts.errors");
+    expect(vm.rows[0]?.countsArgs).toEqual([1, 3, 2]);
+    const keine: RunState = { a: { at: 100, ok: true, counts: { ...NIX, created: 1 } } };
+    expect(buildCockpitViewModel({ accounts: [acc("a")], runState: keine, nextDue: keineFaelligkeit, busy: false }).rows[0]?.countsKey).toBe("cockpit.counts.created");
+  });
+
+  it("wartende Mails allein sind kein Fehler: der Zustand bleibt ok", () => {
+    const rs: RunState = { a: { at: 100, ok: true, counts: { ...NIX, waiting: 2 } } };
+    const vm = buildCockpitViewModel({ accounts: [acc("a")], runState: rs, nextDue: keineFaelligkeit, busy: false });
+    expect(vm.rows[0]?.state).toBe("ok");
+    expect(vm.rows[0]?.countsKey).toBe("cockpit.counts.waiting");
+  });
+
   it("zeigt fuer einen gescheiterten Lauf keine Zaehler", () => {
     const rs: RunState = { a: { at: 100, ok: false, code: "connect", counts: NIX } };
     const vm = buildCockpitViewModel({ accounts: [acc("a")], runState: rs, nextDue: keineFaelligkeit, busy: false });
