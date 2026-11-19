@@ -47,7 +47,7 @@ function setup(mode: PseudonymizeMode, port: TransformPort | undefined, index: M
   const log: string[] = [];
   const svc = createSyncService({
     accounts: () => [account()],
-    profile: () => ({ ...withOwnAddresses(defaultMailProfile(), ["ich@eigen.example"]), pseudonymize: mode }),
+    profile: () => ({ ...withOwnAddresses(defaultMailProfile(), ["ich@eigen.example", "erika@kunde.example"]), pseudonymize: mode }),
     secret: () => "geheim", transport: () => fake, index: () => index, takenPaths: () => new Set<string>(),
     executor: () => exec.executor, uidCache, busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
     now: () => new Date("2026-08-30T09:00:00Z"), log: (l) => { log.push(l); },
@@ -71,6 +71,7 @@ describe("SyncService — Pseudonymisieren (A5)", () => {
     expect(exec.seen[0]).toMatchObject({ kind: "create", mailId: "neu@example.net" });
     const p = exec.seen[0] as Extract<NotePlan, { kind: "create" }>;
     expect(p.emlPath).not.toBeNull();
+    expect(new TextDecoder().decode(p.eml)).toBe(EML); // die Original-Bytes reisen mit, byte-gleich zu vor A5
     expect(p.content).toContain("Hallo Erika");
   });
 
@@ -82,7 +83,8 @@ describe("SyncService — Pseudonymisieren (A5)", () => {
     expect(p.emlPath).toBeNull();
     expect(p.content).toContain("Hallo Person_k3");
     expect(p.content).not.toContain("Erika");
-    expect(p.content).toContain("richtung: eingehend");
+    // Der Fake ersetzt den Absender durch Platzhalter; die Richtung kommt trotzdem aus der Original-Mail (Absender = eigene Adresse).
+    expect(p.content).toContain("richtung: ausgehend");
     expect(p.eml.byteLength).toBe(0); // das Original-Klartext-Bytepaket reist nicht mit
   });
 

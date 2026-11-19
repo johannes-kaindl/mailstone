@@ -107,6 +107,7 @@ Globale Einstellungen:
 | Notiz-Ordner | Wo Mail-Notizen entstehen, je Jahr ein Unterordner | `Mail` |
 | Unterordner je Jahr | Schaltet die Jahres-Unterordner ab | an |
 | Original als .eml speichern | Legt das Original neben jede neue Notiz. Aus: keine zweite Kopie der personenbezogenen Daten im Vault; *Neu aufbauen* und *Anhang extrahieren* holen das Original dann per Message-ID vom Server (nur Desktop, nur lesend), und *Gespeicherte .eml-Dateien entfernen* legt die vorhandenen in den Papierkorb. Mails ohne Message-ID behalten ihre `.eml` | an |
+| Pseudonymisieren | Aus, Wenn verfügbar oder Verlangt: neue Mails (und der Import sowie *Neu aufbauen*) gehen durch das Plugin `pseudonymizer`, bevor eine Notiz geschrieben wird. Bei allem außer Aus **wird keine `.eml` gespeichert** (ein Original ist Klartext), egal was *Original als .eml speichern* sagt. Siehe *Pseudonymisierung (optional)* | Aus |
 | Vorgangsfeld | Frontmatter-Feld, das jede Mail-Notiz mit der frühesten Mail ihres Vorgangs verknüpft, die erste Mail mit sich selbst. Wird beim Anlegen gefüllt; *Vorgänge neu berechnen* trägt es in bestehenden Notizen nach. Leer schaltet Vorgänge aus | leer |
 | Vorgangs-Kennung im Betreff | Regulärer Ausdruck für eine Kennung im Betreff, etwa eine Ticketnummer. Mails mit derselben Kennung gehören zu einem Vorgang, und *Folge-Mails anzeigen* und *Vorgängen folgen* finden Mails mit ihr, auch wenn ihre Header sie nicht verbinden; die Header gehen vor. Hat der Ausdruck eine Gruppe, ist deren Inhalt die Kennung (`Ticket #(\d+)` ergibt die Nummer). Ein ungültiger Ausdruck oder einer, der bei manchen Betreffs sehr lange laufen könnte, wird ignoriert, und ein Hinweis unter der Zeile sagt es. Leer: nur Header | `\[Ticket#\d+\]` |
 | Folgen-Feld | Frontmatter-Feld an der ersten Mail eines Vorgangs. `false` heißt dort: diesem Vorgang nicht mehr folgen. *Diesem Vorgang nicht mehr folgen* und *Diesem Vorgang wieder folgen* setzen und entfernen es. Ein beendeter Vorgang fehlt in *Folge-Mails anzeigen* und wird von *Vorgängen folgen* nicht kopiert. Leer schaltet diese beiden Befehle aus | `mail_follow` |
@@ -119,6 +120,10 @@ Globale Einstellungen:
 | Beim Start öffnen | Öffnet das Seitenleisten-Panel beim Start von Obsidian | aus |
 | Debug-Protokoll | Schreibt den IMAP-/SMTP-Dialog in die Entwicklerkonsole, Passwörter maskiert | aus |
 | Sprache | Oberflächensprache | Automatisch |
+
+## Pseudonymisierung (optional)
+
+Mailstone kann jede neue Mail vor dem Schreiben der Notiz an ein eigenes Plugin, `pseudonymizer`, übergeben, damit Namen, Adressen und ähnliche Angaben in Betreff, Absender, Empfängern, Anhangsnamen und Text zu Platzhaltern werden. Die Einstellung *Pseudonymisieren* hat drei Stellungen: *Aus* (Vorgabe; Mailstone nutzt das Plugin nicht), *Wenn verfügbar* (pseudonymisieren, solange das Plugin bereit ist, sonst Klartext schreiben) und *Verlangt* (ohne bereites Plugin wird keine neue Mail geschrieben; sie wartet auf dem Server, und der nächste Sync-Lauf holt sie wieder). Solange die Einstellung nicht *Aus* ist, wird keine `.eml` gespeichert, denn ein Original ist Klartext. Das Plugin `pseudonymizer` ist noch nicht veröffentlicht, *Verlangt* schreibt daher keine neue Mail, bis es existiert und bereit ist; bis dahin bleibt die Einstellung auf *Aus*.
 
 ## Dokumentation
 

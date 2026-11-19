@@ -6,6 +6,7 @@
 - [The inbox tab](#the-inbox-tab)
 - [Commands on a mail note](#commands-on-a-mail-note)
 - [Follow threads (copies on the server)](#follow-threads-copies-on-the-server)
+- [Pseudonymization](#pseudonymization)
 - [Sending](#sending)
 - [No network](#no-network)
 - [Mobile](#mobile)
@@ -236,6 +237,40 @@ The *Sent* folder deserves a second look: the default is `Sent`, and some provid
 **Cause:** Either its thread is not in your vault yet (a mail only counts if it answers a mail that has a note or carries the subject token of one), the thread is stopped, the mail is older than 60 days, or it has no usable Message-ID (missing, or with characters an IMAP search cannot carry): such a mail cannot be checked for a copy that already exists, so Mailstone leaves it alone. At most 50 mails are copied per run; the rest follows in the next ones.
 
 **Fix:** *Show follow-up mails* lists what Mailstone sees. Move a mail into the allowlist folder by hand if it cannot be followed automatically.
+
+## Pseudonymization
+
+The setting *Pseudonymize* hands new mails to the plugin `pseudonymizer` before a note is written. A mail that cannot be pseudonymized is not written at all (no half note, no `.eml`). The plugin `pseudonymizer` is not published yet.
+
+### New mails do not appear as notes while Pseudonymize is on Required
+
+**Cause:** *Required* writes nothing without a ready plugin `pseudonymizer`: it is missing, switched off, not set up or locked, or it wants you to review the mail first (the background sync never opens that window). The mail stays on the server, the sync run counts it as waiting, not as an error, and the next run fetches it again. With *Debug log* on, the console shows a line starting with `transform: waiting` and the reason.
+
+**Fix:** Set up and unlock the plugin `pseudonymizer`, or set *Pseudonymize* to *If available* (plain text while the plugin is not ready) or *Off*. To review a mail the plugin has held back, import it with *Import .eml files from a vault folder* or open its note and run *Re-render mail note from its original*: both may open the review window.
+
+### "{0} mails were not imported and left untouched: {1}"
+
+**Cause:** *Pseudonymize* is on, and the plugin `pseudonymizer` gave no result for these files. `{1}` names the reason of the first one: "The plugin pseudonymizer is missing or switched off." / "The plugin pseudonymizer is not set up yet." / "The plugin pseudonymizer is locked." / "The plugin pseudonymizer is not ready yet." / "The mail has passages the pseudonymizer wants you to review first." / "The review in the pseudonymizer was cancelled." / "The pseudonymizer could not store its table." The files in the vault folder are not changed.
+
+**Fix:** Fix the reason (set up or unlock the plugin, finish the review) and run the import again; mails that were written already are skipped as unchanged.
+
+### "Nothing was changed: the mail is waiting for pseudonymization. {0}"
+
+**Cause:** A command that reads the original (*Re-render mail note from its original*, *Extract an attachment*) runs the same step as the sync, and the plugin `pseudonymizer` gave no result; `{0}` names the reason (the same texts as in the entry above). The note and the vault are untouched.
+
+**Fix:** Fix the reason and run the command again, or set *Pseudonymize* to *Off*.
+
+### "Nothing was changed: pseudonymization failed. {0}"
+
+**Cause:** The plugin `pseudonymizer` rejected the mail or failed: "The pseudonymizer rejected the mail." / "The pseudonymizer failed unexpectedly." / "The pseudonymizer changed fields Mailstone needs unchanged." / "The pseudonymizer did not return every part of the mail." / "The pseudonymizer gave an unknown answer." During a sync run the same failure counts as one error and the mail is fetched again next time.
+
+**Fix:** Update the plugin `pseudonymizer`. If it persists, switch on *Debug log* and report the reason from the console line starting with `transform: failed`.
+
+### There is no .eml next to a new note although *Save original as .eml* is on
+
+**Cause:** While *Pseudonymize* is not *Off*, no `.eml` is stored, because an original is plain text. The choice under *Save original as .eml* stays saved and has no effect.
+
+**Fix:** Nothing is broken. Set *Pseudonymize* to *Off* to get stored originals again. *Remove stored .eml files* moves the ones you already have to the trash.
 
 ## Sending
 

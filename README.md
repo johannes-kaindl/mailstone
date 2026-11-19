@@ -105,6 +105,7 @@ Global settings:
 | Notes folder | Where mail notes are created, in a subfolder per year | `Mail` |
 | Subfolder per year | Turns the year subfolders off | on |
 | Save original as .eml | Writes the original next to each new note. Off: no second copy of the personal data in the vault; *Re-render* and *Extract an attachment* then fetch the original from the server by Message-ID (desktop only, read-only), and *Remove stored .eml files* trashes the ones you already have. Mails without a Message-ID keep their `.eml` | on |
+| Pseudonymize | Off, If available or Required: new mails (and the import and *Re-render*) go through the plugin `pseudonymizer` before a note is written. With anything but Off, **no `.eml` is stored** (an original is plain text), whatever *Save original as .eml* says. See *Pseudonymization (optional)* | Off |
 | Thread field | Front matter field that links every mail note to the earliest mail of its thread, the first mail to itself. Filled in when a note is created; *Recompute threads* fills it in for existing notes. Empty switches threads off | empty |
 | Thread token in the subject | Regular expression for a token in the subject, such as a ticket number. Mails with the same token belong to one thread, and *Show follow-up mails* and *Follow threads* find mails with it, even when their headers do not link them; headers come first. With a group in the expression its content is the token (`Ticket #(\d+)` gives the number). An invalid expression, or one that could run very long on some subjects, is ignored and a note under the row says so. Empty: headers only | `\[Ticket#\d+\]` |
 | Follow field | Front matter field on the first mail of a thread. `false` there means: stop following this thread. *Stop following this thread* and *Follow this thread again* set and remove it. A stopped thread is left out of *Show follow-up mails* and is not copied by *Follow threads*. Empty switches these two commands off | `mail_follow` |
@@ -117,6 +118,10 @@ Global settings:
 | Open the panel at startup | Opens the sidebar panel when Obsidian starts | off |
 | Debug log | Writes the IMAP/SMTP dialogue to the developer console, passwords masked | off |
 | Language | Interface language | Automatic |
+
+## Pseudonymization (optional)
+
+Mailstone can hand every new mail to a separate plugin, `pseudonymizer`, before the note is written, so that names, addresses and similar details in the subject, sender, recipients, attachment names and text become placeholders. The setting *Pseudonymize* has three positions: *Off* (the default; Mailstone does not use the plugin), *If available* (pseudonymize while the plugin is ready, otherwise write plain text) and *Required* (without a ready plugin no new mail is written; it waits on the server and the next sync run fetches it again). While the setting is not *Off*, no `.eml` is stored, because an original is plain text. The plugin `pseudonymizer` is not published yet, so *Required* writes no new mail until it exists and is ready; leave the setting *Off* until then.
 
 ## Documentation
 
