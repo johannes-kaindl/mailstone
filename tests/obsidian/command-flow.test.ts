@@ -394,7 +394,8 @@ describe("buildContext: Pseudonymisieren (A5)", () => {
     const app = await vaultWithNote();
     const r = await buildContext({ ...deps(app), profile: () => pseudo("required"), pseudonymize: () => Promise.resolve({ kind: "wait", reason: "locked", message: "gesperrt" }) }, RERENDER_COMMAND, fileOf(app));
     expect(r).toEqual({ ok: false, code: "error.command.pseudonymize-wait", detail: noMailText({ kind: "wait", reason: "locked", message: "gesperrt" }) });
-    expect(noMailText({ kind: "wait", reason: "locked", message: "gesperrt" })).not.toBe("gesperrt"); // bekannter Grund: der uebersetzte Text
+    expect(noMailText({ kind: "wait", reason: "locked", message: "gesperrt" })).toBe("gesperrt"); // Kit-Grund: die Meldung des Kits (Sprache reicht main.ts hinein)
+    expect(noMailText({ kind: "wait", reason: "deferred", message: "Meldung des Plugins" })).not.toBe("Meldung des Plugins"); // Mailstones Kontext: der uebersetzte Text
     expect(noMailText({ kind: "wait", reason: "unbekannt-xyz", message: "Meldung des Plugins" })).toBe("Meldung des Plugins"); // unbekannter Grund: die Meldung selbst
   });
 

@@ -1,7 +1,7 @@
 import { Notice, Platform, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
 import { loadSettings, onCreateInvalidValues, rawOnCreate, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
-import { t } from "./vendor/code-kit/i18n";
+import { getLang, t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
 import { importEmlFolder } from "./obsidian/import-eml";
 import { noticeNotifier, type Notifier } from "./obsidian/notifier";
@@ -321,13 +321,13 @@ export default class MailstonePlugin extends Plugin {
   /** Der Port zum Plugin pseudonymizer (A5): liest die Stellung des Schalters und die Plugin-API frisch je Aufruf. Aus ruft die API nie;
    *  Verlangt schreibt ohne bereites Plugin nichts (der Kit-Aufruf kapselt den Rueckfall, kein Verbraucher entscheidet ihn selbst). */
   private pseudonymizePort(): TransformPort {
-    return (req) => pseudonymizeFor(this.app, this.settings.profile.pseudonymize, req);
+    return (req) => pseudonymizeFor(this.app, this.settings.profile.pseudonymize, req, { strings: { lang: getLang() } });
   }
 
   /** Der Port der Rueckwandlung (A5, Schritt 5): synchron, liest Stellung und Plugin-API frisch je Aufruf. Bei Aus ohne bereites Plugin bleibt der Text
    *  unveraendert; mit bereitem Plugin loest auch Aus auf (Kit: eine alte Notiz kann Platzhalter tragen). */
   private restorePort(): RestorePort {
-    return (text) => restoreFor(this.app, this.settings.profile.pseudonymize, text, TRANSFORM_CALLER);
+    return (text) => restoreFor(this.app, this.settings.profile.pseudonymize, text, TRANSFORM_CALLER, { strings: { lang: getLang() } });
   }
   api: MailstoneApi | null = null;
   private entladen = false;

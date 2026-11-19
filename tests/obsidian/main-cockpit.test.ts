@@ -215,6 +215,19 @@ describe("Port der Rueckwandlung (A5, Schritt 5)", () => {
     expect(plugin.restorePort()("Hallo Welt")).toEqual({ kind: "release", text: "Hallo Welt", forgotten: [] });
   });
 
+  it("die Meldung des Kits folgt der Oberflaechensprache (restore und transform)", async () => {
+    const { plugin } = aufbau([], undefined, mitApp());
+    plugin.settings.profile.pseudonymize = "required";
+    try {
+      initI18n("en");
+      expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toMatchObject({ message: expect.stringContaining("The pseudonymizer plugin is missing or disabled.") });
+      expect(await plugin.pseudonymizePort()({ parts: [] })).toMatchObject({ kind: "wait", reason: "absent", message: "The pseudonymizer plugin is missing or disabled." });
+      initI18n("de");
+      expect(plugin.restorePort()("Hallo Person_k3x9m2ab7q")).toMatchObject({ message: expect.stringContaining("Das Plugin pseudonymizer fehlt oder ist abgeschaltet.") });
+      expect(await plugin.pseudonymizePort()({ parts: [] })).toMatchObject({ kind: "wait", reason: "absent", message: "Das Plugin pseudonymizer fehlt oder ist abgeschaltet." });
+    } finally { initI18n("de"); }
+  });
+
   it("liest den Schalter frisch je Aufruf", () => {
     const { plugin } = aufbau([], undefined, mitApp());
     const port = plugin.restorePort();
