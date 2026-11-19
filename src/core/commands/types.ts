@@ -2,6 +2,7 @@ import type { ParsedMail } from "../mime/types";
 import type { NotePlan } from "../mirror/plan";
 import type { MailProfile } from "../mirror/profile";
 import type { OriginalFacts } from "../transform/original-facts";
+import type { RestorePort } from "../transform/restore";
 import type { ObjectSchema } from "./schema";
 import { EMPTY_SCHEMA } from "./schema";
 
@@ -20,6 +21,7 @@ export type CommandErrorCode =
   | "frontmatter-unparseable"  // verwalteter Key liegt als Block-Skalar vor (Merge-Regel 2)
   | "attachment-missing"       // gewaehlter Anhang liegt nicht in der .eml
   | "no-recipient"             // keine Absenderadresse zum Antworten
+  | "restore-held"             // ein Platzhalter des Pseudonymizers liess sich nicht zurueckwandeln (A5): keine Antwort geoeffnet
   | "tasknotes-unavailable"    // TaskNotes fehlt oder die Formpruefung ist durchgefallen
   | "task-create-failed"       // tasks.create hat abgelehnt oder geworfen
   | "no-choices"               // ein Auswahlfeld hat KEINE Option — das Formular waere unbedienbar
@@ -101,6 +103,9 @@ export interface CommandContext extends CommandProbe {
   /** Nur gefuellt bei `needs.eml` UND eingeschaltetem Pseudonymisieren (A5): Werte aus der ORIGINAL-Mail (Richtung, Vorgangs-Token), weil die
    *  transformierte `mail` in `from` und `subject` Platzhalter traegt. Fehlt es, leitet die Ableitung sie aus `mail` selbst ab. */
   facts?: OriginalFacts;
+  /** Rueckwandlung (A5, Schritt 5): ersetzt Platzhalter des Pseudonymizers durch den Klartext, bevor etwas hinausgeht (`mail.replyExternal`). Fehlt der
+   *  Port, bleibt der Text unveraendert. */
+  restore?: RestorePort;
   /** Nur gefuellt bei `needs.allNotes`. */
   notes?: readonly MailNoteRef[];
 }

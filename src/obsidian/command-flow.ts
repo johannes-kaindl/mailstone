@@ -8,6 +8,7 @@ import type { FetchOriginalRequest, FetchOriginalResult } from "../core/original
 import type { MailProfile } from "../core/mirror/profile";
 import { transformMail, type TransformPort } from "../core/transform/transform-mail";
 import type { OriginalFacts } from "../core/transform/original-facts";
+import type { RestorePort } from "../core/transform/restore";
 import type { ParsedMail } from "../core/mime/types";
 import { noMailText } from "./transform-text";
 import { SchemaFormModal } from "./modals/schema-form-modal";
@@ -29,6 +30,8 @@ export interface CommandFlowDeps {
   /** Pseudonymisieren (A5): der Port zum Plugin pseudonymizer. Gerufen wird er nur bei `profile.pseudonymize !== "off"`, mit `interactive: true`
    *  (ein Befehl ist die Handlung eines Menschen). Fehlt er bei eingeschaltetem Schalter, liefert `buildContext` nie die Klartext-Mail. */
   pseudonymize?: TransformPort;
+  /** Rueckwandlung (A5, Schritt 5): kommt als `ctx.restore` bei jedem Kommando an, das etwas hinausgibt (`mail.replyExternal`). */
+  restore?: RestorePort;
 }
 
 export type RunResult =
@@ -216,6 +219,7 @@ export async function buildContext(
       },
       ...(mail ? { mail } : {}),
       ...(facts ? { facts } : {}),
+      ...(deps.restore ? { restore: deps.restore } : {}),
       ...(notes ? { notes } : {}),
     },
   };

@@ -751,6 +751,7 @@ export default class MailstonePlugin extends Plugin {
       hashes: this.hashStore(),
       now: () => new Date(),
       pseudonymize: this.pseudonymizePort(),
+      restore: this.restorePort(),
       ...(networkFeaturesAvailable() ? {
         fetchOriginal: (req) => fetchOriginal({
           accounts: () => this.settings.accounts.map((a) => ({ id: a.id, label: a.label || a.id, folders: { allowlist: a.folders.allowlist, archive: a.folders.archive } })),

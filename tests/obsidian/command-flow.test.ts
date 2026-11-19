@@ -95,6 +95,15 @@ describe("buildContext", () => {
     expect(r.ok && r.ctx.notes?.[0]?.frontmatter["mail_id"]).toBeDefined();
   });
 
+  it("reicht den Port der Rueckwandlung als ctx.restore weiter (A5, Schritt 5); ohne Port fehlt das Feld", async () => {
+    const app = await vaultWithNote();
+    const restore = (text: string) => ({ kind: "release" as const, text, forgotten: [] });
+    const mit = await buildContext({ ...deps(app), restore }, RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(mit.ok && mit.ctx.restore).toBe(restore);
+    const ohne = await buildContext(deps(app), RELINK_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/x.md"));
+    expect(ohne.ok && "restore" in ohne.ctx).toBe(false);
+  });
+
   it("laedt KEINE .eml fuer ein Kommando ohne needs.eml", async () => {
     const app = await vaultWithNote();
     const spy = vi.spyOn(app.vault, "readBinary");
