@@ -382,7 +382,7 @@ export default class MailstonePlugin extends Plugin {
 
     if (networkFeaturesAvailable()) {
       this.addCommand({ id: "sync-mailbox", name: t("cmd.sync.name"), callback: () => void this.runSync(notify) });
-      // Lesend, nur Desktop (A1, Vorstufe): zeigt Mails in Posteingang und Gesendet, die zu einem Vorgang im Vault gehoeren.
+      // Lesend, nur Desktop (A1): zeigt Mails in Posteingang und Gesendet, die zu einem Vorgang im Vault gehoeren.
       this.addCommand({
         id: "mail-showFollowUps",
         name: t("cmd.showFollowUps.name"),

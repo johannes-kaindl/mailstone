@@ -1,6 +1,6 @@
-// „Diesem Vorgang nicht mehr folgen“ / „wieder folgen“ (A1, Welle 36) — eine VORSTUFE. Die Markierung steht an der
-// Wurzel-Notiz des Vorgangs (`followField: false`); heute wirkt sie nur auf „Folge-Mails anzeigen“. Das automatische
-// Folgen, das sie einmal beenden soll, kommt mit der Uebernahme der Folge-Mails.
+// „Diesem Vorgang nicht mehr folgen“ / „wieder folgen“ (A1, Welle 36). Die Markierung steht an der Wurzel-Notiz des
+// Vorgangs (`followField: false`); sie wirkt auf „Folge-Mails anzeigen“ (der Vorgang wird ausgeblendet) und auf
+// „Vorgängen folgen“ (Kontoeinstellung: der Sync kopiert für ihn keine Folge-Mails mehr in den Allowlist-Ordner).
 //
 // Beide Befehle schreiben nur Frontmatter (E1: das Feld wird angelegt, wo es fehlt; E2: `false` als YAML-Literal), an der
 // Wurzel des Vorgangs der aktiven Notiz, nach Vorschau. Die Zone und ihr gespeicherter Hash bleiben stehen.
@@ -59,7 +59,7 @@ export const STOP_FOLLOWING_COMMAND: CommandDescriptor = {
   id: "mail.stopFollowing",
   title: "Stop following this thread",
   titleKey: "cmd.mail.stopFollowing.title",
-  description: "Marks the first mail of this thread so that Mailstone no longer lists follow-up mails for it. For now this only affects “Show follow-up mails”; following automatically comes later.",
+  description: "Marks the first mail of this thread (front matter “false” in the follow field) so that no follow-up mails are listed for it any more and “Follow threads” (account setting) no longer copies them.",
   descriptionKey: "cmd.mail.stopFollowing.desc",
   schema: EMPTY_SCHEMA,
   needs: { allNotes: true, threads: true },

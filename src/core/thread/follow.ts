@@ -1,12 +1,13 @@
 // Mails auf dem Server finden, die zu einem Vorgang im Vault gehoeren, aber noch keine Notiz haben
 // (A1, Welle 36, gemeinsamer Lesepfad). Rein lesend und ohne Schreibzugriff: examine, search since,
 // BODY.PEEK-Koepfe. Die Zuordnung laeuft nur ueber Header (`threadOf`); eine Betreff-Kennung gibt es hier noch nicht.
+// Zwei Abnehmer: „Folge-Mails anzeigen“ (`follow-run.ts`) und das Kopieren in den Allowlist-Ordner (`follow-copy.ts`).
 import type { ImapReadSession } from "../imap/client";
 import type { ImapErrorCode } from "../imap/types";
 import { parseEml } from "../mime/parse";
 import { threadOf, type ThreadIndex } from "./group";
 
-/** Suchfenster in Tagen. Eine Einstellung wird es erst, wenn die Uebernahme kommt. */
+/** Suchfenster in Tagen. Noch keine Einstellung. */
 export const FOLLOW_WINDOW_DAYS = 60;
 /** Hoechstens so viele Koepfe je Ordner (die neuesten); wie `MAX_HEADER_FETCH_PER_RUN` im Sync. */
 export const MAX_FOLLOW_HEADERS = 2000;

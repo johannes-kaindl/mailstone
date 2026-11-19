@@ -18,7 +18,7 @@ export interface MailProfile {
    *  ihn nicht neu. Wirksam ist nur ein brauchbarer Name (`effectiveThreadField`). */
   threadField: string;
   /** Frontmatter-Feld der Wurzel-Notiz, das einen Vorgang beendet (A1): steht dort `false`, folgt Mailstone diesem Vorgang
-   *  nicht mehr (heute: „Folge-Mails anzeigen“ blendet ihn aus). Standard `mail_follow`; leer = die Befehle sind aus.
+   *  nicht mehr („Folge-Mails anzeigen“ blendet ihn aus, „Vorgängen folgen“ kopiert für ihn nichts mehr). Standard `mail_follow`; leer = die Befehle sind aus.
    *  Kein verwaltetes Feld, am Vault-Stand wie `threadField`. Wirksam ist nur ein brauchbarer Name (`effectiveFollowField`). */
   followField: string;
   filename: string; // Default "{date}-{time}-{slug}"
