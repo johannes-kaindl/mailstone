@@ -19,6 +19,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Shared building blocks updated to code-kit 0.79.0 (from 0.73.0). Releases 0.74.0 to 0.79.0 change nothing in the modules mailstone uses (the sixteen vendored files are byte-identical to 0.73.0 apart from the origin header); the new module `user-regex` is added for the thread token rule (below).
 - Shared building blocks updated to obsidian-kit 0.97.0 (from 0.94.0; code-kit stays at 0.73.0). 0.95.0 and 0.97.0 change nothing in the modules mailstone uses (the 0.96.0 number-field limits of the fallback settings walker do not apply, mailstone has no number settings); the user-visible effects of 0.96.0 are listed under Fixed.
 - When a sync run creates a note, it now also replaces the raw message id in `in_reply_to` and `references` of **existing** mail notes with a link to that new note (before, those stayed raw until *Relink threads* was run by hand, for example when a ticket confirmation arrived days before your own original). Only ids of notes created in that run, only those two fields; the message section and its checksum stay untouched, and a note that cannot be updated counts as an error without stopping the run.
 
