@@ -16,7 +16,7 @@ import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
-import { followFieldProblem, threadFieldProblem } from "../core/thread/field";
+import { effectiveFollowField, followFieldProblem, threadFieldProblem } from "../core/thread/field";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
 import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
@@ -186,7 +186,7 @@ export class MailstoneSettingTab extends PluginSettingTab {
   }
 
   private openEditModal(account: Account): void {
-    new AccountModal(this.app, account, { secrets: this.host.secrets, transport: () => this.host.transport() }, (updated) => {
+    new AccountModal(this.app, account, { secrets: this.host.secrets, transport: () => this.host.transport(), followFieldWorks: () => effectiveFollowField(this.host.settings.profile) !== "" }, (updated) => {
       this.host.settings.accounts = this.host.settings.accounts.map((a) => (a.id === updated.id ? updated : a));
       void this.host.saveSettings();
       this.update();
@@ -209,7 +209,7 @@ export class MailstoneSettingTab extends PluginSettingTab {
     const id = uniqueAccountId("", this.host.settings.accounts.map((a) => a.id));
     const draft = newAccount(id);
     draft.label = "";
-    new AccountModal(this.app, draft, { secrets: this.host.secrets, transport: () => this.host.transport() }, (saved) => {
+    new AccountModal(this.app, draft, { secrets: this.host.secrets, transport: () => this.host.transport(), followFieldWorks: () => effectiveFollowField(this.host.settings.profile) !== "" }, (saved) => {
       this.host.settings.accounts = [...this.host.settings.accounts, saved];
       void this.host.saveSettings();
       this.update();

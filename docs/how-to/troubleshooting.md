@@ -199,6 +199,12 @@ The account setting *Follow threads (copies mails on the server)* is the one pla
 
 **Fix:** Switch on *Debug log* in the settings and restart Obsidian; the developer console (Ctrl/Cmd+Shift+I) then shows lines starting with `follow-copy:` with the server's reason, and the IMAP dialogue with passwords masked. Free up quota or fix the folder name, then synchronise again; mails that were not copied are tried again in the next run. If you would rather not have Mailstone write on the server, switch the setting off.
 
+### "The Follow field (Settings → Follow field) is empty or cannot be used, so Follow threads copies nothing: without it Mailstone cannot tell which threads you stopped following. Enter a plain field name there first; the sync itself keeps running."
+
+**Cause:** This note appears under the *Follow threads* switch in the account dialog. The *Follow field* marks a thread you stopped following (`false` in that field). While the field is empty, names a field Mailstone manages itself, contains accents or special characters, or has the same name as the *Thread field*, Mailstone cannot read that marker, and a stopped thread would be copied on the server against your wish. So the copy step is skipped entirely; the normal sync still runs. With *Debug log* on, the console shows a line starting with `follow-copy: skipped`.
+
+**Fix:** Enter a plain field name such as `mail_follow` under Settings → Mailstone → Follow field. The next sync run copies again.
+
 ### Mails I did not move appear in the allowlist folder
 
 **Cause:** That is what *Follow threads* does: it puts copies of follow-up mails there (the original stays in the inbox or sent folder). A copy keeps the flags of the original, so an unread mail is also unread in the allowlist folder, and anything else that watches the folder sees it as new mail.

@@ -5,7 +5,7 @@ import { createSyncService, MAX_FETCH_PER_RUN, MAX_HEADER_FETCH_PER_RUN } from "
 import { createBusyGuard } from "../../../src/vendor/code-kit/busy-guard";
 import { createEmitter, type SyncEvents } from "../../../src/core/sync/events";
 import { createUidCache } from "../../../src/core/sync/uid-cache";
-import { defaultMailProfile } from "../../../src/core/mirror/profile";
+import { defaultMailProfile, type MailProfile } from "../../../src/core/mirror/profile";
 import { newAccount, type Account } from "../../../src/core/settings";
 import type { MailIndex } from "../../../src/core/mirror/apply";
 import type { NotePlan } from "../../../src/core/mirror/plan";
@@ -611,13 +611,14 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
     { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
   ];
 
-  function mitFolgen(an: boolean, fakes: FakeSocketTransport[], contextAufrufe: { n: number }) {
+  function mitFolgen(an: boolean, fakes: FakeSocketTransport[], contextAufrufe: { n: number }, extra: { profile?: MailProfile; log?: (l: string) => void } = {}) {
     const acc = account();
     acc.sync.followThreads = an;
     const verbindungen = { n: 0 };
     const exec = recordingExecutor();
     const svc = createSyncService({
-      accounts: () => [acc], profile: () => defaultMailProfile(), secret: () => "geheim",
+      accounts: () => [acc], profile: () => extra.profile ?? defaultMailProfile(), secret: () => "geheim",
+      ...(extra.log ? { log: extra.log } : {}),
       transport: () => { const f = fakes[verbindungen.n]; verbindungen.n += 1; if (!f) throw new Error("mehr Verbindungen als erwartet"); return f; },
       index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => exec.executor,
       uidCache: createUidCache(undefined), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
@@ -650,6 +651,34 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
     expect(verbindungen.n).toBe(2);
     expect(context.n).toBe(1);
     expect([...folgen.written, ...main.written].some((l) => /COPY|SELECT|STORE|EXPUNGE|APPEND|MOVE/.test(l))).toBe(false);
+  });
+
+  // A1-Nachtrag: ohne wirksames Folgen-Feld kann der Schritt gestoppte Vorgaenge nicht erkennen und wuerde sie trotzdem
+  // kopieren (Schreiben auf dem Server gegen den Willen des Nutzers). Dann laeuft er nicht; der Lese-Sync laeuft normal.
+  for (const [name, followField] of [["leer", ""], ["nur Leerzeichen", "   "], ["ein verwaltetes Feld", "mail_id"], ["nicht lesbar", "Fölgen"], ["gleich dem Vorgangsfeld", "mail_thread"]] as const) {
+    it(`eingeschaltet, aber Folgen-Feld ${name}: der Schritt laeuft nicht, der Lese-Sync schon, die Zeile im Log sagt warum`, async () => {
+      const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+      const context = { n: 0 };
+      const zeilen: string[] = [];
+      const profile = { ...defaultMailProfile(), followField, threadField: "mail_thread" };
+      const { svc, verbindungen } = mitFolgen(true, [main], context, { profile, log: (l) => zeilen.push(l) });
+      expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { errors: 0 } });
+      expect(verbindungen.n).toBe(1);
+      expect(context.n).toBe(0);
+      expect(main.written.some((l) => /COPY/.test(l))).toBe(false);
+      expect(zeilen.some((l) => l.startsWith("follow-copy: skipped"))).toBe(true);
+    });
+  }
+
+  it("eingeschaltet mit gueltigem Folgen-Feld: der Schritt laeuft und es steht keine Ueberspringen-Zeile im Log", async () => {
+    const folgen = new FakeSocketTransport(["* OK ready"], folgeSchrittOhneKandidaten);
+    const main = new FakeSocketTransport(["* OK ready"], dialog(leeresPostfach, 0));
+    const context = { n: 0 };
+    const zeilen: string[] = [];
+    const { svc, verbindungen } = mitFolgen(true, [folgen, main], context, { log: (l) => zeilen.push(l) });
+    expect((await svc.syncAccount("acc")).ok).toBe(true);
+    expect(verbindungen.n).toBe(2);
+    expect(zeilen.some((l) => l.startsWith("follow-copy: skipped"))).toBe(false);
   });
 
   it("ein Fehler des Schritts (hier: Anmeldung) zaehlt als Fehler und haelt den Lauf nicht an", async () => {

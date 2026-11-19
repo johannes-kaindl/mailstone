@@ -15,6 +15,7 @@ import type { ParsedMail } from "../mime/types";
 import { imapConnect, type ImapConnectOptions, type ImapReadSession } from "../imap/client";
 import { copyFollowUps, followCopyConnections } from "../thread/follow-copy";
 import type { FollowContext } from "../thread/follow-run";
+import { effectiveFollowField } from "../thread/field";
 import { isLoopback } from "../send/service";
 import type { UidCacheStore } from "./uid-cache";
 import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
@@ -102,8 +103,13 @@ export function createSyncService(deps: SyncDeps): SyncService {
     // Vorgang-Folgen (A1): zuerst die Folge-Mails in den Allowlist-Ordner kopieren, damit sie in DIESEM Lauf als Notiz ankommen.
     // Nur bei eingeschalteter Einstellung; der Lese-Sync unten bekommt davon nichts (er haelt nur eine ImapReadSession).
     // Ein Fehler des Schritts haelt den Lauf nicht an, er zaehlt als Fehler.
+    // Ohne wirksames Folgen-Feld (leer oder unbrauchbar, `effectiveFollowField`) laeuft der Schritt NICHT: die Markierung „nicht mehr
+    // folgen“ liesse sich nicht lesen, und ein beendeter Vorgang wuerde gegen den Willen des Nutzers auf dem Server kopiert. Der
+    // Lese-Sync laeuft normal weiter; die Log-Zeile macht das vom Normalfall unterscheidbar.
     let followErrors = 0;
-    if (account.sync.followThreads && deps.follow) {
+    if (account.sync.followThreads && deps.follow && effectiveFollowField(profile) === "") {
+      deps.log?.(`follow-copy: skipped for ${account.id}: the follow field is empty or unusable, so stopped threads cannot be told apart`);
+    } else if (account.sync.followThreads && deps.follow) {
       const follow = deps.follow;
       const r = await copyFollowUps(
         {

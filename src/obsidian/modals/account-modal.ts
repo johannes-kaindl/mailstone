@@ -24,6 +24,9 @@ export interface AccountModalDeps {
   transport: () => SocketTransport;
   /** uuid-artig — Eindeutigkeit reicht, kein bestimmtes Format vorausgesetzt. Default: crypto.randomUUID. */
   randomId?: () => string;
+  /** Wirkt das Folgen-Feld des Profils (`effectiveFollowField(profile) !== ""`)? Sonst kopiert „Follow threads“ nichts (der Sync
+   *  ueberspringt den Schritt), und das Modal sagt es unter dem Schalter. Ohne diese Dep erscheint kein Hinweis. */
+  followFieldWorks?: () => boolean;
 }
 
 /** Bearbeitet eine LOKALE Kopie des Kontos; committet erst bei "Save" ueber `onSave`. Das
@@ -101,6 +104,10 @@ export class AccountModal extends Modal {
     new Setting(this.contentEl).setName(t("settings.account.sync.follow")).setDesc(t("settings.account.sync.follow.desc")).addToggle((c) =>
       c.setValue(this.draft.sync.followThreads).onChange((v) => { this.draft.sync.followThreads = v; }),
     );
+    // Gleiches Hinweis-Muster wie `threadHint` im Settings-Tab: eine Zeile „Hinweis“ mit dem Grund, nur solange er gilt.
+    if (this.deps.followFieldWorks && !this.deps.followFieldWorks()) {
+      new Setting(this.contentEl).setName(t("settings.threadHint")).setDesc(t("settings.account.sync.follow.fieldOff"));
+    }
 
     const btns = this.contentEl.createDiv({ cls: "modal-button-container" });
     new ButtonComponent(btns).setButtonText(t("form.cancel")).onClick(() => this.close());
