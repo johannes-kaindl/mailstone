@@ -291,3 +291,29 @@ describe("followField (A1)", () => {
     expect(loadSettings({ profile: { followField: "mail_id" } }).profile.followField).toBe("mail_id");
   });
 });
+
+describe("inheritFields (A2)", () => {
+  it("eine alte data.json ohne das Feld ergibt die leere Liste", () => {
+    expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail", saveEml: false } }).profile.inheritFields).toEqual([]);
+    expect(loadSettings(undefined).profile.inheritFields).toEqual([]);
+  });
+  it("eine gespeicherte Liste bleibt", () => {
+    expect(loadSettings({ profile: { inheritFields: ["projekt", "kunde"] } }).profile.inheritFields).toEqual(["projekt", "kunde"]);
+  });
+  it("kein Array wird zur leeren Liste", () => {
+    for (const v of ["projekt", 5, true, null, {}]) {
+      expect(loadSettings({ profile: { inheritFields: v } }).profile.inheritFields, JSON.stringify(v)).toEqual([]);
+    }
+  });
+  it("Nicht-Texte und Duplikate fliegen raus, die Reihenfolge bleibt", () => {
+    expect(loadSettings({ profile: { inheritFields: ["a", 5, null, "b", "a", { x: 1 }, ["c"], "b"] } }).profile.inheritFields).toEqual(["a", "b"]);
+  });
+  it("ein unbrauchbarer Name bleibt stehen (die Einstellung zeigt den Hinweis), laedt aber ohne Wurf", () => {
+    expect(loadSettings({ profile: { inheritFields: ["mail_id", "prüfung"] } }).profile.inheritFields).toEqual(["mail_id", "prüfung"]);
+  });
+  it("die Standardliste ist je Aufruf ein eigenes Array", () => {
+    const a = loadSettings(undefined).profile.inheritFields;
+    a.push("x");
+    expect(loadSettings(undefined).profile.inheritFields).toEqual([]);
+  });
+});

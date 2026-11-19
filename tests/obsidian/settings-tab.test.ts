@@ -169,10 +169,10 @@ describe("MailstoneSettingTab — taskPreset", () => {
   function presetList(tab: MailstoneSettingTab) {
     const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; items?: unknown[] }[];
     // Seit Welle 2 (onCreate-Enum) gibt es vier Listen (Konten, taskPreset, onCreateAllowedValues,
-    // Vertrauensliste). Beide neuen/bestehenden Ohne-Heading-Listen (taskPreset,
+    // Vertrauensliste), seit A2 (Welle 36) eine fuenfte (weitergegebene Felder). Beide neuen/bestehenden Ohne-Heading-Listen (taskPreset,
     // onCreateAllowedValues) tragen einen addItem-Knopf — unterschieden ueber dessen Beschriftung.
     const lists = defs.filter((d): d is { type: string; addItem?: { name?: string }; items: unknown[] } => d.type === "list");
-    expect(lists.length).toBe(4);
+    expect(lists.length).toBe(5);
     const preset = lists.find((d) => d.addItem?.name === t("settings.taskPreset.add"));
     expect(preset).toBeDefined();
     return preset as { items: { name: string }[] };
@@ -195,8 +195,8 @@ describe("MailstoneSettingTab — taskPreset", () => {
     // Der Obsidian-Mock kennt kein PluginSettingTab.update() (echtes Obsidian ruft es fuer
     // einen Re-Render) — hier reicht ein No-op, da nur die Settings-Mutation geprueft wird.
     (tab as unknown as { update: () => void }).update = () => {};
-    const defs = tab.getSettingDefinitions() as { type?: string; heading?: string; addItem?: { action: (el: HTMLElement) => void } }[];
-    const list = defs.find((d) => d.type === "list" && d.addItem && d.heading === undefined)!;
+    const defs = tab.getSettingDefinitions() as { type?: string; heading?: string; addItem?: { name?: string; action: (el: HTMLElement) => void } }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.taskPreset.add"))!;
     list.addItem!.action({} as HTMLElement);
     await Promise.resolve();
     expect(tab["host"].settings.taskPreset).toEqual({ field: "x", "field-2": "" });
@@ -515,5 +515,130 @@ describe("MailstoneSettingTab — Folgen-Feld (A1, E7)", () => {
     expect(neu).toBe(2);
     await tab.setControlValue("profile.threadField", "gleich");
     expect(neu).toBe(3);
+  });
+});
+
+describe("MailstoneSettingTab — weitergegebene Felder (A2, E7)", () => {
+  type Def = { name?: string; desc?: string; type?: string; control?: { key?: string }; items?: { name: string }[]; addItem?: { name?: string; action: () => void }; onDelete?: (i: number) => void; emptyState?: string };
+  const defs = (tab: MailstoneSettingTab): Def[] => tab.getSettingDefinitions() as Def[];
+  const listIn = (all: Def[]): Def => {
+    const l = all.find((d) => d.type === "list" && d.addItem?.name === t("settings.inheritFields.add"));
+    expect(l).toBeDefined();
+    return l!;
+  };
+  const list = (tab: MailstoneSettingTab): Def => listIn(defs(tab));
+  /** Die Hinweiszeilen unter der Liste. */
+  const hints = (tab: MailstoneSettingTab): string[] => {
+    const all = defs(tab);
+    const i = all.indexOf(listIn(all));
+    const out: string[] = [];
+    for (let j = i + 1; all[j]?.name === t("settings.threadHint"); j++) out.push(all[j]!.desc ?? "");
+    return out;
+  };
+  const noUpdate = (tab: MailstoneSettingTab) => { (tab as unknown as { update: () => void }).update = () => {}; };
+
+  it("zeigt eine erklaerende Zeile und danach die Liste, leer mit Leerzustand", () => {
+    const tab = newTab();
+    const all = defs(tab);
+    const i = all.indexOf(listIn(all));
+    expect(all[i - 1]).toMatchObject({ name: t("settings.inheritFields"), desc: t("settings.inheritFields.desc") });
+    expect(list(tab).items).toEqual([]);
+    expect(list(tab).emptyState).toBe(t("settings.inheritFields.empty"));
+  });
+
+  it("steht nach dem Folgen-Feld und vor den Konten", () => {
+    const tab = newTab();
+    const all = defs(tab);
+    const i = all.indexOf(listIn(all));
+    expect(all.findIndex((d) => d.control?.key === "profile.followField")).toBeLessThan(i);
+    expect(i).toBeLessThan(all.findIndex((d) => (d as { heading?: string }).heading === t("settings.accounts")));
+  });
+
+  it("zeigt die Eintraege als Zeilen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    expect(list(tab).items!.map((i) => i.name)).toEqual(["projekt", "kunde"]);
+  });
+
+  it("kein Hinweis bei brauchbaren Namen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    expect(hints(tab)).toEqual([]);
+  });
+
+  it("addItem haengt eine leere Zeile an und speichert", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    let gespeichert = 0;
+    tab["host"].saveSettings = async () => { gespeichert++; };
+    list(tab).addItem!.action();
+    await Promise.resolve();
+    expect(tab["host"].settings.profile.inheritFields).toEqual([""]);
+    expect(gespeichert).toBe(1);
+  });
+
+  it("onDelete entfernt die Zeile am Index", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["a", "b", "c"];
+    list(tab).onDelete!(1);
+    await Promise.resolve();
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["a", "c"]);
+  });
+
+  type Rename = { renameInheritField: (i: number, v: string) => Promise<void> };
+  it("eine Umbenennung speichert den getrimmten Namen", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["projekt"];
+    await (tab as unknown as Rename).renameInheritField(0, "  kunde ");
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["kunde"]);
+  });
+
+  it("ein leerer Name entfernt die Zeile", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    await (tab as unknown as Rename).renameInheritField(0, "   ");
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["kunde"]);
+  });
+
+  it("eine Umbenennung auf einen vorhandenen Namen wird abgelehnt, mit Notice, kein Eintrag geht verloren", async () => {
+    const tab = newTab();
+    noUpdate(tab);
+    tab["host"].settings.profile.inheritFields = ["projekt", "kunde"];
+    const NoticeSpy = (await import("obsidian")).Notice as unknown as { instances: unknown[] };
+    NoticeSpy.instances.length = 0;
+    await (tab as unknown as Rename).renameInheritField(0, "kunde");
+    expect(tab["host"].settings.profile.inheritFields).toEqual(["projekt", "kunde"]);
+    expect(NoticeSpy.instances.length).toBe(1);
+  });
+
+  it("ein verwalteter Schluessel, ein Name mit Umlaut und das Vorgangsfeld zeigen je ihren Hinweis unter der Liste; der Eintrag bleibt stehen", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.threadField = "vorgang";
+    tab["host"].settings.profile.inheritFields = ["mail_id", "prüfung", "vorgang", "mail_follow", "projekt"];
+    expect(hints(tab)).toEqual([
+      t("settings.inheritFields.problem.managed", "mail_id"),
+      t("settings.inheritFields.problem.unreadable", "prüfung"),
+      t("settings.inheritFields.problem.collision", "vorgang"),
+      t("settings.inheritFields.problem.collision", "mail_follow"),
+    ]);
+    expect(list(tab).items!.map((i) => i.name)).toEqual(["mail_id", "prüfung", "vorgang", "mail_follow", "projekt"]);
+  });
+
+  it("ein leerer Eintrag (frisch angelegte Zeile) ist kein Problem", () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = [""];
+    expect(hints(tab)).toEqual([]);
+  });
+
+  it("aendert sich das Vorgangsfeld so, dass ein Eintrag kollidiert, zeichnet der Tab neu", async () => {
+    const tab = newTab();
+    tab["host"].settings.profile.inheritFields = ["vorgang"];
+    let neu = 0;
+    (tab as unknown as { update: () => void }).update = () => { neu++; };
+    await tab.setControlValue("profile.threadField", "vorgang");
+    expect(neu).toBe(1);
   });
 });

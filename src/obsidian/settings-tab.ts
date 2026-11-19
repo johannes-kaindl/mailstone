@@ -16,7 +16,7 @@ import { initI18n } from "../i18n/strings";
 import { newAccount, uniqueAccountId, type Account, type MailstoneSettings } from "../core/settings";
 import type { SecretStore } from "../vendor/kit/secrets";
 import type { SocketTransport } from "../core/net/types";
-import { effectiveFollowField, followFieldProblem, threadFieldProblem } from "../core/thread/field";
+import { effectiveFollowField, followFieldProblem, inheritFieldProblem, threadFieldProblem } from "../core/thread/field";
 import { tokenPatternProblem } from "../core/thread/token";
 import { transportAccounts } from "../core/send/imip";
 import type { TrustedSender } from "../core/api/types";
@@ -131,6 +131,9 @@ export class MailstoneSettingTab extends PluginSettingTab {
         control: { type: "text", key: "profile.followField" },
       },
       ...this.threadHint(this.followFieldHint()),
+      { name: t("settings.inheritFields"), desc: t("settings.inheritFields.desc") },
+      this.inheritFieldsGroup(),
+      ...this.inheritFieldHints().map((text) => ({ name: t("settings.threadHint"), desc: text })),
       this.accountsGroup(),
       // SettingDefinitionList kennt keinen eigenen `desc` (nur `heading`) — die Erklaerung
       // steht deshalb als eigene Info-Zeile direkt davor, die Liste selbst bleibt ohne Heading.
@@ -454,6 +457,73 @@ export class MailstoneSettingTab extends PluginSettingTab {
     this.update();
   }
 
+  // ── Im Vorgang weitergegebene Felder (A2, E7) ────────────────────────────────────────────
+  // Eine Zeile je Schluessel, dieselbe native `SettingDefinitionList` wie bei den erlaubten Werten. Ein Name, der nicht
+  // taugt, bleibt in der Liste stehen (der Nutzer sieht, was er getippt hat) und wirkt nicht; darunter steht der Grund.
+  private inheritFieldsGroup(): SettingDefinitionList {
+    const items: SettingGroupItem[] = this.host.settings.profile.inheritFields.map((name, index) => ({
+      name,
+      render: (setting: Setting) => this.renderInheritFieldRow(setting, index),
+    }));
+    return {
+      type: "list",
+      items,
+      emptyState: t("settings.inheritFields.empty"),
+      onDelete: (index) => { void this.removeInheritField(index); },
+      addItem: { name: t("settings.inheritFields.add"), action: () => { void this.addInheritField(); } },
+    };
+  }
+
+  private renderInheritFieldRow(setting: Setting, index: number): void {
+    const name = this.host.settings.profile.inheritFields[index] ?? "";
+    setting.addText((tx) => {
+      tx.setPlaceholder(t("settings.inheritFields.placeholder")).setValue(name);
+      tx.inputEl.setAttribute("aria-label", t("settings.inheritFields.aria"));
+      tx.inputEl.addEventListener("blur", () => { void this.renameInheritField(index, tx.getValue()); });
+    });
+  }
+
+  /** Eine Umbenennung auf einen Namen, der schon in der Liste steht, wird abgelehnt (wie bei den erlaubten Werten); ein
+   *  leerer Name entfernt die Zeile. */
+  private async renameInheritField(index: number, newRaw: string): Promise<void> {
+    const names = this.host.settings.profile.inheritFields;
+    if (index < 0 || index >= names.length) return;
+    const neu = newRaw.trim();
+    if (neu === names[index]) return;
+    if (!neu) { await this.removeInheritField(index); return; }
+    if (names.some((n, i) => i !== index && n.trim() === neu)) {
+      new Notice(t("settings.inheritFields.duplicate", neu));
+      this.update();
+      return;
+    }
+    this.host.settings.profile.inheritFields = names.map((n, i) => (i === index ? neu : n));
+    await this.host.saveSettings();
+    this.update(); // die Hinweise unter der Liste haengen am Namen
+  }
+
+  private async removeInheritField(index: number): Promise<void> {
+    this.host.settings.profile.inheritFields = this.host.settings.profile.inheritFields.filter((_, i) => i !== index);
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  private async addInheritField(): Promise<void> {
+    this.host.settings.profile.inheritFields = [...this.host.settings.profile.inheritFields, ""];
+    await this.host.saveSettings();
+    this.update();
+  }
+
+  /** Je abgelehntem Eintrag ein Hinweis, in der Reihenfolge der Liste. */
+  private inheritFieldHints(): string[] {
+    const profile = this.host.settings.profile;
+    const out: string[] = [];
+    for (const name of profile.inheritFields) {
+      const problem = inheritFieldProblem(profile, name);
+      if (problem !== null) out.push(t(`settings.inheritFields.problem.${problem}`, name.trim()));
+    }
+    return out;
+  }
+
   // ── Vorgang (A3, E7): Hinweis unter der Zeile ───────────────────────────────────────────
   // Ein Wert, der nicht taugt, wird gespeichert (der Nutzer sieht, was er getippt hat) und wirkt nicht:
   // `effectiveThreadField` schaltet den Vorgang dann ab. Die Zeile darunter sagt warum.
@@ -548,7 +618,7 @@ export class MailstoneSettingTab extends PluginSettingTab {
     // Nur wenn sich der Hinweis ein- oder ausblendet oder aendert, zeichnet der Tab neu: ein Neuzeichnen
     // bei jedem Tastendruck risse dem Nutzer den Fokus aus dem Textfeld.
     // Beide Feldnamen teilen sich die Kollisionsprobe: eine Aenderung des einen kann den Hinweis des anderen aendern.
-    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}|${String(this.threadTokenHint())}`;
+    const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}|${String(this.threadTokenHint())}|${this.inheritFieldHints().join("|")}`;
     const hinweisVorher = key === "profile.threadField" || key === "profile.followField" || key === "profile.threadTokenPattern" ? hinweise() : null;
     entry.set(value);
     await this.host.saveSettings();

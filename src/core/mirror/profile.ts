@@ -26,6 +26,10 @@ export interface MailProfile {
    *  nicht mehr („Folge-Mails anzeigen“ blendet ihn aus, „Vorgängen folgen“ kopiert für ihn nichts mehr). Standard `mail_follow`; leer = die Befehle sind aus.
    *  Kein verwaltetes Feld, am Vault-Stand wie `threadField`. Wirksam ist nur ein brauchbarer Name (`effectiveFollowField`). */
   followField: string;
+  /** Frontmatter-Schluessel, die eine NEUE Notiz beim Anlegen unveraendert von ihrer Vorgaengerin im Vorgang uebernimmt (A2).
+   *  Standard leer = aus. Kein verwaltetes Feld: der Wert haengt am Vault-Stand. Wirksam sind nur brauchbare Namen
+   *  (`effectiveInheritFields`); der Befehl „Felder im Vorgang angleichen“ nutzt dieselbe Liste. */
+  inheritFields: string[];
   filename: string; // Default "{date}-{time}-{slug}"
   idField: string;
   sourceField: string;
@@ -64,6 +68,7 @@ export function defaultMailProfile(): MailProfile {
     threadField: "",
     threadTokenPattern: "\\[Ticket#\\d+\\]",
     followField: "mail_follow",
+    inheritFields: [],
     filename: "{date}-{time}-{slug}",
     idField: "mail_id",
     sourceField: "mail_source",

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { effectiveFollowField, effectiveThreadField, followFieldProblem, followStopped, threadFieldProblem } from "../../../src/core/thread/field";
+import { effectiveFollowField, effectiveInheritFields, effectiveThreadField, followFieldProblem, followStopped, inheritFieldProblem, threadFieldProblem } from "../../../src/core/thread/field";
 import { defaultMailProfile } from "../../../src/core/mirror/profile";
 
 const withField = (threadField: string) => ({ ...defaultMailProfile(), threadField });
@@ -80,5 +80,43 @@ describe("followStopped — Lesen der Markierung (E2)", () => {
   it("ohne wirksames Feld (leer oder abgelehnt) ist nie etwas beendet", () => {
     expect(followStopped(withBoth("", ""), { mail_follow: false })).toBe(false);
     expect(followStopped(withBoth("", "mail_id"), { mail_id: false })).toBe(false);
+  });
+});
+
+const withInherit = (inheritFields: string[], over: Partial<ReturnType<typeof defaultMailProfile>> = {}) => ({ ...defaultMailProfile(), inheritFields, ...over });
+
+describe("inheritFieldProblem / effectiveInheritFields (A2, E7)", () => {
+  it("der Standard ist leer", () => {
+    expect(defaultMailProfile().inheritFields).toEqual([]);
+    expect(effectiveInheritFields(defaultMailProfile())).toEqual([]);
+  });
+  it("brauchbare Namen gelten, getrimmt, ohne Duplikate und Leeres, in der Reihenfolge der Liste", () => {
+    expect(effectiveInheritFields(withInherit([" projekt ", "kunde", "projekt", "", "  "]))).toEqual(["projekt", "kunde"]);
+  });
+  it("verwaltete Schluessel und Identitaetsfelder werden abgelehnt", () => {
+    for (const k of ["mail_id", "mail_source", "mail_state", "mail_synced", "subject", "in_reply_to", "references", "date", "richtung", "title"]) {
+      expect(inheritFieldProblem(withInherit([k]), k), k).toBe("managed");
+      expect(effectiveInheritFields(withInherit(["projekt", k])), k).toEqual(["projekt"]);
+    }
+  });
+  it("das Vorgangsfeld und die Folgen-Markierung werden abgelehnt", () => {
+    const p = withInherit(["vorgang", "mail_follow", "projekt"], { threadField: "vorgang" });
+    expect(inheritFieldProblem(p, "vorgang")).toBe("collision");
+    expect(inheritFieldProblem(p, "mail_follow")).toBe("collision");
+    expect(effectiveInheritFields(p)).toEqual(["projekt"]);
+  });
+  it("Nicht-ASCII und Sonderzeichen werden abgelehnt (der Zeilenleser kann sie nicht)", () => {
+    for (const k of ["prüfung", "a:b", "-x"]) {
+      expect(inheritFieldProblem(withInherit([k]), k), k).toBe("unreadable");
+      expect(effectiveInheritFields(withInherit([k])), k).toEqual([]);
+    }
+  });
+  it("ein leerer Name ist kein Problem, er zaehlt nur nicht", () => {
+    expect(inheritFieldProblem(withInherit([""]), "")).toBeNull();
+  });
+  it("ein Profil ohne die Liste (altes Objekt zur Laufzeit) ergibt leer", () => {
+    const alt = { ...defaultMailProfile() } as Record<string, unknown>;
+    delete alt.inheritFields;
+    expect(effectiveInheritFields(alt as never)).toEqual([]);
   });
 });

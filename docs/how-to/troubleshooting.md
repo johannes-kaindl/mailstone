@@ -125,6 +125,12 @@
 
 **Fix:** Write the part you need without a repeat inside a repeat, for example `^(?:Re|AW):\s*` for one prefix. For a ticket number, a plain expression such as `\[Ticket#\d+\]` or `Ticket ?#(\d+)` is enough.
 
+### "No fields are passed on. Add a field name under Settings → Fields passed on in a thread first."
+
+**Cause:** *Align fields in thread* copies the fields listed under *Fields passed on in a thread*. The list is empty, or every entry in it is refused: one of the fields Mailstone manages itself (such as `mail_id` or `subject`), the *Thread field* or the *Follow field*, or a name with accents or special characters. The settings page says which, under the list.
+
+**Fix:** Add a plain field name such as `projekt` under Settings → Mailstone → Fields passed on in a thread, then run the command again.
+
 ### "The .eml belonging to this note was not found. It is expected in the _eml subfolder next to the note — moving or renaming the note breaks that link."
 
 **Cause:** Commands rebuild from the original message. The note was moved out of its folder, or the `.eml` was deleted. Normally Mailstone then fetches the original from the server instead (desktop), so you see this message only in the rare case where no lookup was attempted.

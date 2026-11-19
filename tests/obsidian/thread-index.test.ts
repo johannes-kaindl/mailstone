@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mailIdOfValue, threadNotes, threadRefsFor } from "../../src/obsidian/thread-index";
 import { buildContext } from "../../src/obsidian/command-flow";
 import { vaultPlanExecutor } from "../../src/obsidian/vault-notes";
+import { ALIGN_THREAD_FIELDS_COMMAND } from "../../src/core/commands/align-thread-fields";
 import { RECOMPUTE_THREADS_COMMAND } from "../../src/core/commands/recompute-threads";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import { makeApp } from "../helpers/memory-vault";
@@ -50,6 +51,31 @@ describe("threadRefsFor / threadNotes", () => {
   });
 });
 
+describe("threadNotes — geerbte Felder (A2)", () => {
+  it("liefert die Rohwerte der eingestellten Schluessel mit, und nur die", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/a.md", mailNote("a@x", ['projekt: ["[[A]]", "[[B]]"]', "kunde: Acme", "andere: x"]));
+    const p = { ...profile, inheritFields: ["projekt", "kunde", "fehlt"] };
+    expect(threadNotes(app, p)).toEqual([{ mailId: "a@x", path: "Mail/2026/a", subject: "Betreff a@x", date: "2026-08-01", time: "10:00", value: null, inherit: { projekt: ["[[A]]", "[[B]]"], kunde: "Acme" } }]);
+  });
+  it("laesst abgelehnte Namen weg: ein verwalteter Schluessel wird nicht mitgelesen", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/a.md", mailNote("a@x", ["projekt: Alpha"]));
+    const [n] = threadNotes(app, { ...profile, inheritFields: ["mail_id", "projekt"] });
+    expect(n!.inherit).toEqual({ projekt: "Alpha" });
+  });
+  it("ohne eingestellte Schluessel gibt es kein inherit", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/a.md", mailNote("a@x", ["projekt: Alpha"]));
+    expect(threadNotes(app, profile)[0]).not.toHaveProperty("inherit");
+  });
+  it("liest auch ohne Vorgangsfeld, wenn Felder geerbt werden", async () => {
+    const app = makeApp();
+    await app.vault.create("Mail/2026/a.md", mailNote("a@x", ["projekt: Alpha"]));
+    expect(threadNotes(app, { ...profile, threadField: "", inheritFields: ["projekt"] })).toEqual([{ mailId: "a@x", path: "Mail/2026/a", subject: "Betreff a@x", date: "2026-08-01", time: "10:00", value: null, inherit: { projekt: "Alpha" } }]);
+  });
+});
+
 describe("mail.recomputeThreads gegen einen Vault", () => {
   it("traegt das Feld nach, laesst einen kurzen Link auf die richtige Wurzel stehen und schreibt nur Frontmatter", async () => {
     const app = makeApp(); withLinks(app);
@@ -77,5 +103,29 @@ describe("mail.recomputeThreads gegen einen Vault", () => {
     const built = await buildContext({ app, profile: () => profile, hashes: { get: () => "h", set: () => {} }, now: () => new Date(0) }, RECOMPUTE_THREADS_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/b.md"));
     if (!built.ok) throw new Error(built.code);
     expect(RECOMPUTE_THREADS_COMMAND.plan({}, built.ctx)).toEqual({ ok: false, code: "nothing-to-do" });
+  });
+});
+
+describe("mail.alignThreadFields gegen einen Vault (A2)", () => {
+  it("uebertraegt die Liste der Wurzel in die Antworten, legt fehlende Felder an und laesst die Zone stehen", async () => {
+    const app = makeApp(); withLinks(app);
+    await app.vault.create("Mail/2026/a.md", mailNote("a@x", ['projekt: ["[[A]]", "[[B]]"]']));
+    await app.vault.create("Mail/2026/b.md", mailNote("b@x", ['in_reply_to: "[[a]]"', "projekt: Alt"], "2026-08-02"));
+    await app.vault.create("Mail/2026/c.md", mailNote("c@x", ['in_reply_to: "[[b]]"'], "2026-08-03"));
+    const p = { ...profile, inheritFields: ["projekt"] };
+    const store = { get: () => "h", set: () => {} };
+    const built = await buildContext({ app, profile: () => p, hashes: store, now: () => new Date(0) }, ALIGN_THREAD_FIELDS_COMMAND, app.vault.getAbstractFileByPath("Mail/2026/c.md"));
+    if (!built.ok) throw new Error(built.code);
+    const planned = ALIGN_THREAD_FIELDS_COMMAND.plan({}, built.ctx);
+    if (!planned.ok) throw new Error(planned.code);
+    expect(planned.plan.notes.map((n) => n.path).sort()).toEqual(["Mail/2026/b.md", "Mail/2026/c.md"]);
+    const r = await vaultPlanExecutor(app, store).execute(planned.plan.notes);
+    expect(r.updated).toBe(2);
+    for (const f of ["b", "c"]) {
+      const c = await app.vault.adapter.read(`Mail/2026/${f}.md`);
+      expect(c).toContain('\nprojekt: ["[[A]]", "[[B]]"]\n');
+      expect(c.endsWith(ZONE)).toBe(true);
+    }
+    expect(await app.vault.adapter.read("Mail/2026/a.md")).toBe(mailNote("a@x", ['projekt: ["[[A]]", "[[B]]"]']));
   });
 });

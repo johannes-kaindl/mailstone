@@ -13,6 +13,8 @@ export interface KnownThreadNote extends Dated, Subjected {
   path: string;
   /** Der Vorgangswert, der in der Notiz steht (Wikilink auf die Wurzel), `null` ohne Wert. */
   value: string | null;
+  /** Die Rohwerte der Schluessel aus `inheritFields` (Metadata-Cache), nur gefuellt, wenn welche eingestellt sind (A2). */
+  inherit?: Readonly<Record<string, unknown>>;
 }
 
 /** Eine Notiz, die dieser Lauf anlegt; `path` steht schon fest (`assignRunPaths`). */

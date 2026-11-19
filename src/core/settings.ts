@@ -139,6 +139,14 @@ function repairOnCreateAllowedValues(raw: unknown): string[] {
   return eindeutig.length > 0 ? eindeutig : [...DEFAULT_SETTINGS.onCreateAllowedValues];
 }
 
+/** Wirft nie: `inheritFields` aus einer alten oder von Hand bearbeiteten `data.json` (A2). Kein Array wird zur leeren Liste,
+ *  Nicht-Texte und doppelte Eintraege fliegen raus, die Reihenfolge bleibt. Ob ein Name taugt, prueft `effectiveInheritFields`
+ *  zur Laufzeit; ein unbrauchbarer Name bleibt stehen, damit die Einstellung ihn mit Hinweis zeigen kann. */
+function repairInheritFields(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((v): v is string => typeof v === "string"))];
+}
+
 /** Wirft nie: ein alteres `data.json` (oder ein Hand-Edit) kann `taskPreset`-Werte tragen, die
  *  der aktuelle Typ nicht mehr kennt — ein `boolean` (Fix-Runde 1, s. Kommentar an
  *  `MailstoneSettings`) oder Fremdes (Array, Objekt, `null`). Ein solcher Eintrag wird beim
@@ -196,6 +204,7 @@ export function loadSettings(raw: unknown): MailstoneSettings {
     threadTokenPattern: typeof rawProfile.threadTokenPattern === "string" ? rawProfile.threadTokenPattern : defaultMailProfile().threadTokenPattern,
     // Nur Text gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, gilt mail_follow. Ein leerer Text schaltet die Markierung aus.
     followField: typeof rawProfile.followField === "string" ? rawProfile.followField : defaultMailProfile().followField,
+    inheritFields: repairInheritFields(rawProfile.inheritFields),
     onCreate: onCreateRoh && onCreateUngueltig.length === 0 ? { ...(onCreateRoh as Record<string, FmVal>) } : { ...defaultMailProfile().onCreate },
   };
   return s;

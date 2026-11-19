@@ -119,6 +119,40 @@ describe("importEmlFolder", () => {
     const note = [...app.__files.keys()].find((p: string) => p.endsWith(".md"))!;
     expect(await app.vault.adapter.read(note)).not.toContain("vorgang");
   });
+
+  // A2 (Welle 36): geerbte Felder beim Import.
+  describe("geerbte Felder (A2)", () => {
+    const hashes = { get: () => null, set: () => {} };
+    it("erbt von einer Notiz im Vault: eine Liste von Wikilinks bleibt eine Liste", async () => {
+      const app = makeApp([{ path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.org", projekt: ["[[A]]", "[[B]]"] } }]);
+      await app.vault.createBinary("Import/neu.eml", enc(eml("neu@example.org", "In-Reply-To: <alt@example.org>\n")));
+      const profile = { ...defaultMailProfile(), inheritFields: ["projekt"] };
+      const r = await importEmlFolder({ app, profile, hashes, now: () => new Date(0) }, "Import");
+      expect(r.errors).toEqual([]);
+      expect(r.created).toBe(1);
+      const neu = [...app.__files.keys()].find((p: string) => p.endsWith(".md") && p !== "Mail/2026/alt.md")!;
+      expect((await app.vault.adapter.read(neu)).split("\n").find((l: string) => l.startsWith("projekt:"))).toBe('projekt: ["[[A]]", "[[B]]"]');
+    });
+
+    it("erbt in einer Kette im selben Import, die Antwort liegt vor der Bezugsmail", async () => {
+      const app = makeApp([{ path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.org", projekt: "Alpha" } }]);
+      await app.vault.createBinary("Import/1-c.eml", enc(eml("c@example.org", "In-Reply-To: <b@example.org>\n")));
+      await app.vault.createBinary("Import/2-b.eml", enc(eml("b@example.org", "In-Reply-To: <alt@example.org>\n")));
+      const profile = { ...defaultMailProfile(), inheritFields: ["projekt"] };
+      await importEmlFolder({ app, profile, hashes, now: () => new Date(0) }, "Import");
+      const neue = [...app.__files.keys()].filter((p: string) => p.endsWith(".md") && p !== "Mail/2026/alt.md");
+      expect(neue).toHaveLength(2);
+      for (const p of neue) expect((await app.vault.adapter.read(p)).split("\n")).toContain("projekt: Alpha");
+    });
+
+    it("erbt nichts ohne eingestellte Schluessel", async () => {
+      const app = makeApp([{ path: "Mail/2026/alt.md", frontmatter: { mail_id: "alt@example.org", projekt: "Alpha" } }]);
+      await app.vault.createBinary("Import/neu.eml", enc(eml("neu@example.org", "In-Reply-To: <alt@example.org>\n")));
+      await importEmlFolder({ app, profile: defaultMailProfile(), hashes, now: () => new Date(0) }, "Import");
+      const neu = [...app.__files.keys()].find((p: string) => p.endsWith(".md") && p !== "Mail/2026/alt.md")!;
+      expect(await app.vault.adapter.read(neu)).not.toContain("projekt");
+    });
+  });
   // A5, Schritt 1: vorberechnete Werte aus dem Original gehen der Ableitung aus der (spaeter transformierten) Mail vor.
   it("facts je Mail-ID: richtung kommt aus dem Original, ohne facts wie bisher", async () => {
     const app = makeApp();
