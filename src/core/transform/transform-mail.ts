@@ -38,6 +38,9 @@ export type TransformOutcome =
   /** Nichts schreiben, der Grund gehoert ins Protokoll bzw. in eine Meldung. */
   | { kind: "error"; reason: string; message: string };
 
+/** Ein Ausgang ohne Mail: die Mail wartet oder die Transformation ist gescheitert. */
+export type NoMailOutcome = Exclude<TransformOutcome, { kind: "mail" }>;
+
 export const TRANSFORM_CALLER = "mailstone";
 
 type Rebuild = (mail: ParsedMail, result: TransformResult) => ParsedMail | null;

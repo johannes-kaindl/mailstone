@@ -51,7 +51,7 @@ export function createEmitter<E extends Record<string, unknown>>(): Emitter<E> {
  *  Mail-ID auf dem Server bestimmen konnte (siehe service.ts, `undetermined`). Ohne diesen
  *  Zaehler waere ein stillgelegter Detach-Durchgang von "es gab nichts zu tun" nicht zu
  *  unterscheiden — der Lauf meldet in beiden Faellen ok: true. */
-export interface SyncCounts { created: number; reattached: number; detached: number; skipped: number; detachSkipped: number; errors: number }
+export interface SyncCounts { created: number; reattached: number; detached: number; skipped: number; detachSkipped: number; /** Neue Mails, die der Pseudonymizer zurueckgestellt hat (A5): keine Notiz, der naechste Lauf holt sie wieder. Kein Fehler. */ waiting: number; errors: number }
 
 /** Events, die `SyncService` ueber `SyncDeps.events` feuert — `synced` nach jedem Lauf
  *  (auch ohne Aenderungen), `changed` je tatsaechlich ausgefuehrtem `NotePlan`. */

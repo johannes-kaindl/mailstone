@@ -361,8 +361,8 @@ describe("MailstoneSettingTab — Sync-Stand auf Mobile (Welle 7)", () => {
     Platform.isMobile = true;
     try {
       const runState: RunState = {
-        a: { at: 1000, ok: true, counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
-        b: { at: 2000, ok: false, code: "auth", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
+        a: { at: 1000, ok: true, counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 } },
+        b: { at: 2000, ok: false, code: "auth", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 } },
       };
       const defs = newTab({ runState }).getSettingDefinitions() as { name?: string; desc?: string }[];
       const zeile = defs.find((d) => d.name === t("settings.lastSync"));

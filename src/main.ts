@@ -37,6 +37,9 @@ import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/e
 import type { NotePlan } from "./core/mirror/plan";
 import { runCommand, probeFor, type CommandFlowDeps, type RunResult } from "./obsidian/command-flow";
 import { fetchOriginal } from "./core/originals/fetch-original";
+import { pseudonymizeFor } from "./vendor/kit-obsidian/pseudonymizer-call";
+import type { TransformPort } from "./core/transform/transform-mail";
+import { noMailText } from "./obsidian/transform-text";
 import { readTaskNotesApi, createTaskViaBridge } from "./obsidian/tasknotes-bridge";
 import { errorKey, trTitle } from "./obsidian/command-i18n";
 import { createCockpitHost } from "./obsidian/views/cockpit-host";
@@ -302,6 +305,11 @@ export default class MailstonePlugin extends Plugin {
   private writeProfile(): MailProfile {
     return withNoteHeadings(withOwnAddresses(withTaskPreset(this.settings.profile, this.settings.taskPreset), this.ownAddresses()), { notes: t("note.heading.notes"), message: t("note.heading.message") });
   }
+  /** Der Port zum Plugin pseudonymizer (A5): liest die Stellung des Schalters und die Plugin-API frisch je Aufruf. Aus ruft die API nie;
+   *  Verlangt schreibt ohne bereites Plugin nichts (der Kit-Aufruf kapselt den Rueckfall, kein Verbraucher entscheidet ihn selbst). */
+  private pseudonymizePort(): TransformPort {
+    return (req) => pseudonymizeFor(this.app, this.settings.profile.pseudonymize, req);
+  }
   api: MailstoneApi | null = null;
   private entladen = false;
 
@@ -365,6 +373,8 @@ export default class MailstonePlugin extends Plugin {
       relink: vaultRelinkDeps(this.app, () => this.settings.profile, hashes),
       // Vorgang-Folgen (A1): nur gerufen, wenn das Konto die Einstellung eingeschaltet hat (Standard aus).
       follow: { context: () => followContext(this.app, this.settings.profile) },
+      // Pseudonymisieren (A5): gerufen nur bei Schalter ungleich Aus, nach dem Logout, vor dem Planen.
+      pseudonymize: this.pseudonymizePort(),
       uidCache: this.uidCache,
       busy: this.busy,
       events: this.syncEvents,
@@ -481,11 +491,14 @@ export default class MailstonePlugin extends Plugin {
               profile: this.writeProfile(),
               hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
               now: () => new Date(),
+              pseudonymize: this.pseudonymizePort(),
             },
             folder,
           );
           notify.info("import.done", r.created, r.updated, r.skipped.length, r.errors.length);
           if (r.errors.length > 0) notify.error("import.errors", r.errors.length);
+          // Eine Mail, die der Pseudonymizer zurueckstellt, wird nicht importiert (keine halbe Notiz); der Grund der ersten steht in der Meldung.
+          if (r.held.length > 0) notify.error("import.held", r.held.length, noMailText(r.held[0]!));
         } finally {
           await this.saveSettings();
         }
@@ -714,6 +727,7 @@ export default class MailstonePlugin extends Plugin {
       profile: () => this.commandProfile(),
       hashes: this.hashStore(),
       now: () => new Date(),
+      pseudonymize: this.pseudonymizePort(),
       ...(networkFeaturesAvailable() ? {
         fetchOriginal: (req) => fetchOriginal({
           accounts: () => this.settings.accounts.map((a) => ({ id: a.id, label: a.label || a.id, folders: { allowlist: a.folders.allowlist, archive: a.folders.archive } })),

@@ -41,6 +41,23 @@ function ctxFor(m: ParsedMail, note: { content: string; zoneHash: string | null 
   };
 }
 
+describe("mail.rerender: Fakten des Originals (A5)", () => {
+  it("richtung stammt aus ctx.facts, nicht aus der (transformierten) Mail; ohne facts aus der Mail", () => {
+    const m = mail({ from: { name: "Person_k3", address: "Person_k3_Mail" } });
+    const eigen = { ...profile, ownAddresses: ["erika@example.org"] };
+    const alt = mail({ from: { name: "Erika", address: "erika@example.org" } });
+    const derivedAlt = buildDerivedFrontmatter(eigen, { mail: alt, source: "acc/Vault", state: "live", syncedAt: NOW, linkFor: () => null });
+    expect(derivedAlt["richtung"]).toBe("ausgehend");
+    const note = newNote(buildDerivedFrontmatter(eigen, { mail: m, source: "acc/Vault", state: "live", syncedAt: NOW, linkFor: () => null }), eigen.onCreate, renderMessageBlock(m));
+    // Notiz sagt „eingehend“ (die Platzhalter-Mail ist keine eigene Adresse); die Fakten des Originals sagen „ausgehend“.
+    const mitFakten = RERENDER_COMMAND.plan({}, ctxFor(m, note, { profile: eigen, facts: { direction: "ausgehend", threadToken: null }, mail: mail({ from: m.from, text: "Anders" }) }));
+    expect(mitFakten.ok && mitFakten.plan.notes[0]).toMatchObject({ kind: "update" });
+    expect(mitFakten.ok && (mitFakten.plan.notes[0] as { content: string }).content).toContain("richtung: ausgehend");
+    const ohneFakten = RERENDER_COMMAND.plan({}, ctxFor(m, note, { profile: eigen, mail: mail({ from: m.from, text: "Anders" }) }));
+    expect(ohneFakten.ok && (ohneFakten.plan.notes[0] as { content: string }).content).toContain("richtung: eingehend");
+  });
+});
+
 describe("mail.rerender", () => {
   it("ist anwendbar, sobald eine Mail-Notiz das Ziel ist", () => {
     const m = mail();

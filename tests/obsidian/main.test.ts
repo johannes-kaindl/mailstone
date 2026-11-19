@@ -130,7 +130,7 @@ describe("syncFailureStatus", () => {
   it("liefert null, wenn mindestens ein Konto erfolgreich war (das \"synced\"-Event hat den Status schon gesetzt)", () => {
     const results: SyncRunResult[] = [
       { ok: false, accountId: "a1", code: "auth" },
-      { ok: true, accountId: "a2", counts: { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 } },
+      { ok: true, accountId: "a2", counts: { created: 1, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 } },
     ];
     expect(syncFailureStatus(results)).toBeNull();
   });
@@ -144,7 +144,7 @@ describe("syncFailureStatus", () => {
 // Intervall-Lauf unsichtbar — genau dort, wo der Fall auftritt und wo niemand zusieht. Die
 // Auswahl der Meldungen ist jetzt eine reine Funktion, damit sie ohne Obsidian pruefbar ist.
 function okRun(counts: Partial<Extract<SyncRunResult, { ok: true }>["counts"]>): SyncRunResult {
-  return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0, ...counts } };
+  return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0, ...counts } };
 }
 
 describe("syncNotices", () => {
@@ -242,7 +242,7 @@ describe("createPersister", () => {
 // Review-Befunde (2026-08-30) zur Fix-Welle selbst:
 describe("syncNotices — Wiederholungssperre im stillen Lauf", () => {
   function okRun2(detachSkipped: number): SyncRunResult {
-    return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped, errors: 0 } };
+    return { ok: true, accountId: "a1", counts: { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped, waiting: 0, errors: 0 } };
   }
 
   // `undetermined > 0` haelt sich von Natur aus ueber viele Laeufe: ein Erstbestand braucht

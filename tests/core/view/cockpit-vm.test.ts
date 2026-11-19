@@ -4,7 +4,7 @@ import { newAccount, type Account } from "../../../src/core/settings";
 import type { RunState } from "../../../src/core/sync/run-state";
 import type { SyncCounts } from "../../../src/core/sync/events";
 
-const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 };
 
 function acc(id: string, label = id, enabled = true): Account {
   const a = newAccount(id);

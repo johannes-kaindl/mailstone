@@ -8,7 +8,7 @@ import { initI18n } from "../../src/i18n/strings";
 
 initI18n("de");
 
-const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, errors: 0 };
+const NIX: SyncCounts = { created: 0, reattached: 0, detached: 0, skipped: 0, detachSkipped: 0, waiting: 0, errors: 0 };
 
 function acc(id: string, label = id, enabled = true): Account {
   const a = newAccount(id);

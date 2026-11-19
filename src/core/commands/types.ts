@@ -1,6 +1,7 @@
 import type { ParsedMail } from "../mime/types";
 import type { NotePlan } from "../mirror/plan";
 import type { MailProfile } from "../mirror/profile";
+import type { OriginalFacts } from "../transform/original-facts";
 import type { ObjectSchema } from "./schema";
 import { EMPTY_SCHEMA } from "./schema";
 
@@ -97,6 +98,9 @@ export interface CommandContext extends CommandProbe {
   existingAttachment(name: string): { path: string; data: Uint8Array } | null;
   /** Nur gefuellt bei `needs.eml` — geparste und gegen `target.mailId` geprueft (s. eml.ts). */
   mail?: ParsedMail;
+  /** Nur gefuellt bei `needs.eml` UND eingeschaltetem Pseudonymisieren (A5): Werte aus der ORIGINAL-Mail (Richtung, Vorgangs-Token), weil die
+   *  transformierte `mail` in `from` und `subject` Platzhalter traegt. Fehlt es, leitet die Ableitung sie aus `mail` selbst ab. */
+  facts?: OriginalFacts;
   /** Nur gefuellt bei `needs.allNotes`. */
   notes?: readonly MailNoteRef[];
 }
