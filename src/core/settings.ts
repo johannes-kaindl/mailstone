@@ -1,7 +1,7 @@
 import { slugify } from "../vendor/code-kit/slug";
 import { mergeSettings } from "../vendor/code-kit/settings";
 import { secretIdFor as kitSecretIdFor } from "../vendor/kit/secrets";
-import { defaultMailProfile, type FmVal, type MailProfile } from "./mirror/profile";
+import { defaultMailProfile, isPseudonymizeMode, type FmVal, type MailProfile } from "./mirror/profile";
 import type { TlsMode } from "./net/types";
 import type { TrustedSender } from "./api/types";
 
@@ -198,6 +198,8 @@ export function loadSettings(raw: unknown): MailstoneSettings {
     fields: { ...defaultMailProfile().fields, ...(isObj(rawProfile.fields) ? rawProfile.fields : {}) },
     // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt die .eml (an).
     saveEml: typeof rawProfile.saveEml === "boolean" ? rawProfile.saveEml : true,
+    // Nur eine der drei Stellungen gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus.
+    pseudonymize: isPseudonymizeMode(rawProfile.pseudonymize) ? rawProfile.pseudonymize : "off",
     // Nur Text gilt; fehlt der Schluessel (alte data.json), bleibt der Vorgang aus.
     threadField: typeof rawProfile.threadField === "string" ? rawProfile.threadField : defaultMailProfile().threadField,
     // Nur Text gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, gilt die Vorgabe. Ein bewusst leerer Text bleibt leer: die Regel ist aus.

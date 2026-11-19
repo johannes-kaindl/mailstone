@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_SETTINGS, loadSettings, newAccount, onCreateInvalidValues, rawOnCreate, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
+import { defaultMailProfile } from "../../src/core/mirror/profile";
 import type { TrustedSender } from "../../src/core/api/types";
 
 describe("settings", () => {
@@ -104,6 +105,20 @@ describe("saveEml (A6)", () => {
   });
   it("ein Wert, der kein Boolean ist, faellt auf true zurueck (kein stilles Abschalten)", () => {
     for (const v of ["false", 0, null, "nein", []]) expect(loadSettings({ profile: { saveEml: v } }).profile.saveEml, JSON.stringify(v)).toBe(true);
+  });
+});
+
+describe("pseudonymize (A5, Schritt 2)", () => {
+  it("eine alte data.json ohne den Schluessel ergibt off: Vorgabe, kein Vault wird ungefragt umgestellt", () => {
+    expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail" } }).profile.pseudonymize).toBe("off");
+    expect(loadSettings(undefined).profile.pseudonymize).toBe("off");
+    expect(defaultMailProfile().pseudonymize).toBe("off");
+  });
+  it("alle drei gueltigen Stellungen bleiben, wie gespeichert", () => {
+    for (const v of ["off", "if-available", "required"]) expect(loadSettings({ profile: { pseudonymize: v } }).profile.pseudonymize, v).toBe(v);
+  });
+  it("ein unbekannter Wert faellt auf off zurueck (kein stilles Einschalten, kein stilles Verlangen)", () => {
+    for (const v of ["on", "Required", "", 1, true, null, [], {}]) expect(loadSettings({ profile: { pseudonymize: v } }).profile.pseudonymize, JSON.stringify(v)).toBe("off");
   });
 });
 

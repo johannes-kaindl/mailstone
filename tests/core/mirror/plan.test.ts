@@ -67,6 +67,21 @@ describe("planMailNote", () => {
       const p = planMailNote({ ...c, mail, profile: { ...c.profile, saveEml: false }, existing: null });
       expect(p.kind === "create" && p.emlPath).toBe("Mail/2026/_eml/2026-08-19-1432-hallo-welt.eml");
     });
+    it("pseudonymize != off: keine .eml, auch bei saveEml: true und auch ohne Message-ID (A5: ein Original ist Klartext)", async () => {
+      const c = await common();
+      for (const mode of ["if-available", "required"] as const) {
+        const profile = { ...c.profile, saveEml: true, pseudonymize: mode };
+        const normal = planMailNote({ ...c, profile, existing: null });
+        expect(normal.kind === "create" && normal.emlPath, mode).toBeNull();
+        const noid = planMailNote({ ...c, mail: { ...c.mail, id: "noid-0123456789abcdef0123456789abcdef" }, profile, existing: null });
+        expect(noid.kind === "create" && noid.emlPath, `${mode} noid`).toBeNull();
+      }
+    });
+    it("pseudonymize off: saveEml entscheidet wie bisher", async () => {
+      const c = await common();
+      const p = planMailNote({ ...c, profile: { ...c.profile, saveEml: true, pseudonymize: "off" }, existing: null });
+      expect(p.kind === "create" && p.emlPath).not.toBeNull();
+    });
     it("Standard und Profil ohne das Feld: .eml wird gespeichert", async () => {
       expect(defaultMailProfile().saveEml).toBe(true);
     });

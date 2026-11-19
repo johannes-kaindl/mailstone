@@ -2,6 +2,13 @@ export type FmVal = string | number | boolean | string[];
 export const MAIL_SERVER_FIELDS = ["title", "date", "time", "from", "to", "cc", "subject", "in_reply_to", "references", "attachments", "richtung"] as const;
 export type MailServerField = (typeof MAIL_SERVER_FIELDS)[number];
 
+/** Der Schalter „Pseudonymisieren“ (A5): Aus / Wenn verfügbar / Verlangt. Die Form gehört dem Kit (`PseudonymizeMode` in
+ *  `kit-obsidian/pseudonymizer-call`); `src/core` importiert aus der obsidian-Schicht nicht, deshalb steht der Typ hier, und
+ *  `tests/core/transform/mode-type.test.ts` hält beide gleich (ein Typ-Test, `npm run typecheck` bricht bei Abweichung). */
+export type PseudonymizeMode = "off" | "if-available" | "required";
+export const PSEUDONYMIZE_MODES: readonly PseudonymizeMode[] = ["off", "if-available", "required"];
+export const isPseudonymizeMode = (v: unknown): v is PseudonymizeMode => typeof v === "string" && (PSEUDONYMIZE_MODES as readonly string[]).includes(v);
+
 export interface MailProfile {
   id: string;
   name: string;
@@ -12,6 +19,11 @@ export interface MailProfile {
    *  false: Sync und Import legen keine an; Re-render und Anhang-Extraktion holen das Original
    *  dann bei Bedarf vom Server. Mails ohne Message-ID (`noid-…`) behalten die .eml immer. */
   saveEml: boolean;
+  /** Neue Mails vor dem Schreiben pseudonymisieren (A5). Standard `"off"`: mailstone nutzt das Plugin pseudonymizer nicht.
+   *  `"if-available"`: pseudonymisiert, solange das Plugin bereit ist, sonst Klartext. `"required"`: ohne bereites Plugin wird
+   *  keine neue Mail geschrieben, sie wartet auf dem Server. Mit einer Stellung ungleich `"off"` entsteht keine `.eml`
+   *  (`effectiveSaveEml`): ein Original ist Klartext. */
+  pseudonymize: PseudonymizeMode;
   /** Frontmatter-Feld fuer den Vorgang (A3): jede Mail-Notiz traegt dort einen Wikilink auf die fruehste
    *  Notiz ihres Vorgangs, die Wurzel auf sich selbst. Standard `""` = aus (kein Vault bekommt ungefragt ein
    *  neues Feld). Kein verwaltetes Feld: der Wert haengt am Vault-Stand, nicht an der Mail, Re-render rechnet
@@ -49,6 +61,19 @@ export interface MailProfile {
 export interface NoteHeadings { notes: string; message: string }
 export const DEFAULT_NOTE_HEADINGS: NoteHeadings = { notes: "Notizen", message: "Nachricht" };
 
+/** Wird pseudonymisiert (Schalter ungleich Aus)? Dann gelten `.eml` und Klartext-Orte als aus. */
+export const isPseudonymizing = (p: Pick<MailProfile, "pseudonymize">): boolean => p.pseudonymize !== "off";
+
+/** Ob Sync und Import eine `.eml` neben die Notiz legen: `saveEml`, aber nie bei Pseudonymisierung (ein Original ist Klartext).
+ *  Die EINE Stelle, die `saveEml` liest; sie gilt auch fuer Mails ohne Message-ID (`noid-…`), die Ausnahme „Original nur hier“
+ *  gilt nur ohne Pseudonymisierung (`keepsEml`). */
+export const effectiveSaveEml = (p: Pick<MailProfile, "saveEml" | "pseudonymize">): boolean => p.saveEml && !isPseudonymizing(p);
+
+/** Ob zu dieser Mail eine `.eml` geschrieben wird: `effectiveSaveEml`, oder eine Mail ohne Message-ID (auf dem Server nicht
+ *  auffindbar, ihr Original gibt es nur hier) — beides nie bei Pseudonymisierung. */
+export const keepsEml = (p: Pick<MailProfile, "saveEml" | "pseudonymize">, mailId: string): boolean =>
+  !isPseudonymizing(p) && (p.saveEml || mailId.startsWith("noid-"));
+
 export function withNoteHeadings(p: MailProfile, headings: NoteHeadings): MailProfile {
   return { ...p, noteHeadings: headings };
 }
@@ -65,6 +90,7 @@ export function defaultMailProfile(): MailProfile {
     yearSubfolder: true,
     emlSubfolder: "_eml",
     saveEml: true,
+    pseudonymize: "off",
     threadField: "",
     threadTokenPattern: "\\[Ticket#\\d+\\]",
     followField: "mail_follow",

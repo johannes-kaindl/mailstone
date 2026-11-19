@@ -94,6 +94,62 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
     expect(tab.getControlValue("profile.saveEml")).toBe(false);
   });
 
+  it("bietet die Zeile Pseudonymisieren mit drei Stellungen, Standard Aus, hinter der .eml-Zeile (A5)", async () => {
+    type Hatch = { name?: string; desc?: string; render?: (s: Setting) => void; control?: { key?: string } };
+    const tab = newTab({ accounts: [] });
+    (tab as unknown as { update: () => void }).update = () => {};
+    const defs = tab.getSettingDefinitions() as unknown as Hatch[];
+    const i = defs.findIndex((d) => d.name === "Pseudonymisieren");
+    expect(i).toBe(defs.findIndex((d) => d.control?.key === "profile.saveEml") + 1);
+    expect(defs[i]?.desc).toContain("Verlangt");
+    expect(defs[i]?.desc).toContain("pseudonymizer");
+    expect(typeof defs[i]?.render).toBe("function");
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("off");
+    await tab.setControlValue("profile.pseudonymize", "required");
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("required");
+    // Ein Wert ausserhalb der drei Stellungen faellt auf Aus, nie auf Verlangt.
+    await tab.setControlValue("profile.pseudonymize", "banane");
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("off");
+  });
+
+  it("die .eml-Zeile traegt bei Pseudonymisieren != Aus den Hinweis, dass keine .eml entsteht, und der Tab zeichnet beim Wechsel neu (A5)", async () => {
+    const tab = newTab({ accounts: [] });
+    // Der Obsidian-Mock kennt kein PluginSettingTab.update(); ein Spion zaehlt die Neuzeichnungen.
+    const update = vi.fn();
+    (tab as unknown as { update: () => void }).update = update;
+    const emlDesc = (): string => (tab.getSettingDefinitions() as { desc?: string; control?: { key?: string } }[]).find((d) => d.control?.key === "profile.saveEml")?.desc ?? "";
+    expect(emlDesc()).not.toContain("keine .eml geschrieben");
+    await tab.setControlValue("profile.pseudonymize", "if-available");
+    expect(emlDesc()).toContain("keine .eml geschrieben");
+    expect(update).toHaveBeenCalledTimes(1);
+    // Wechsel zwischen den zwei aktiven Stellungen: der Hinweis bleibt, kein Neuzeichnen (der Fokus am Schalter bleibt).
+    await tab.setControlValue("profile.pseudonymize", "required");
+    expect(emlDesc()).toContain("keine .eml geschrieben");
+    expect(update).toHaveBeenCalledTimes(1);
+    await tab.setControlValue("profile.pseudonymize", "off");
+    expect(emlDesc()).not.toContain("keine .eml geschrieben");
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it("rendert den Segment-Schalter mit drei Stellungen; ein Klick speichert die Stellung (A5)", async () => {
+    type Hatch = { name?: string; render?: (s: Setting) => void };
+    const tab = newTab({ accounts: [] });
+    (tab as unknown as { update: () => void }).update = () => {};
+    const row = (tab.getSettingDefinitions() as unknown as Hatch[]).find((d) => d.name === "Pseudonymisieren")!;
+    const setting = new Setting(undefined as never);
+    row.render?.(setting);
+    // Der Mock-DOM ist kein echtes DOM: die Knoepfe liegen als `children` der Gruppe, Klicks als `_listeners`.
+    type Fake = { children: Fake[]; textContent: string; className: string; getAttribute(n: string): string | null; _listeners: Record<string, Array<() => void>> };
+    const control = (setting as unknown as { controlEl: Fake }).controlEl;
+    const group = control.children.find((c) => c.className.includes("okit-segmented"))!;
+    expect(group.getAttribute("role")).toBe("radiogroup");
+    expect(group.children.map((b) => b.textContent)).toEqual(["Aus", "Wenn verfügbar", "Verlangt"]);
+    expect(group.children.map((b) => b.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
+    group.children[2]!._listeners["click"]![0]!();
+    await Promise.resolve();
+    expect(tab.getControlValue("profile.pseudonymize")).toBe("required");
+  });
+
   it("bietet einen Schalter fuer das Debug-Protokoll", () => {
     const tab = newTab({ accounts: [] });
     const defs = tab.getSettingDefinitions() as { name?: string; control?: { key?: string } }[];

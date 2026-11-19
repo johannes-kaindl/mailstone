@@ -1,3 +1,4 @@
+import { effectiveSaveEml } from "../mirror/profile";
 import { emlPathFor } from "./eml";
 import { EMPTY_SCHEMA, type CommandContext, type CommandDescriptor, type CommandProbe, type MailCommandPlan, type PlanResult } from "./types";
 import { validateInput } from "./schema";
@@ -25,10 +26,10 @@ export const REMOVE_EML_COMMAND: CommandDescriptor = {
   schema: EMPTY_SCHEMA,
   needs: { allNotes: true, emlProbe: true },
 
-  /** Nur bei ausgeschaltetem `saveEml`: wer die .eml behalten will, soll den Befehl nicht in der
+  /** Nur ohne wirksames `saveEml` (ausgeschaltet oder Pseudonymisierung an): wer die .eml behalten will, soll den Befehl nicht in der
    *  Palette finden. */
   appliesTo(probe: CommandProbe): boolean {
-    return probe.target.mailId !== "" && !probe.profile.saveEml;
+    return probe.target.mailId !== "" && !effectiveSaveEml(probe.profile);
   },
 
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult {

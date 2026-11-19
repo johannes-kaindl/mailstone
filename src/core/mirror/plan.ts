@@ -2,7 +2,7 @@ import type { ParsedMail } from "../mime/types";
 import { buildDerivedFrontmatter } from "../render/frontmatter";
 import { renderMessageBlock } from "../render/body";
 import { mailFilename, mailFolder, emlFolder } from "../render/filename";
-import { DEFAULT_NOTE_HEADINGS, managedKeys, type FmVal, type MailProfile } from "./profile";
+import { DEFAULT_NOTE_HEADINGS, keepsEml, managedKeys, type FmVal, type MailProfile } from "./profile";
 import type { OriginalFacts } from "../transform/original-facts";
 import { blockHeadingOf, mergeNote, newNote } from "../merge/merge";
 
@@ -121,7 +121,7 @@ export function planMailNote(input: PlanInput): NotePlan {
     // eine verwaiste Datei am Konventionspfad bleibt eine Kollision), geschrieben wird er nur,
     // wenn die .eml gebraucht wird. Eine Mail ohne Message-ID ist auf dem Server nicht
     // auffindbar, ihr Original gibt es nur hier.
-    const emlPath = profile.saveEml || mail.id.startsWith("noid-") ? assigned.emlPath : null;
+    const emlPath = keepsEml(profile, mail.id) ? assigned.emlPath : null;
     return { kind: "create", path: assigned.path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash };
   }
 

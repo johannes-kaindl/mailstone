@@ -90,7 +90,8 @@
         "setting-body-host",
         "plugin-api",
         "capability-apis",
-        "pseudonymizer-call"
+        "pseudonymizer-call",
+        "segmented-control"
       ],
       "rewrite": [
         [

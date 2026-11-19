@@ -24,6 +24,8 @@ import { latestSuccessfulSyncAt, type RunState } from "../core/sync/run-state";
 import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
+import { buildSegmentedControl } from "../vendor/kit-obsidian/segmented-control";
+import { isPseudonymizeMode, isPseudonymizing, type PseudonymizeMode } from "../core/mirror/profile";
 import { statusBarEnabled, statusBarSettingDefinition } from "../vendor/kit-obsidian/status-bar-item";
 
 /** Was der Tab vom Plugin braucht — als Interface, damit Tests eine Attrappe geben können
@@ -68,6 +70,28 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return at === null ? t("settings.lastSync.never") : t("settings.lastSync.value", new Date(at).toLocaleString());
   }
 
+  /** Beschreibung der Zeile „Original als .eml speichern“: mit eingeschaltetem Pseudonymisieren kommt der Hinweis dazu, dass der Wert
+   *  gespeichert bleibt und nicht wirkt (A5). */
+  private saveEmlDesc(): string {
+    const base = t("settings.saveEml.desc");
+    return isPseudonymizing(this.host.settings.profile) ? `${base} ${t("settings.saveEml.pseudonymized")}` : base;
+  }
+
+  /** Der Schalter „Pseudonymisieren“ (A5): drei Stellungen als Segment-Schalter (UI-STANDARD §8). */
+  private renderPseudonymize(setting: Setting): void {
+    setting.setName(t("settings.pseudonymize")).setDesc(t("settings.pseudonymize.desc"));
+    buildSegmentedControl<PseudonymizeMode>(setting.controlEl, {
+      options: [
+        { value: "off", label: t("settings.pseudonymize.off") },
+        { value: "if-available", label: t("settings.pseudonymize.ifAvailable") },
+        { value: "required", label: t("settings.pseudonymize.required") },
+      ],
+      value: this.host.settings.profile.pseudonymize,
+      ariaLabel: t("settings.pseudonymize"),
+      onChange: (v) => { void this.setControlValue("profile.pseudonymize", v); },
+    });
+  }
+
   // ── Die eine Wahrheit ────────────────────────────────────────────────────
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
@@ -110,8 +134,13 @@ export class MailstoneSettingTab extends PluginSettingTab {
       },
       {
         name: t("settings.saveEml"),
-        desc: t("settings.saveEml.desc"),
+        desc: this.saveEmlDesc(),
         control: { type: "toggle", key: "profile.saveEml" },
+      },
+      {
+        name: t("settings.pseudonymize"),
+        desc: t("settings.pseudonymize.desc"),
+        render: (setting: Setting) => { this.renderPseudonymize(setting); },
       },
       {
         name: t("settings.threadField"),
@@ -578,6 +607,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
         get: () => s.profile.saveEml,
         set: (value) => { s.profile.saveEml = Boolean(value); },
       },
+      "profile.pseudonymize": {
+        get: () => s.profile.pseudonymize,
+        set: (value) => { s.profile.pseudonymize = isPseudonymizeMode(value) ? value : "off"; },
+      },
       "profile.threadField": {
         get: () => s.profile.threadField,
         set: (value) => { s.profile.threadField = typeof value === "string" ? value.trim() : ""; },
@@ -619,9 +652,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
     // bei jedem Tastendruck risse dem Nutzer den Fokus aus dem Textfeld.
     // Beide Feldnamen teilen sich die Kollisionsprobe: eine Aenderung des einen kann den Hinweis des anderen aendern.
     const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}|${String(this.threadTokenHint())}|${this.inheritFieldHints().join("|")}`;
+    // Der Hinweis an „Original als .eml speichern“ haengt daran, ob ueberhaupt pseudonymisiert wird (Aus gegen die anderen zwei).
+    const pseudoVorher = isPseudonymizing(this.host.settings.profile);
     const hinweisVorher = key === "profile.threadField" || key === "profile.followField" || key === "profile.threadTokenPattern" ? hinweise() : null;
     entry.set(value);
     await this.host.saveSettings();
-    if (hinweisVorher !== null && hinweisVorher !== hinweise()) this.update();
+    if ((hinweisVorher !== null && hinweisVorher !== hinweise()) || (key === "profile.pseudonymize" && pseudoVorher !== isPseudonymizing(this.host.settings.profile))) this.update();
   }
 }

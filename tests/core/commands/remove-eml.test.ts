@@ -32,6 +32,12 @@ describe("mail.removeEml", () => {
     expect(REMOVE_EML_COMMAND.appliesTo(probe(profile, ""))).toBe(false);
   });
 
+  it("erscheint auch bei saveEml: true, sobald pseudonymisiert wird (dort entsteht keine .eml mehr)", () => {
+    const probe = (p: typeof profile) => ({ profile: p, target: { mailId: "a@x", path: "x.md", source: "", state: null }, frontmatter: {} });
+    expect(REMOVE_EML_COMMAND.appliesTo(probe({ ...profile, saveEml: true, pseudonymize: "required" }))).toBe(true);
+    expect(REMOVE_EML_COMMAND.appliesTo(probe({ ...profile, saveEml: true, pseudonymize: "off" }))).toBe(false);
+  });
+
   it("plant nur die passenden .eml zum Papierkorb und fasst keine Notiz an", () => {
     const r = REMOVE_EML_COMMAND.plan({}, ctx([note("a@x", emlOf("a@x")), note("b@x", emlOf("b@x")), note("c@x")]));
     expect(r.ok).toBe(true);
