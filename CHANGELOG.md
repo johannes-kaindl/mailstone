@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-20
+
 ### Added
 
 - Setting *Thread token in the subject* (a regular expression, default `\[Ticket#\d+\]`, empty switches it off): mails with the same token in the subject belong to one thread even when their headers do not link them, for example the replies of a helpdesk that start a new thread each time. It is used by *Recompute threads*, by the thread value of new notes, by *Show follow-up mails* and by *Follow threads*, and the headers always come first: a mail whose `In-Reply-To` or `References` points to a note keeps that thread, whatever its subject says. If the expression has a group, its content is the token (`Ticket #(\d+)` makes `Ticket #42` and `Ticket#42` one token). An invalid expression, or one that the safety check of the shared library refuses because it could run very long on some subjects, is ignored and a note under the setting says why; only the first 998 characters of a subject are searched. The default is on, so *Show follow-up mails* and *Follow threads* also match by `[Ticket#1234]` in the subject for existing installations.
