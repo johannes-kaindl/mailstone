@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- With *Pseudonymize* on, mails that keep waiting for the pseudonymizer (or fail) no longer block newer mails and are no longer fetched again in full on every sync. A sync fetches new mails first and retries at most 20 waiting ones per run, the least often tried first, so a backlog of 200 or more waiting mails does not keep a new mail from becoming a note.
 - A value of exactly `true` or `false` under *Extra fields for new mail notes* is now written to the front matter as a real YAML boolean (`done: true`), not as the text `"true"`, so a Bases filter on the checkbox matches. Other text and numbers stay as they are, and existing notes are not touched.
 - *Show follow-up mails* no longer stays on “Searching the mailboxes…” when the search throws an error: the dialog now says “Could not search the mailboxes” with the reason.
 - A thread you stopped following stays stopped when an earlier mail of the thread later becomes a note and turns into the new first mail. The marker on any mail of a thread now counts for the whole thread (*Show follow-up mails* hides it and *Follow threads* no longer copies it), and *Follow this thread again* removes the marker from every mail that carries it, after the preview.

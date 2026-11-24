@@ -97,7 +97,17 @@ export const MAX_FETCH_PER_RUN = 200;
  *  Body-Deckel setzt der Lauf dann Detaches aus, statt sie faelschlich auszuloesen. */
 export const MAX_HEADER_FETCH_PER_RUN = 2000;
 
+/** Wie viele schon wartende oder gescheiterte Mails ein Lauf hoechstens noch einmal holt. Die Transformation (A5) laeuft erst NACH der
+ *  Fetch-Schleife, eine wartende Mail zaehlt also zu `MAX_FETCH_PER_RUN`; ohne diese Grenze hielten 200 dauerhaft wartende Mails jede neue
+ *  dahinter fuer immer draussen und wuerden in jedem Lauf alle neu geholt. Neue Mails kommen zuerst dran, die wartenden danach, die am
+ *  seltensten versuchten zuerst (sie rotieren), und mehr als diese Zahl je Lauf nie. Eine wartende Mail, die der Pseudonymizer
+ *  inzwischen annimmt, schreibt ihre Notiz also spaetestens nach einigen Laeufen. */
+export const MAX_WAITING_RETRIES_PER_RUN = 20;
+
 export function createSyncService(deps: SyncDeps): SyncService {
+  /** Je Quelle (`<Konto>/<Ordner>`): Mail-ID -> wie oft sie in diesem Plugin-Lauf schon gewartet hat oder gescheitert ist. Nur im Speicher: nach
+   *  einem Neustart lernt der erste Lauf es neu (er verhaelt sich dann wie vor dieser Regel). */
+  const waitMemory = new Map<string, Map<string, number>>();
   function connectOptions(account: Account, password: string): ImapConnectOptions {
     return {
       host: account.imap.host, port: account.imap.port, tls: account.imap.tls,
@@ -116,6 +126,8 @@ export function createSyncService(deps: SyncDeps): SyncService {
     const profile = deps.profile();
     const folder = account.folders.allowlist;
     const source = `${account.id}/${folder}`;
+    const waitingTries = waitMemory.get(source) ?? new Map<string, number>();
+    waitMemory.set(source, waitingTries);
     const password = deps.secret(account.secretId);
     if (password === null) return { ok: false, accountId: account.id, code: "no-secret" };
 
@@ -206,11 +218,21 @@ export function createSyncService(deps: SyncDeps): SyncService {
       // macht onServer nicht unvollstaendig und darf den Detach-Zweig nicht stilllegen — sonst
       // legte eine einzige dauerhaft unparsbare Mail ihn fuer immer stumm.
 
-      for (const uid of uids) {
+      // Neue Mails zuerst, schon wartende danach (die am seltensten versuchten zuerst), s. MAX_WAITING_RETRIES_PER_RUN.
+      const waitingUid = (u: number): boolean => { const id = known.get(u); return id !== undefined && waitingTries.has(id); };
+      const triesOf = (u: number): number => waitingTries.get(known.get(u)!) ?? 0;
+      const ordered = [...uids.filter((u) => !waitingUid(u)), ...uids.filter(waitingUid).sort((a, b) => triesOf(a) - triesOf(b))];
+      let waitingRetries = 0;
+      for (const uid of ordered) {
         const cachedId = known.get(uid);
         if (cachedId !== undefined) {
           onServer.add(cachedId);
           if (index.has(cachedId) || fetchedIds.has(cachedId)) continue; // Notiz existiert/ist geplant — kein Body noetig
+          // Eine schon wartende Mail wird je Lauf nur begrenzt oft neu geholt; ihre ID ist bekannt, `onServer` bleibt vollstaendig.
+          if (waitingTries.has(cachedId)) {
+            if (waitingRetries >= MAX_WAITING_RETRIES_PER_RUN) continue;
+            waitingRetries += 1;
+          }
         }
         if (cachedId === undefined && deferredUids.has(uid)) {
           // Header dieses Laufs nicht mehr geholt (s. MAX_HEADER_FETCH_PER_RUN): ID unbestimmt,
@@ -264,18 +286,24 @@ export function createSyncService(deps: SyncDeps): SyncService {
       for (const item of fetched) {
         const r = await transformMail(item.mail, profile, port, { interactive: opts.interactive === true });
         if (r.kind === "mail") {
+          waitingTries.delete(item.mail.id);
           // Die Original-Bytes sind Klartext: bei eingeschaltetem Schalter schreibt kein Plan eine .eml, also reisen sie auch nicht mit.
           toPlan.push({ mail: r.mail, eml: new Uint8Array(0) });
           facts.set(item.mail.id, r.facts);
         } else if (r.kind === "wait") {
           waiting += 1;
+          waitingTries.set(item.mail.id, (waitingTries.get(item.mail.id) ?? 0) + 1);
           deps.log?.(`transform: waiting ${item.mail.id}: ${r.reason}: ${r.message}`);
         } else {
           transformErrors += 1;
+          waitingTries.set(item.mail.id, (waitingTries.get(item.mail.id) ?? 0) + 1);
           deps.log?.(`transform: failed ${item.mail.id}: ${r.reason}: ${r.message}`);
         }
       }
     }
+
+    // Was nicht mehr im Ordner liegt, muss nicht weiter gemerkt werden.
+    for (const id of [...waitingTries.keys()]) if (!onServer.has(id)) waitingTries.delete(id);
 
     // Anhaenge (A6): die Pfade loest die Obsidian-Schicht jetzt auf, die Planung bleibt rein. Nie bei Pseudonymisierung (`effectiveSaveAttachments`).
     let attachmentTargets: Map<string, AttachmentTargets> | undefined;

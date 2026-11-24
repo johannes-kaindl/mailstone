@@ -781,4 +781,67 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
       expect(plan.kind === "create" && plan.attachments).toBeFalsy();
     });
   });
+
+  // W37 (Task „Sync-Grenze von 200 Mails zählt wartende Pseudonymizer-Mails nicht mit“): die Transformation läuft nach der Fetch-Schleife,
+  // also zählten wartende Mails zur Grenze mit. 200 Mails, die jedes Mal wieder warten, hielten jede neue Mail dahinter fuer immer draussen
+  // und wurden in jedem Lauf neu geholt.
+  describe("wartende Mails und die Grenze je Lauf (W37)", () => {
+    /** Ein IMAP-Doppelgaenger, der auf jeden Befehl antwortet (statt eines festen Skripts): die Reihenfolge der Abrufe ist ja das Messobjekt. */
+    class ReactiveImap extends FakeSocketTransport {
+      readonly bodyFetches: number[] = [];
+      constructor(private readonly uids: number[], private readonly bodyOf: (uid: number) => string) { super(["* OK ready"], []); }
+      override async write(data: Uint8Array | string): Promise<void> {
+        const text = typeof data === "string" ? data : new TextDecoder().decode(data);
+        for (const line of text.split("\r\n").filter((l) => l !== "")) {
+          const m = /^(a\d+) (.*)$/.exec(line);
+          if (!m) continue;
+          const [, tag, cmd] = m as unknown as [string, string, string];
+          const push = (parts: (string | Uint8Array)[]): void => { (this as unknown as { push(p: (string | Uint8Array)[]): void }).push(parts); };
+          const body = /^UID FETCH (\d+) \(BODY\.PEEK\[\]\)$/.exec(cmd);
+          if (cmd === "CAPABILITY") push(["* CAPABILITY IMAP4rev1 AUTH=PLAIN SASL-IR", `${tag} OK done`]);
+          else if (cmd.startsWith("AUTHENTICATE")) push([`${tag} OK authenticated`]);
+          else if (cmd.startsWith("EXAMINE")) push([`* ${String(this.uids.length)} EXISTS`, "* OK [UIDVALIDITY 42] ok", `${tag} OK done`]);
+          else if (cmd === "UID SEARCH ALL") push([`* SEARCH ${this.uids.join(" ")}`, `${tag} OK done`]);
+          else if (body) {
+            const uid = Number(body[1]);
+            this.bodyFetches.push(uid);
+            const bytes = new TextEncoder().encode(this.bodyOf(uid));
+            push([`* 1 FETCH (UID ${String(uid)} BODY[] {${String(bytes.byteLength)}}`, bytes, ")", `${tag} OK done`]);
+          } else if (cmd === "LOGOUT") push(["* BYE", `${tag} OK done`]);
+          else push([`${tag} BAD unexpected ${cmd}`]);
+        }
+        await super.write("");
+      }
+    }
+    const mail = (uid: number, wait: boolean): string =>
+      `From: a@example.net\r\nTo: b@example.net\r\nSubject: ${wait ? "WARTEN" : "sauber"} ${String(uid)}\r\nMessage-ID: <${wait ? "w" : "n"}${String(uid)}@x>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n`;
+
+    it("201 dauerhaft wartende Mails halten eine neue saubere Mail nicht mehr dauerhaft draussen und werden nicht jedes Mal alle neu geholt", async () => {
+      const WAITING = MAX_FETCH_PER_RUN + 1;
+      const uids = Array.from({ length: WAITING + 1 }, (_, i) => i + 1); // 1..201 warten, 202 ist sauber
+      const map: Record<string, string> = {};
+      for (const uid of uids) map[String(uid)] = `${uid <= WAITING ? "w" : "n"}${String(uid)}@x`;
+      const imaps: ReactiveImap[] = [];
+      const exec = recordingExecutor();
+      const port: TransformPort = (req) => {
+        const body = req.parts.find((p) => p.id === "subject")?.value ?? "";
+        if (body.includes("WARTEN")) return Promise.resolve({ kind: "wait", reason: "not-ready", message: "wartet" });
+        return Promise.resolve({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.value })), entities: [], applied: 0 } });
+      };
+      const svc = createSyncService({
+        accounts: () => [account()], profile: () => ({ ...defaultMailProfile(), pseudonymize: "required" }), secret: () => "geheim",
+        transport: () => { const t = new ReactiveImap(uids, (uid) => mail(uid, uid <= WAITING)); imaps.push(t); return t; },
+        index: () => new Map(), takenPaths: () => new Set<string>(), executor: () => exec.executor,
+        uidCache: createUidCache({ "acc|Vault": { uidValidity: 42, map } }), busy: createBusyGuard(), events: createEmitter(), timers: testTimers,
+        now: () => new Date("2026-08-30T09:00:00Z"), pseudonymize: port,
+      });
+      const first = await svc.syncAccount("acc");
+      expect(first).toMatchObject({ ok: true, counts: { created: 0, waiting: MAX_FETCH_PER_RUN } });
+      const second = await svc.syncAccount("acc");
+      expect(second).toMatchObject({ ok: true, counts: { created: 1 } });
+      expect(exec.seen.some((p) => p.kind === "create" && p.mailId === `n${String(WAITING + 1)}@x`)).toBe(true);
+      // Die wartenden kommen NACH den neuen und nur mit einem kleinen Anteil wieder dran, nicht alle 200 in jedem Lauf.
+      expect(imaps[1]!.bodyFetches.length).toBeLessThan(MAX_FETCH_PER_RUN / 2);
+    });
+  });
 });
