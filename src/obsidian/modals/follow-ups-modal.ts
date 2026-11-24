@@ -8,6 +8,7 @@ import type { VaultFollowContext } from "../follow-context";
 export type FollowUpsState =
   | { kind: "loading" }
   | { kind: "busy" }
+  | { kind: "error"; message: string }
   | {
       kind: "done";
       groups: FollowGroup[];
@@ -51,6 +52,14 @@ export function renderFollowUps(root: HTMLElement, state: FollowUpsState): void 
   }
   if (state.kind === "busy") {
     root.createEl("p", { cls: "mailstone-follow-note", text: t("followUps.busy") });
+    return;
+  }
+
+  if (state.kind === "error") {
+    const zeile = root.createDiv({ cls: "mailstone-follow-problem" });
+    const el = zeile.createSpan({ cls: "mailstone-inbox-status is-error", attr: { "aria-label": t("followUps.aria.error") } });
+    setIcon(el, "circle-x");
+    zeile.createSpan({ text: t("followUps.failed", state.message) });
     return;
   }
 
@@ -116,8 +125,16 @@ export class FollowUpsModal extends Modal {
   }
 
   private async load(): Promise<void> {
-    const ctx = this.deps.context();
-    const result = await this.deps.run(ctx);
+    // Eine Ausnahme (Kontext lesen oder Lauf) darf den Dialog nicht auf „Laedt“ stehen lassen: sie wird ein sichtbarer Fehlerzustand.
+    let ctx: VaultFollowContext;
+    let result: FollowRunResult;
+    try {
+      ctx = this.deps.context();
+      result = await this.deps.run(ctx);
+    } catch (e) {
+      renderFollowUps(this.contentEl, { kind: "error", message: e instanceof Error ? e.message : String(e) });
+      return;
+    }
     if (!result.ok) { renderFollowUps(this.contentEl, { kind: "busy" }); return; }
     renderFollowUps(this.contentEl, {
       kind: "done",

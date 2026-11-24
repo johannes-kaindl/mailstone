@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { makeFakeEl } from "../vendor/kit/obsidian-mock";
-import { renderFollowUps, type FollowUpsState } from "../../src/obsidian/modals/follow-ups-modal";
+import { FollowUpsModal, renderFollowUps, type FollowUpsState } from "../../src/obsidian/modals/follow-ups-modal";
 import type { FollowItem, FollowRunProblem } from "../../src/core/thread/follow-run";
 import { groupFollowUps } from "../../src/core/view/follow-vm";
 import { initI18n } from "../../src/i18n/strings";
@@ -83,5 +83,27 @@ describe("renderFollowUps", () => {
     renderFollowUps(el, { kind: "busy" });
     expect(String(el.textContent)).toContain("Another operation is running.");
     expect(String(el.textContent)).not.toContain("Searching");
+  });
+});
+
+describe("FollowUpsModal — Ausnahme im Lauf (W37)", () => {
+  it("zeigt bei einer Ausnahme von run einen Fehlertext statt dauerhaft „Lädt“", async () => {
+    const modal = new FollowUpsModal({} as any, {
+      context: () => ({ index: { rootOf: new Map() }, stopped: new Set(), pathOf: () => null }) as any,
+      run: () => Promise.reject(new Error("kaputt")),
+      openNote: () => {},
+    });
+    modal.onOpen();
+    await new Promise((r) => setTimeout(r, 0));
+    const el = (modal as any).contentEl;
+    expect(String(el.textContent)).not.toContain("Searching the mailboxes");
+    expect(String(el.textContent)).toContain("Could not search the mailboxes");
+    expect(String(el.textContent)).toContain("kaputt");
+  });
+  it("renderFollowUps kennt den Zustand error und nennt die Meldung", () => {
+    const el = makeFakeEl();
+    renderFollowUps(el, { kind: "error", message: "boom" });
+    expect(String(el.textContent)).toContain("Could not search the mailboxes");
+    expect(String(el.textContent)).toContain("boom");
   });
 });

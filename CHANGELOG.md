@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- *Show follow-up mails* no longer stays on “Searching the mailboxes…” when the search throws an error: the dialog now says “Could not search the mailboxes” with the reason.
 - A thread you stopped following stays stopped when an earlier mail of the thread later becomes a note and turns into the new first mail. The marker on any mail of a thread now counts for the whole thread (*Show follow-up mails* hides it and *Follow threads* no longer copies it), and *Follow this thread again* removes the marker from every mail that carries it, after the preview.
 - *Import .eml folder* no longer runs while a sync is running, for example while *Check waiting mails* has its review window open. Before, an import of the same mail in that moment could create a second note with the same `mail_id`; now the command reports that another operation is running and does nothing.
 
