@@ -50,6 +50,19 @@ export function followStopped(profile: MailProfile, frontmatter: Readonly<Record
   return v === false || (typeof v === "string" && v.trim().toLowerCase() === "false");
 }
 
+/** Die Wurzeln der beendeten Vorgaenge: ein Vorgang gilt als beendet, sobald IRGENDEIN Mitglied die Markierung traegt (W37). Die Markierung
+ *  setzt der Befehl an die Wurzel; kommt spaeter eine fruehere Mail dazu (manuelles Uebernehmen), wird sie die neue Wurzel ohne Markierung,
+ *  und eine Abfrage nur an der Wurzel liesse den Vorgang gegen den Willen des Nutzers wieder folgen. `rootOf` ist `ThreadIndex.rootOf`. */
+export function stoppedRoots(
+  profile: MailProfile,
+  rootOf: ReadonlyMap<string, string>,
+  frontmatterOf: (mailId: string) => Readonly<Record<string, unknown>> | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  for (const [id, root] of rootOf) if (followStopped(profile, frontmatterOf(id) ?? {})) out.add(root);
+  return out;
+}
+
 export type InheritFieldProblem = "managed" | "unreadable" | "collision";
 
 /** Warum `name` als zu erbender Schluessel nicht taugt, oder `null` (auch fuer einen leeren Namen, der nur nicht zaehlt).

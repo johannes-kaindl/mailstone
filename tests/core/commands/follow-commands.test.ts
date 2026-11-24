@@ -85,6 +85,11 @@ describe("Befehle zum Folgen eines Vorgangs (A1, Vorstufe)", () => {
       }
     });
 
+    it("ist ein Mitglied beendet, auch wenn die Wurzel keine Markierung traegt (fruehere Mail kam spaeter dazu), gibt es nichts zu tun", () => {
+      const notes = [note({ id: "z@x", date: "2026-07-30" }), note({ id: "a@x", follow: "false", inReplyTo: ["z@x"] }), note({ id: "b@x", date: "2026-08-02", inReplyTo: ["a@x"] })];
+      expect(cmd.plan({}, ctx(notes, "b@x"))).toEqual({ ok: false, code: "nothing-to-do" });
+    });
+
     it("ersetzt eine vorhandene andere Markierung (true) durch false", () => {
       const plan = ok(cmd.plan({}, ctx([note({ id: "a@x", follow: "true" })], "a@x")));
       const n = plan.notes[0]!;
@@ -137,6 +142,30 @@ describe("Befehle zum Folgen eines Vorgangs (A1, Vorstufe)", () => {
     it("steht keine Markierung an der Wurzel, gibt es nichts zu tun (auch bei true)", () => {
       expect(cmd.plan({}, ctx(thread(), "b@x"))).toEqual({ ok: false, code: "nothing-to-do" });
       expect(cmd.plan({}, ctx([note({ id: "a@x", follow: "true" })], "a@x"))).toEqual({ ok: false, code: "nothing-to-do" });
+    });
+
+    it("raeumt die Markierung an ALLEN Mitgliedern ab, nicht nur an der Wurzel", () => {
+      const notes = [
+        note({ id: "z@x", date: "2026-07-30", follow: "false" }),
+        note({ id: "a@x", follow: '"false"', inReplyTo: ["z@x"] }),
+        note({ id: "b@x", date: "2026-08-02", inReplyTo: ["a@x"] }),
+        note({ id: "y@x", follow: "false" }), // anderer Vorgang
+      ];
+      const plan = ok(cmd.plan({}, ctx(notes, "b@x")));
+      expect(plan.notes.map((n) => n.path).sort()).toEqual(["Mail/a@x.md", "Mail/z@x.md"]);
+      for (const n of plan.notes) expect(n.kind === "update" && n.content).not.toContain("mail_follow");
+      expect(plan.diff).toEqual([{ field: "mail_follow", before: "false" }]);
+    });
+
+    it("steht die Markierung nur an einem spaeteren Mitglied, wird sie dort entfernt", () => {
+      const notes = [note({ id: "a@x" }), note({ id: "b@x", date: "2026-08-02", inReplyTo: ["a@x"], follow: "false" })];
+      const plan = ok(cmd.plan({}, ctx(notes, "a@x")));
+      expect(plan.notes.map((n) => n.path)).toEqual(["Mail/b@x.md"]);
+    });
+
+    it("ein markiertes Mitglied ohne Zone haelt die ganze Wiederaufnahme an (fences-missing), es wird nichts halb geraeumt", () => {
+      const notes = [note({ id: "a@x", follow: "false" }), note({ id: "b@x", date: "2026-08-02", inReplyTo: ["a@x"], follow: "false", zone: false })];
+      expect(cmd.plan({}, ctx(notes, "a@x"))).toEqual({ ok: false, code: "fences-missing" });
     });
 
     it("ohne wirksames Feld: nothing-to-do mit Hinweis", () => {

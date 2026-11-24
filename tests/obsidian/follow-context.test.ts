@@ -34,7 +34,7 @@ describe("followContext", () => {
     expect([...c.stopped]).toEqual([]);
   });
 
-  it("nimmt die Wurzel in stopped, wenn dort false steht (Wahrheitswert oder Text); eine Antwort mit false beendet nichts", async () => {
+  it("nimmt die Wurzel in stopped, wenn dort false steht (Wahrheitswert oder Text); jede Mail des Vorgangs mit false beendet ihn, ein Vorgang erscheint nur einmal", async () => {
     const app = await vaultMit(
       ["Mail/a.md", mailNote("a@x", ["mail_follow: false"])],
       ["Mail/b.md", mailNote("b@x", ['in_reply_to: "[[a]]"', "mail_follow: false"], "2026-08-02")],
@@ -42,6 +42,19 @@ describe("followContext", () => {
       ["Mail/d.md", mailNote("d@x", ["mail_follow: true"])],
     );
     expect([...followContext(app, profile).stopped].sort()).toEqual(["a@x", "c@x"]);
+  });
+
+  // W37: die Markierung an irgendeinem Mitglied gilt fuer den ganzen Vorgang; kommt spaeter eine frueheere Mail als neue Wurzel dazu,
+  // bleibt der Vorgang beendet (stopped traegt die WURZEL, die die Verbraucher abfragen).
+  it("eine Markierung an einem Mitglied beendet den ganzen Vorgang, auch wenn eine fruehere Mail ohne Markierung die Wurzel ist", async () => {
+    const app = await vaultMit(
+      ["Mail/z.md", mailNote("z@x", [], "2026-07-30")],
+      ["Mail/a.md", mailNote("a@x", ['in_reply_to: "[[z]]"', "mail_follow: false"], "2026-08-01")],
+      ["Mail/b.md", mailNote("b@x", ['in_reply_to: "[[a]]"'], "2026-08-02")],
+    );
+    const c = followContext(app, profile);
+    expect(c.index.rootOf.get("b@x")).toBe("z@x");
+    expect([...c.stopped]).toEqual(["z@x"]);
   });
 
   it("ohne wirksames Feld ist nichts beendet", async () => {

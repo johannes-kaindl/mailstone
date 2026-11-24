@@ -1,12 +1,12 @@
 // „Diesem Vorgang nicht mehr folgen“ / „wieder folgen“ (A1, Welle 36). Die Markierung steht an der Wurzel-Notiz des
-// Vorgangs (`followField: false`); sie wirkt auf „Folge-Mails anzeigen“ (der Vorgang wird ausgeblendet) und auf
+// Vorgangs (`followField: false`), gilt aber, sobald irgendein Mitglied sie traegt (W37); „wieder folgen“ raeumt sie an allen Mitgliedern ab; sie wirkt auf „Folge-Mails anzeigen“ (der Vorgang wird ausgeblendet) und auf
 // „Vorgängen folgen“ (Kontoeinstellung: der Sync kopiert für ihn keine Folge-Mails mehr in den Allowlist-Ordner).
 //
 // Beide Befehle schreiben nur Frontmatter (E1: das Feld wird angelegt, wo es fehlt; E2: `false` als YAML-Literal), an der
 // Wurzel des Vorgangs der aktiven Notiz, nach Vorschau. Die Zone und ihr gespeicherter Hash bleiben stehen.
 import { setFrontmatterFields } from "../merge/merge";
 import type { NotePlan } from "../mirror/plan";
-import { effectiveFollowField, followStopped } from "../thread/field";
+import { effectiveFollowField, followStopped, stoppedRoots } from "../thread/field";
 import { groupThreads } from "../thread/group";
 import { tokenRegexOf } from "../thread/token";
 import { show } from "./diff";
@@ -26,20 +26,28 @@ function planToggle(kind: "stop" | "resume", input: Record<string, unknown>, ctx
   const root = refs.find((r) => r.mailId === rootId);
   if (root === undefined) return { ok: false, code: "nothing-to-do" };
 
-  const stopped = followStopped(ctx.profile, root.frontmatter);
+  // Beendet ist der Vorgang, sobald irgendein Mitglied die Markierung traegt (W37); gesetzt wird sie an der Wurzel, abgeraeumt an allen.
+  const marked = refs.filter((r) => index.rootOf.get(r.mailId) === rootId && followStopped(ctx.profile, r.frontmatter));
+  const stopped = stoppedRoots(ctx.profile, index.rootOf, (id) => refs.find((r) => r.mailId === id)?.frontmatter).has(rootId);
   if (kind === "stop" ? stopped : !stopped) return { ok: false, code: "nothing-to-do" };
 
-  const hash = keepZoneHash(root.content, root.zoneHash);
-  if (hash === null) return { ok: false, code: "fences-missing" };
-  const merged = kind === "stop"
-    ? setFrontmatterFields({ existing: root.content, values: {}, literals: { [field]: "false" } })
-    : setFrontmatterFields({ existing: root.content, values: {}, remove: [field] });
-  if (!merged.ok) return { ok: false, code: merged.code };
-  if (!merged.changed) return { ok: false, code: "nothing-to-do" };
+  const targets = kind === "stop" ? [root] : marked;
+  const notes: NotePlan[] = [];
+  for (const t of targets) {
+    const hash = keepZoneHash(t.content, t.zoneHash);
+    if (hash === null) return { ok: false, code: "fences-missing" };
+    const merged = kind === "stop"
+      ? setFrontmatterFields({ existing: t.content, values: {}, literals: { [field]: "false" } })
+      : setFrontmatterFields({ existing: t.content, values: {}, remove: [field] });
+    if (!merged.ok) return { ok: false, code: merged.code };
+    if (!merged.changed) continue;
+    notes.push({ kind: "update", path: t.path, content: merged.content, mailId: t.mailId, zoneHash: hash, expectedContent: t.content });
+  }
+  if (notes.length === 0) return { ok: false, code: "nothing-to-do" };
 
   const rootPath = root.path.replace(/\.md$/, "");
-  const note: NotePlan = { kind: "update", path: root.path, content: merged.content, mailId: root.mailId, zoneHash: hash, expectedContent: root.content };
-  const before = root.frontmatter[field] === undefined ? undefined : show(root.frontmatter[field]);
+  const beforeOf = (r: (typeof refs)[number]): string | undefined => (r.frontmatter[field] === undefined ? undefined : show(r.frontmatter[field]));
+  const before = beforeOf(targets[0]!);
   return {
     ok: true,
     plan: {
@@ -49,7 +57,7 @@ function planToggle(kind: "stop" | "resume", input: Record<string, unknown>, ctx
       summaryKey: kind === "stop" ? "plan.mail.stopFollowing.summary" : "plan.mail.resumeFollowing.summary",
       summaryArgs: [rootPath],
       diff: [{ field, ...(before !== undefined ? { before } : {}), ...(kind === "stop" ? { after: "false" } : {}) }],
-      notes: [note],
+      notes,
     },
   };
 }
