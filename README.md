@@ -82,7 +82,7 @@ cd mailstone && npm install && npm run build
 
 ### Configuration
 
-<a href="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/settings.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/thumbs/settings.png" width="380" alt="The Mailstone settings tab: language, notes folder, subfolder per year, filename template and the list of accounts with Edit buttons."></a><br><sub>Click the preview for the full-size image</sub>
+<a href="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/settings.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/thumbs/settings.png" width="380" alt="The Mailstone settings tab from Help to the Status bar switch: language, notes folder, filename template, Save original as .eml, Pseudonymize, Save attachments, the thread fields, the list of accounts with Edit buttons, extra fields for new notes and the Status bar switch."></a><br><sub>Click the preview for the full-size image</sub>
 
 Settings → Mailstone. Per account (*Add account* / *Edit*):
 

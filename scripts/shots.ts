@@ -32,7 +32,9 @@
  * kein Bild. Der Vertrag nennt das bei den betroffenen Bildern.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { argv, cwd, exit } from "node:process";
 
@@ -102,15 +104,23 @@ async function zustandHerstellen(cdp: Cdp): Promise<void> {
     await openExisting(cdp, await notizPfad(cdp, "-1140-"), "preview");
     await cdp.evaluate(`app.commands.executeCommandById("${PLUGIN_ID}:mail-relink"); return true;`);
     const vorschau = await pollUntil(cdp, `return /Review before writing/.test(document.querySelector(".modal")?.textContent ?? "") ? true : null;`, 8000, 200);
-    if (!vorschau) throw new Error("Relink-Vorschau erschien nicht");
-    // Die Vorschau ist selbst ein Motiv, und sie gibt es nur im ersten Lauf nach --setup: danach sind
-    // die Threads verknuepft und das Kommando hat nichts mehr zu planen.
-    if (wollen("relink-preview.png")) {
+    if (!vorschau && ONLY === "relink-preview.png") throw new Error("Relink-Vorschau erschien nicht");
+    if (!vorschau) {
+      // Seit B1 (Welle 36) verknuepft schon der Import die Threads desselben Laufs; das Kommando hat dann nichts zu planen, und es gibt keine
+      // Vorschau. Die uebrigen Bilder brauchen sie nicht; `relink-preview.png` bleibt, wie es ist (Folgearbeit: ein Zustand mit unverknuepften Notizen).
+      console.log("  Hinweis: keine Relink-Vorschau (der Import hat die Threads schon verknuepft); relink-preview.png wird nicht neu aufgenommen.");
+      await cdp.evaluate(`document.querySelector(".modal")?.querySelector("button")?.click(); return true;`);
       await pause(600);
-      await schreibe(cdp, "relink-preview.png", await boxOf(cdp, ".modal", 6));
+    } else {
+      // Die Vorschau ist selbst ein Motiv, und sie gibt es nur im ersten Lauf nach --setup: danach sind
+      // die Threads verknuepft und das Kommando hat nichts mehr zu planen.
+      if (wollen("relink-preview.png")) {
+        await pause(600);
+        await schreibe(cdp, "relink-preview.png", await boxOf(cdp, ".modal", 6));
+      }
+      await cdp.evaluate(`document.querySelector(".modal .mod-cta").click(); return true;`);
+      await pause(1200);
     }
-    await cdp.evaluate(`document.querySelector(".modal .mod-cta").click(); return true;`);
-    await pause(1200);
   } else if (ONLY === "relink-preview.png") {
     throw new Error("relink-preview.png braucht den ersten Lauf nach --setup (Threads sind schon verknuepft)");
   }
@@ -228,9 +238,45 @@ async function einstellungen(cdp: Cdp, port: number): Promise<Cdp> {
   return fenster;
 }
 
+/** Setzt Teilbilder gleicher Breite untereinander (ffmpeg `vstack`, wie `framesToGif` der Bruecke von ffmpeg abhaengt). */
+function stapeln(teile: Buffer[]): Buffer {
+  if (teile.length === 1) return teile[0]!;
+  const dir = mkdtempSync(join(tmpdir(), "mailstone-shots-"));
+  try {
+    const eingaben = teile.map((t, i) => { const f = join(dir, `${String(i)}.png`); writeFileSync(f, t); return f; });
+    const aus = join(dir, "aus.png");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...eingaben.flatMap((f) => ["-i", f]), "-filter_complex", `vstack=inputs=${String(teile.length)}`, aus]);
+    return readFileSync(aus);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function settingsBild(cdp: Cdp, port: number): Promise<void> {
   const fenster = await einstellungen(cdp, port);
-  await schreibe(fenster, "settings.png", await boxOf(fenster, ".vertical-tab-content", 0), true);
+  // Die Seite reicht von „Help“ bis zur Zeile „Status bar“ und ist laenger als das Fenster (das nicht hoeher sein kann als der Bildschirm), und der
+  // Renderer zeichnet nichts ausserhalb des Fensters (eine Aufnahme ueber den Rand hinaus blieb leer, gemessen 2026-11-24). Deshalb: die Seite
+  // in Stuecken von der Hoehe des sichtbaren Bereichs durchscrollen, je Stueck aufnehmen und die lueckenlos aneinanderliegenden Stuecke
+  // untereinander setzen. Das letzte Stueck endet an der Unterkante der Zeile „Status bar“.
+  const raw = await fenster.evaluate<string | null>(`
+    const inhalt = document.querySelector(".vertical-tab-content");
+    if (!inhalt) return null;
+    const zeile = [...inhalt.querySelectorAll(".setting-item")].find((z) => z.querySelector(".setting-item-name")?.textContent?.trim() === "Status bar");
+    if (!zeile) return null;
+    inhalt.scrollTop = 0;
+    const r = inhalt.getBoundingClientRect();
+    return JSON.stringify({ x: r.x, y: r.y, width: r.width, hoehe: inhalt.clientHeight, ende: zeile.getBoundingClientRect().bottom - r.y + 12 });`);
+  if (!raw) throw new Error("settings.png: Zeile „Status bar“ nicht gefunden");
+  const m = JSON.parse(raw) as { x: number; y: number; width: number; hoehe: number; ende: number };
+  const teile: Buffer[] = [];
+  for (let oben = 0; oben < m.ende; oben += m.hoehe) {
+    const ist = await fenster.evaluate<number>(`const c = document.querySelector(".vertical-tab-content"); c.scrollTop = ${String(oben)}; await new Promise((r) => setTimeout(r, 400)); return c.scrollTop;`);
+    // Am Seitenende kann der Scrollbereich weniger weit scrollen als verlangt: das Stueck beginnt dann entsprechend weiter unten im Fenster.
+    const versatz = oben - ist;
+    const hoehe = Math.min(m.hoehe - versatz, m.ende - oben);
+    teile.push(await capture(fenster, { x: m.x, y: m.y + versatz, width: m.width, height: hoehe }, 2));
+  }
+  console.log(`  ${await writeShot(fenster, "settings.png", stapeln(teile), { ...OPTS, thumb: true })} (${String(teile.length)} Teile)`);
   fenster.close();
 }
 

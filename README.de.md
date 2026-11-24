@@ -84,7 +84,7 @@ cd mailstone && npm install && npm run build
 
 ### Konfiguration
 
-<a href="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/settings.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/thumbs/settings.png" width="380" alt="Der Mailstone-Einstellungs-Tab: Sprache, Notiz-Ordner, Unterordner je Jahr, Dateinamen-Vorlage und die Liste der Konten mit Edit-Knöpfen."></a><br><sub>Auf die Vorschau klicken für das Bild in voller Größe</sub>
+<a href="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/settings.png"><img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/thumbs/settings.png" width="380" alt="Der Mailstone-Einstellungs-Tab von Help bis zum Schalter Status bar: Sprache, Notiz-Ordner, Dateinamen-Vorlage, Original als .eml speichern, Pseudonymisieren, Anhänge speichern, die Vorgangsfelder, die Liste der Konten mit Edit-Knöpfen, Zusatzfelder für neue Notizen und der Schalter Status bar."></a><br><sub>Auf die Vorschau klicken für das Bild in voller Größe</sub>
 
 Einstellungen → Mailstone. Pro Konto (*Konto hinzufügen* / *Bearbeiten*):
 
