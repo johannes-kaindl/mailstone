@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-24
+
 ### Added
 
 - Setting *Save attachments in the attachment folder* (off by default): the sync and *Import .eml folder* put the real attachments of each new mail into Obsidian's attachment folder and link them in the note, above the mail text. A file that is already there with the same content is linked instead of copied, also within one run, and a different file with the same name gets a numbered name. Inline images stay in the `.eml` only. With *Pseudonymize* on, no attachments are saved. Existing notes are not touched.
