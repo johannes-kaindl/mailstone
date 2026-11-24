@@ -16,13 +16,6 @@ export type AttachmentResolver = (mail: ParsedMail, notePath: string) => Promise
 
 export interface PlannedAttachment { path: string; data: Uint8Array }
 
-/** Byte-Gleichheit zweier Dateien (voller Vergleich, kein Hash: beide liegen ohnehin im Speicher). */
-export function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-}
-
 /** Setzt die Links der Anhaenge in den freien Bereich vor der Zone und liefert die Dateien, die zu schreiben sind.
  *  Ein Anhang ohne Ziel oder ohne Bytes bleibt unberuehrt; fehlt die Zone, bleibt der Inhalt unveraendert. */
 export function applyAttachmentTargets(content: string, mail: ParsedMail, targets: AttachmentTargets): { content: string; writes: PlannedAttachment[] } {

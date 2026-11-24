@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.103.0, src/obsidian/pseudonymizer-call-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.108.0, src/obsidian/pseudonymizer-call-strings.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /** Texte (EN/DE) der `message` in `pseudonymizeFor` und `restoreFor` — nach dem Muster von `redline-strings.ts` und `model-bar-strings.ts`: das Kit formuliert in der Sprache des Verbrauchers, Standard Englisch
  *  (Welle 36, kp1c, Zusatz des Kit-Masters; vorher stand der deutsche Text fest im Code). `message` ist Anzeige: tragend sind `kind`, `reason` und `unknown`, und diese ändern sich nicht. Die `message` einer
  *  Antwort der Plugin-API (`ApiError.message`) reicht der Aufruf unverändert durch, sie stammt vom Plugin pseudonymizer.

@@ -16,6 +16,22 @@ describe("newNote", () => {
     expect(h).toBe(zoneHash("## Nachricht\n\nText"));
   });
 });
+describe("Uhrzeitform im Frontmatter (Kit 0.108.0)", () => {
+  // Ein Betreff wie "14:55" ist ein Text; Obsidian 1.15.0 liest eine unquotierte Uhrzeit als Zahl (895). Das Kit quotet sie seit 0.108.0.
+  for (const zeit of ["14:55", "1:30:00"]) {
+    it(`newNote quotiert den Titel ${zeit} und liest ihn als Text zurueck`, () => {
+      const { content } = newNote({ ...derived, title: zeit }, { type: "mail" }, "## Nachricht\n\nText");
+      expect(content).toContain(`title: "${zeit}"`);
+      expect(parseFrontmatter(content).data["title"]).toBe(zeit);
+    });
+    it(`mergeNote quotiert den neuen Titel ${zeit}`, () => {
+      const first = newNote(derived, { type: "mail" }, "## Nachricht\n\nText").content;
+      const r = mergeNote({ existing: first, derived: { ...derived, title: zeit }, managed, block: "## Nachricht\n\nText", expectedZoneHash: null });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.content).toContain(`title: "${zeit}"`);
+    });
+  }
+});
 describe("newNote — Anlage-Werte zwischen onCreate und derived (A3)", () => {
   it("die zusaetzlichen Werte kommen ins Frontmatter", () => {
     const { content } = newNote(derived, { type: "mail" }, "## Nachricht\n\nText", "## Notizen\n\n", { vorgang: "[[Mail/a]]" });

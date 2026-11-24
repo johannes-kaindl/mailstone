@@ -1,7 +1,7 @@
-// vendored from obsidian-kit@0.103.0, tests/pseudonymizer-source.types.test.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.108.0, tests/pseudonymizer-source.types.test.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { describe, it, expect } from "vitest";
 import type {
-  ApiError, PseudonymizerApi, RestoreResult, TransformEntity, TransformPart, TransformRequest, TransformResult,
+  ApiError, PseudonymizerApi, RestoreOptions, RestoreResult, TransformEntity, TransformPart, TransformRequest, TransformResult,
 } from "../../../src/vendor/kit/pseudonymizer-source";
 
 /** Vendorbar: diese Datei importiert NUR `pseudonymizer-source`, sonst nichts (kein Index `../src/pure`, kein Testwerkzeug). Ein Konsument vendort sie mit `kit-sync`
@@ -64,7 +64,12 @@ const aVersion: 1 = api.version;
 // Aufrufform und Rückgabe der Methoden: ein neuer Pflichtparameter oder ein neuer Rückgabefall bricht das.
 const state: "ready" | "locked" | "not-set-up" = api.status().state;
 const transformed: Promise<TransformResult | ApiError> = api.transform(req);
-const restored: RestoreResult | ApiError = api.restore("x", { caller: "c" });
+const restored: RestoreResult | ApiError = api.restore("x", { caller: "c" });          // die alte Form `{ caller }` bleibt zulässig (additiv)
+const restoredSkip: RestoreResult | ApiError = api.restore("x", { caller: "c", skipAddressesAndCode: true });
+const restoreOpts: RestoreOptions = { caller: "c" };                                   // genau das Pflichtfeld von heute: ein neues PFLICHTfeld bricht das
+const restoreOptsFull: RestoreOptions = { caller: "c", skipAddressesAndCode: false };
+const oCaller: string = restoreOpts.caller;
+const oSkip: boolean | undefined = restoreOptsFull.skipAddressesAndCode;
 const contains: boolean = api.containsPlaceholder("x");
 
 describe("Pseudonymizer-API v1 ist eingefroren (Typ-Test, gilt beim Übersetzen)", () => {
@@ -77,5 +82,7 @@ describe("Pseudonymizer-API v1 ist eingefroren (Typ-Test, gilt beim Übersetzen)
     expect([state, contains]).toEqual(["ready", false]);
     expect(await transformed).toEqual({ parts: [{ id: "p1", value: "v" }], entities: [], applied: 0 });
     expect("text" in restored && restored.text).toBe("xc");
+    expect("text" in restoredSkip && restoredSkip.text).toBe("xc");
+    expect([oCaller, oSkip]).toEqual(["c", false]);
   });
 });

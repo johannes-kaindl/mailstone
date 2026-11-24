@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.103.0, src/pure/pseudonymizer-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.108.0, src/pure/pseudonymizer-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /* VERTRAG v1, EINGEFROREN von Anfang an (Spec pseudonymizer 2026-11-18, Abschnitt 8.7, von Johannes um 22:44 freigegeben; mit mailstone abgestimmt): `ApiError` (im Index
  * `PseudonymizerApiError`), `TransformPart`, `TransformEntity`, `TransformRequest`, `TransformResult`, `RestoreResult` und `PseudonymizerApi` gelten wie gebaut als Vertrag der Plugin-API v1; geändert
  * werden sie nur ADDITIV oder als v2 mit Übergang (`version: 2`, `isPseudonymizerApi` nimmt beide, das Kit bedient beide, bis das Plugin v1 abkündigt). Additiv heißt je Typ (dieselbe Tabelle
@@ -22,6 +22,11 @@
  *  - **`restore` ist synchron** (Anzeige und Senden brauchen das) und arbeitet auf der Tabelle im Arbeitsspeicher. `unknown` nennt Platzhalter, die es gerade nicht auflösen kann (fremd, oder ein
  *    anderes Gerät hat noch nicht nachgezogen), `forgotten` die vergessenen. **Ein nicht leeres `unknown` heißt für jeden, der etwas hinausgibt: nichts hinausgeben** und die Platzhalter nennen
  *    (wie bei `locked`). Vergessene Platzhalter gehen als Platzhalter hinaus, nach einem Hinweis im Dialog des Verbrauchers; in einem Adressfeld sind sie ein Fehler.
+ *  - **Grenze von `restore`:** Ohne Schalter setzt `restore` überall zurück, auch in Link-Zielen, Bild-URLs, HTML-Attributen und Code; wer den Text weitergibt, verantwortet, wohin er geht. Mit `skipAddressesAndCode: true`
+ *    bleiben Platzhalter dort stehen, wo `transform` nicht ersetzen würde (`listReplaceableSpans` aus code-kit: Frontmatter-Block als Ganzes, Codeblöcke, Inline-Code, Kommentare, Mathe, Einbettungen, das Ziel eines
+ *    Wikilinks (der Alias bleibt frei), Link- und Bildziele samt Referenzdefinitionen, nackte URLs, `#tags`); das Ziel von `mailto:` wird zurückgesetzt; im Frontmatter wird je Eigenschaftswert geprüft, nicht der Block als
+ *    Ganzes. Ein HTML-Attribut schützt nur, soweit es eine nackte URL trägt (`href="https://…"`); ein Attribut mit anderem Wert (`alt="…"`) liegt außerhalb und wird zurückgesetzt. Solche Platzhalter stehen weder in `unknown`
+ *    noch in `forgotten`. Das Feld ist additiv (optional, Vorgabe aus); ein Plugin, das es nicht kennt, ignoriert es und setzt überall zurück.
  *
  *  @example
  *  isPseudonymizerApi({ version: 1, status() {}, transform() {}, restore() {}, containsPlaceholder() {} }); // true */
@@ -46,11 +51,14 @@ export interface TransformRequest {
 export interface TransformResult { parts: { id: string; value: string }[]; entities: TransformEntity[]; applied: number }
 export interface RestoreResult { text: string; restored: number; unknown: string[]; forgotten: string[] }
 
+/** Optionen von `restore`. `skipAddressesAndCode`: Platzhalter in Link-Zielen, Bild-URLs, Code und den übrigen Stellen stehen lassen, an denen `transform` nicht ersetzt (Vertragskopf, „Grenze von `restore`“). Ohne Angabe: überall. */
+export interface RestoreOptions { caller: string; skipAddressesAndCode?: boolean }
+
 export interface PseudonymizerApi {
   version: 1;
   status(): { state: "ready" | "locked" | "not-set-up" };
   transform(req: TransformRequest): Promise<TransformResult | ApiError>;
-  restore(text: string, opts: { caller: string }): RestoreResult | ApiError;
+  restore(text: string, opts: RestoreOptions): RestoreResult | ApiError;
   containsPlaceholder(text: string): boolean;
 }
 

@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.103.0, src/obsidian/pseudonymizer-call.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.108.0, src/obsidian/pseudonymizer-call.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Der Verbraucher-Aufruf der Pseudonymisierungs-API (Welle 36, kp1b, Teil B; Bestellung 14 der Design-Linie pseudonymizer, Spec 2026-11-18 § 8.7).
 //
 // Wer Text hinausgibt oder schreibt (mailstone, koda-agent, ein Export), ruft `pseudonymizeFor` vor dem Schreiben und `restoreFor` vor dem Anzeigen oder Senden. Beide kapseln den Schalter
@@ -56,6 +56,9 @@ export type ReleaseOutcome =
 /** Option beider Aufrufe: die Sprache der `message` (Standard Englisch, `strings.lang: "de"` für Deutsch) und einzelne Texte. `reason` und `unknown` hängen nicht davon ab. */
 export interface PseudonymizerCallOptions {
   strings?: PseudonymizerCallStringsOverride;
+  /** Nur für `restoreFor`: an `restore` der Plugin-API weitergereicht (Vertragskopf von `pseudonymizer-source.ts`, „Grenze von `restore`“): Platzhalter in Link-Zielen, Bild-URLs, Code usw. bleiben stehen.
+   *  Im Rückfall ohne bereites Plugin wirkt er nicht: dort bleibt ein Platzhalter in einer Adresse ein Grund für `hold`. */
+  skipAddressesAndCode?: boolean;
 }
 
 type Unavailable = "absent" | "not-set-up" | "locked";
@@ -122,7 +125,7 @@ export function restoreFor(app: App, mode: PseudonymizeMode, text: string, calle
       if (found.length === 0) return { kind: "release", text, forgotten: [] };
       return { kind: "hold", reason: a.unavailable, unknown: found, message: `${t.unavailable[a.unavailable]} ${t.placeholdersUnresolvable(found.length)}` };
     }
-    const r = a.ready.restore(text, { caller });
+    const r = a.ready.restore(text, opts?.skipAddressesAndCode === undefined ? { caller } : { caller, skipAddressesAndCode: opts.skipAddressesAndCode });
     if (isApiError(r)) {
       const reason = r.error === "locked" ? "locked" : r.error === "not-ready" ? "not-ready" : "error";
       return { kind: "hold", reason, unknown: [], message: r.message };

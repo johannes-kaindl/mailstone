@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **A subject or title in the form of a time (`14:55`, `1:30:00`) is written quoted into the note's front matter.** Obsidian can read a bare time as a number, so the note title would have shown up as a number in properties and Bases; the shared library now quotes it.
+
+### Changed
+- Shared library updated (obsidian-kit 0.108.0, code-kit 0.88.0). The byte comparison of attachments is the library's now.
+
 ## [0.14.0] — 2026-11-24
 
 ### Added

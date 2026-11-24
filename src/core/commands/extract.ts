@@ -1,6 +1,6 @@
 import { BLOCK_BEGIN } from "../merge/fences";
 import type { MailAttachmentMeta } from "../mime/types";
-import { sameBytes } from "../mirror/attachments";
+import { bytesEqual } from "../../vendor/code-kit/bytes-equal";
 import { fmKeyFor } from "../mirror/profile";
 import { validateInput, type ObjectSchema } from "./schema";
 import { keepZoneHash } from "./zone";
@@ -113,7 +113,7 @@ export const EXTRACT_ATTACHMENT_COMMAND: CommandDescriptor = {
     // VERSCHIEDENE Anhaenge derselben Mail zusammengeworfen und den zweiten unerreichbar
     // gemacht (genau der Fall aus Fund 1 der M3b-Nachlese). Entschieden am 2026-09-05.
     const vorhanden = ctx.existingAttachment(meta.name);
-    const wieder = vorhanden && sameBytes(vorhanden.data, data) ? vorhanden : null;
+    const wieder = vorhanden && bytesEqual(vorhanden.data, data) ? vorhanden : null;
     const path = wieder ? wieder.path : ctx.attachmentPathFor(meta.name);
     const link = attachmentLink(path, meta.type);
     const ins = insertAttachmentLink(ctx.content, link);

@@ -1,10 +1,10 @@
 {
   "sources": {
     "obsidian-kit": {
-      "ref": "0.103.0"
+      "ref": "0.108.0"
     },
     "code-kit": {
-      "ref": "0.83.0"
+      "ref": "0.88.0"
     }
   },
   "targets": [
@@ -28,7 +28,10 @@
         "rel-path",
         "loopback",
         "text-window",
-        "user-regex"
+        "user-regex",
+        "string-list",
+        "bytes-equal",
+        "frontmatter-field"
       ]
     },
     {

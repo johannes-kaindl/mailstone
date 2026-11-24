@@ -1,5 +1,6 @@
 import { normalizePath, TFile, type App } from "obsidian";
-import { sameBytes, type AttachmentResolver, type AttachmentTarget } from "../core/mirror/attachments";
+import type { AttachmentResolver, AttachmentTarget } from "../core/mirror/attachments";
+import { bytesEqual } from "../vendor/code-kit/bytes-equal";
 
 /** Bei Kollision haengt Obsidian " 1", " 2" an den Stamm; dasselbe Muster fuer Pfade, die erst dieser Lauf belegt. */
 function numbered(path: string, n: number): string {
@@ -26,10 +27,10 @@ export function createAttachmentResolver(app: App): AttachmentResolver {
       const blank = `${free.slice(0, free.lastIndexOf("/") + 1)}${meta.name}`;
       // Wiederverwenden: der blanke Name gehoert schon dieser Datei (im Vault oder von diesem Lauf).
       const pending = reserved.get(blank);
-      if (pending && sameBytes(pending, data)) { out.set(meta.key, { path: blank, write: false }); continue; }
+      if (pending && bytesEqual(pending, data)) { out.set(meta.key, { path: blank, write: false }); continue; }
       if (!pending && blank !== free) {
         const there = app.vault.getAbstractFileByPath(normalizePath(blank));
-        if (there instanceof TFile && sameBytes(new Uint8Array(await app.vault.readBinary(there)), data)) {
+        if (there instanceof TFile && bytesEqual(new Uint8Array(await app.vault.readBinary(there)), data)) {
           out.set(meta.key, { path: blank, write: false });
           continue;
         }
