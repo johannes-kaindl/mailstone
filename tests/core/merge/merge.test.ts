@@ -52,6 +52,14 @@ describe("newNote — Wahrheitswerte unter den Anlage-Werten (A2, E2)", () => {
     expect(c).toMatch(/^privat: true$/m);
     expect(c.indexOf("privat:")).toBeLessThan(c.indexOf("mail_id:"));
   });
+  // W37: dieselbe Regel fuer onCreate (und damit fuer taskPreset, das dort einfliesst), nicht nur fuer `extra`.
+  it("ein Wahrheitswert in onCreate steht als YAML-Literal da, nicht als Text", () => {
+    const c = neu({}, { type: "mail", privat: true, offen: false } as never);
+    expect(c).toMatch(/^privat: true$/m);
+    expect(c).toMatch(/^offen: false$/m);
+    expect(c).not.toContain('"true"');
+    expect(c).not.toContain('"false"');
+  });
   it("derived gewinnt auch gegen einen Wahrheitswert", () => {
     const c = neu({ title: true, mail_state: false });
     expect(c).toContain("title: Hi");

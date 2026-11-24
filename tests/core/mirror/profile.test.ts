@@ -24,6 +24,11 @@ describe("withTaskPreset", () => {
     const p = withTaskPreset(defaultMailProfile(), { status: "open" });
     expect(p.onCreate).toEqual({ type: "mail", status: "open" });
   });
+  // W37: die Einstellung speichert nur Text; ein Wert genau `true`/`false` heisst Wahrheitswert (Checkbox in Bases), alles andere bleibt Text.
+  it("ein Wert true/false im Preset wird ein Wahrheitswert, anderer Text und Zahlen bleiben, was sie sind", () => {
+    const p = withTaskPreset(defaultMailProfile(), { privat: "true", offen: " false ", text: "truefalse", gross: "True", zahl: 3 });
+    expect(p.onCreate).toEqual({ type: "mail", privat: true, offen: false, text: "truefalse", gross: "True", zahl: 3 });
+  });
   it("Profil-onCreate gewinnt bei einer Schluessel-Kollision gegen das Preset", () => {
     const p = withTaskPreset(defaultMailProfile(), { type: "task" });
     expect(p.onCreate.type).toBe("mail");

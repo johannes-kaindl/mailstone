@@ -331,8 +331,8 @@ export class MailstoneSettingTab extends PluginSettingTab {
   // `emptyState`) wie bei den Konten, nicht neu erfunden.
   //
   // taskPreset bleibt selbst ein `Record<string, string | number>` (core/settings.ts; kein
-  // `boolean` — toFm() in merge.ts stringifiziert Booleans ohnehin, sie landen nie als YAML-Bool)
-  // — die UI verwaltet nur Zeichenketten. Zahl-Werte sind weiterhin gueltig (z. B. per Hand in
+  // `boolean`) — die UI verwaltet nur Zeichenketten; ein Wert genau `true`/`false` macht
+  // `withTaskPreset` beim Anlegen zum YAML-Wahrheitswert. Zahl-Werte sind weiterhin gueltig (z. B. per Hand in
   // data.json gesetzt) und werden beim Rendern als Text angezeigt/ueberschrieben; das deckt den
   // Anwendungsfall aus der Spec (`{status: "open"}`) vollstaendig ab, ohne einen Typ-Umschalter
   // pro Zeile zu brauchen.

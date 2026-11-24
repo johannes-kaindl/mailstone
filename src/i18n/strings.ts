@@ -301,7 +301,7 @@ export const en = {
   // once, when a mail note is first created, so the note fits whatever schema the vault already
   // uses (e.g. for Obsidian Bases). Later syncs and updates never touch these fields again.
   "settings.taskPreset": "Extra fields for new mail notes",
-  "settings.taskPreset.desc": "Written once into the frontmatter of a mail note when it is first created — for example status: open. Existing notes are never touched, and once the note exists, the fields are yours to edit or remove. Leave empty to add nothing.",
+  "settings.taskPreset.desc": "Written once into the frontmatter of a mail note when it is first created — for example status: open. Existing notes are never touched, and once the note exists, the fields are yours to edit or remove. A value of exactly true or false becomes a checkbox (a real boolean). Leave empty to add nothing.",
   "settings.taskPreset.empty": "No extra fields.",
   "settings.taskPreset.add": "Add field",
   "settings.taskPreset.key.placeholder": "Field name (e.g. status)",
@@ -642,7 +642,7 @@ export const de: typeof en = {
   "settings.openViewOnStartup.desc": "Standardmäßig aus. Die Ansicht bleibt über das Ribbon-Symbol und die Befehlspalette erreichbar.",
 
   "settings.taskPreset": "Zusatzfelder für neue Mail-Notizen",
-  "settings.taskPreset.desc": "Wird beim ERSTEN Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben — zum Beispiel status: open. Bestehende Notizen werden dadurch nie verändert, und sobald die Notiz existiert, gehören die Felder dir: bearbeiten oder entfernen wie jedes andere Frontmatter-Feld. Leer lassen, um nichts hinzuzufügen.",
+  "settings.taskPreset.desc": "Wird beim ERSTEN Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben — zum Beispiel status: open. Bestehende Notizen werden dadurch nie verändert, und sobald die Notiz existiert, gehören die Felder dir: bearbeiten oder entfernen wie jedes andere Frontmatter-Feld. Ein Wert genau true oder false wird eine Checkbox (ein echter Wahrheitswert). Leer lassen, um nichts hinzuzufügen.",
   "settings.taskPreset.empty": "Keine Zusatzfelder.",
   "settings.taskPreset.add": "Feld hinzufügen",
   "settings.taskPreset.key.placeholder": "Feldname (z. B. status)",

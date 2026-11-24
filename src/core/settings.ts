@@ -23,13 +23,9 @@ export interface Account {
     followThreads: boolean;
   };
 }
-// taskPreset traegt bewusst kein `boolean` (Fix-Runde 1, Task 7): toFm() (merge.ts) macht aus
-// JEDEM JS-Boolean per String(v) einen String, und needsQuoting() (vendor/kit/frontmatter.ts)
-// quotet jeden String, der wie "true"/"false" aussieht, ausdruecklich — das Ergebnis ist immer
-// die Zeichenkette "false", nie ein echtes YAML-Bool, auf jedem Weg (Settings-UI wie
-// Hand-Edit in data.json). Das zu reparieren waere ein Eingriff in toFm/needsQuoting, der ALLE
-// Frontmatter-Felder betraefe — kein M5-Vorgang. Ein `number` ist davon nicht betroffen: er
-// laeuft an toFm vorbei und wird unquoted ausgegeben.
+// taskPreset speichert Text oder Zahl, kein `boolean`: die Einstellung kennt nur Textfelder. Ein Wert genau `true`/`false` wird erst
+// beim Mischen in `onCreate` (`withTaskPreset`) zum Wahrheitswert und als YAML-Literal geschrieben (W37); ein `boolean` in einer
+// Hand-Edit von data.json faellt beim Laden weiter weg (`repairTaskPreset`).
 export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; onCreateAllowedValues: string[]; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[];
   /** Eintrag in der Statusleiste (Standard an; UI-STANDARD § 8). */
   showStatusBar: boolean }

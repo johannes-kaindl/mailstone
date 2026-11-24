@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows
 - A thread you stopped following stays stopped when an earlier mail of the thread later becomes a note and turns into the new first mail. The marker on any mail of a thread now counts for the whole thread (*Show follow-up mails* hides it and *Follow threads* no longer copies it), and *Follow this thread again* removes the marker from every mail that carries it, after the preview.
 - *Import .eml folder* no longer runs while a sync is running, for example while *Check waiting mails* has its review window open. Before, an import of the same mail in that moment could create a second note with the same `mail_id`; now the command reports that another operation is running and does nothing.
 
+- A value of exactly `true` or `false` under *Extra fields for new mail notes* is now written to the front matter as a real YAML boolean (`done: true`), not as the text `"true"`, so a Bases filter on the checkbox matches. Other text and numbers stay as they are, and existing notes are not touched.
 ## [0.13.0] — 2026-11-20
 
 ### Added

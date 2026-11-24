@@ -142,7 +142,10 @@ export function defaultMailProfile(): MailProfile {
  *  Presets ist damit nicht darstellbar — das war vor dieser Zeile ohnehin schon der einzige
  *  Weg, ein Preset "abzuschalten", ohne die Zeile zu loeschen. */
 export function withTaskPreset(profile: MailProfile, taskPreset: Record<string, FmVal>): MailProfile {
-  const configured = Object.fromEntries(Object.entries(taskPreset).filter(([, v]) => v !== ""));
+  // Die Einstellung speichert Text: ein Wert genau `true`/`false` (getrimmt, klein) heisst Wahrheitswert und wird als YAML-Literal geschrieben,
+  // damit ein Bases-Filter auf die Checkbox greift. Anderer Text und Zahlen bleiben, was sie sind.
+  const typed = (v: FmVal): FmVal => (typeof v === "string" && (v.trim() === "true" || v.trim() === "false") ? v.trim() === "true" : v);
+  const configured = Object.fromEntries(Object.entries(taskPreset).filter(([, v]) => v !== "").map(([k, v]) => [k, typed(v)]));
   if (Object.keys(configured).length === 0) return profile;
   return { ...profile, onCreate: { ...configured, ...profile.onCreate } };
 }
