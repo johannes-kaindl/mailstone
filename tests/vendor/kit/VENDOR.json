@@ -2,6 +2,6 @@
   "source": "obsidian-kit",
   "version": "0.108.0",
   "sha": "0fa2b5a",
-  "vendored": "obsidian-mock.ts, window-timers.ts, pseudonymizer-source.types.test.ts",
+  "vendored": "kit-css.ts, obsidian-mock.ts, window-timers.ts, pseudonymizer-source.types.test.ts",
   "license": "AGPL-3.0-or-later"
 }

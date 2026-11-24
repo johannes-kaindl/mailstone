@@ -74,6 +74,7 @@
       "source": "obsidian-kit",
       "from": "src/testing",
       "modules": [
+        "kit-css",
         "obsidian-mock",
         "window-timers"
       ]

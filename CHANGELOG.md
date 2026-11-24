@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The tab bar styles in `styles.css` are the shared library's (obsidian-kit 0.108.0) word for word, and a test now fails if a vendored library stylesheet is missing. No visible change.
+
 ## [0.14.1] — 2026-11-24
 
 ### Fixed
