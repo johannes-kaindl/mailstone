@@ -6,6 +6,7 @@ import { loadFixture } from "../helpers/fixtures";
 import { parseEml } from "../../src/core/mime/parse";
 import { mailFilename, mailFolder } from "../../src/core/render/filename";
 import type { PortOutcome, TransformPort } from "../../src/core/transform/transform-mail";
+import { createAttachmentResolver } from "../../src/obsidian/attachment-targets";
 import { createBusyGuard } from "../../src/vendor/code-kit/busy-guard";
 import type { TransformRequest } from "../../src/vendor/kit/pseudonymizer-source";
 
@@ -267,5 +268,42 @@ describe("importEmlFolder — Pseudonymisieren (A5)", () => {
     const pseudonymize: TransformPort = () => { throw new Error("boom"); };
     await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0), busy, pseudonymize }, "Import").catch(() => undefined);
     expect(busy.isBusy()).toBe(false);
+  });
+  describe("Anhaenge in den Anhangordner (A6, W37)", () => {
+    const deps = (app: any, profile: ReturnType<typeof defaultMailProfile>) => ({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0), attachments: () => createAttachmentResolver(app) });
+    it("mit eingeschalteter Einstellung liegen die Anhaenge im Anhangordner und die Notiz verlinkt sie vor der Zone", async () => {
+      const app = makeApp();
+      await app.vault.createBinary("Import/m.eml", loadFixture("multipart-mixed-attachments").buffer);
+      const r = await importEmlFolder(deps(app, { ...defaultMailProfile(), saveAttachments: true }), "Import");
+      expect(r.errors).toEqual([]);
+      expect(r.created).toBe(1);
+      expect(await app.vault.adapter.exists("Anhaenge/bericht.pdf")).toBe(true);
+      expect(await app.vault.adapter.exists("Anhaenge/notiz.txt")).toBe(true);
+      const note = (await app.vault.adapter.read(app.vault.getMarkdownFiles()[0]!.path)) as string;
+      expect(note.indexOf("![[Anhaenge/bericht.pdf]]")).toBeGreaterThan(0);
+      expect(note.indexOf("![[Anhaenge/bericht.pdf]]")).toBeLessThan(note.indexOf("%% mailstone:begin %%"));
+    });
+    it("ausgeschaltet (Standard) entsteht keine Anhangdatei", async () => {
+      const app = makeApp();
+      await app.vault.createBinary("Import/m.eml", loadFixture("multipart-mixed-attachments").buffer);
+      await importEmlFolder(deps(app, defaultMailProfile()), "Import");
+      expect(await app.vault.adapter.exists("Anhaenge/bericht.pdf")).toBe(false);
+    });
+    it("mit Pseudonymisieren entsteht nie eine Anhangdatei (ein Anhang ist Klartext)", async () => {
+      const app = makeApp();
+      await app.vault.createBinary("Import/m.eml", loadFixture("multipart-mixed-attachments").buffer);
+      const port: TransformPort = (req) => Promise.resolve({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.value })), entities: [], applied: 0 } });
+      const r = await importEmlFolder({ ...deps(app, { ...defaultMailProfile(), saveAttachments: true, pseudonymize: "if-available" }), pseudonymize: port }, "Import");
+      expect(r.errors).toEqual([]);
+      expect(await app.vault.adapter.exists("Anhaenge/bericht.pdf")).toBe(false);
+    });
+    it("ein zweiter Import derselben Mail legt keine zweite Anhangdatei an", async () => {
+      const app = makeApp();
+      await app.vault.createBinary("Import/m.eml", loadFixture("multipart-mixed-attachments").buffer);
+      const d = deps(app, { ...defaultMailProfile(), saveAttachments: true });
+      await importEmlFolder(d, "Import");
+      await importEmlFolder(d, "Import");
+      expect(await app.vault.adapter.exists("Anhaenge/bericht 1.pdf")).toBe(false);
+    });
   });
 });

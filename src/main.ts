@@ -3,6 +3,7 @@ import { loadSettings, onCreateInvalidValues, rawOnCreate, type Account, type Ma
 import { initI18n } from "./i18n/strings";
 import { getLang, t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
+import { createAttachmentResolver } from "./obsidian/attachment-targets";
 import { importEmlFolder } from "./obsidian/import-eml";
 import { noticeNotifier, type Notifier } from "./obsidian/notifier";
 import { FolderPromptModal } from "./obsidian/modals/folder-prompt";
@@ -396,6 +397,8 @@ export default class MailstonePlugin extends Plugin {
       follow: { context: () => followContext(this.app, this.settings.profile) },
       // Pseudonymisieren (A5): gerufen nur bei Schalter ungleich Aus, nach dem Logout, vor dem Planen.
       pseudonymize: this.pseudonymizePort(),
+      // Anhaenge in den Anhangordner (A6): je Lauf ein Resolver, er merkt sich die in diesem Lauf vergebenen Pfade.
+      attachmentResolver: () => createAttachmentResolver(this.app),
       uidCache: this.uidCache,
       busy: this.busy,
       events: this.syncEvents,
@@ -514,6 +517,7 @@ export default class MailstonePlugin extends Plugin {
               hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
               now: () => new Date(),
               pseudonymize: this.pseudonymizePort(),
+              attachments: () => createAttachmentResolver(this.app),
               busy: this.busy,
             },
             folder,

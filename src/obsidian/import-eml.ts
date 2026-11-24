@@ -9,6 +9,8 @@ import { threadNotes } from "./thread-index";
 import { threadExtrasForRun } from "../core/thread/for-run";
 import type { OriginalFacts } from "../core/transform/original-facts";
 import { transformMail, type TransformPort } from "../core/transform/transform-mail";
+import { notePathFor, type AttachmentResolver, type AttachmentTargets } from "../core/mirror/attachments";
+import { effectiveSaveAttachments } from "../core/mirror/profile";
 import { findMailNotes, vaultPlanExecutor, type ZoneHashStore } from "./vault-notes";
 
 export interface ImportDeps {
@@ -21,6 +23,8 @@ export interface ImportDeps {
   /** Der Busy-Guard des Plugins (derselbe wie im Sync): der Import laeuft nur, wenn er ihn bekommt. Sonst legte er neben einem Sync-Lauf
    *  mit offenem Pruefenster (Index vor dem Fenster gelesen) eine zweite Notiz derselben Mail an. Ohne die Dep gibt es keinen Riegel. */
   busy?: BusyGuard;
+  /** Anhaenge in den Anhangordner (A6): legt je Import einen Resolver an. Gerufen nur bei `effectiveSaveAttachments`; ohne die Dep bleibt die Einstellung wirkungslos. */
+  attachments?: () => AttachmentResolver;
 }
 
 /** Eine Mail, die der Import nicht geschrieben hat, weil der Pseudonymizer sie zurueckstellt (Quelldatei bleibt unberuehrt). */
@@ -76,13 +80,23 @@ async function importLocked(deps: ImportDeps, folder: string): Promise<ImportRes
   const pathsOf = new Map(fresh.map((item, i) => [item, run.paths[i]!]));
   const linkFor = (id: string): string | null => run.targets.get(id) ?? index.get(id)?.path.replace(/\.md$/, "") ?? null;
   const extras = threadExtrasForRun(profile, fresh.map((i) => i.mail), run.targets, () => threadNotes(app, profile), facts);
+  // Anhaenge (A6): nur fuer neue Notizen; eine bestehende wird nicht neu gerendert, ihre Anhaenge bleiben, wie sie sind.
+  const attachmentTargets = new Map<string, AttachmentTargets>();
+  if (effectiveSaveAttachments(profile) && deps.attachments) {
+    const resolve = deps.attachments();
+    for (const item of fresh) {
+      if (!item.mail.attachments.some((a) => !a.inline)) continue;
+      try { attachmentTargets.set(item.mail.id, await resolve(item.mail, notePathFor(profile, item.mail))); }
+      catch (e) { errors.push({ path: item.mail.id, message: `attachments: ${e instanceof Error ? e.message : String(e)}` }); }
+    }
+  }
   const plans: NotePlan[] = [];
   for (const item of items) {
     const { mail, eml, existing } = item;
     // Der Import ist der ausdrueckliche Wunsch des Nutzers — hier darf eine bestehende
     // Notiz aktualisiert werden (der Sync in M3 uebergibt allowUpdate: false).
     const paths = pathsOf.get(item);
-    plans.push(planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, allowUpdate: true, linkFor, ...(facts.has(mail.id) ? { facts: facts.get(mail.id)! } : {}), ...(paths ? { paths } : {}), ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}) }));
+    plans.push(planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, allowUpdate: true, linkFor, ...(facts.has(mail.id) ? { facts: facts.get(mail.id)! } : {}), ...(paths ? { paths } : {}), ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}), ...(attachmentTargets.has(mail.id) ? { attachmentTargets: attachmentTargets.get(mail.id)! } : {}) }));
   }
   const r = await vaultPlanExecutor(app, deps.hashes).execute(plans);
   return { created: r.created, updated: r.updated, skipped: r.skipped, errors: [...errors, ...r.errors.map((x) => ({ path: x.plan.path, message: x.message }))], held, busy: false };

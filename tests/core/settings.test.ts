@@ -94,6 +94,17 @@ describe("settings", () => {
   });
 });
 
+describe("saveAttachments (A6, Anhaenge)", () => {
+  it("Standard aus: ohne Schluessel (alte data.json) wird nichts ungefragt in den Anhangordner gelegt", () => {
+    expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail" } }).profile.saveAttachments).toBe(false);
+    expect(loadSettings(undefined).profile.saveAttachments).toBe(false);
+  });
+  it("nur ein Boolean gilt", () => {
+    expect(loadSettings({ profile: { saveAttachments: true } }).profile.saveAttachments).toBe(true);
+    for (const v of ["true", 1, null, "ja", []]) expect(loadSettings({ profile: { saveAttachments: v } }).profile.saveAttachments, JSON.stringify(v)).toBe(false);
+  });
+});
+
 describe("saveEml (A6)", () => {
   it("eine alte data.json ohne saveEml ergibt true: bestehende Vaults behalten ihre .eml", () => {
     expect(loadSettings({ schemaVersion: 1, profile: { folder: "Mail" } }).profile.saveEml).toBe(true);

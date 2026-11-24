@@ -6,17 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Setting *Save attachments in the attachment folder* (off by default): the sync and *Import .eml folder* put the real attachments of each new mail into Obsidian's attachment folder and link them in the note, above the mail text. A file that is already there with the same content is linked instead of copied, also within one run, and a different file with the same name gets a numbered name. Inline images stay in the `.eml` only. With *Pseudonymize* on, no attachments are saved. Existing notes are not touched.
+
 ### Changed
 
 - *Remove .eml files* checks each original by reading only the first 64 KB of the file on desktop instead of loading the whole mail with its attachments (measured on 400 files of 5 MB: 843 ms before, 59 ms after). On mobile it still reads the whole file.
 
 ### Fixed
 
+- A value of exactly `true` or `false` under *Extra fields for new mail notes* is now written to the front matter as a real YAML boolean (`done: true`), not as the text `"true"`, so a Bases filter on the checkbox matches. Other text and numbers stay as they are, and existing notes are not touched.
 - *Show follow-up mails* no longer stays on “Searching the mailboxes…” when the search throws an error: the dialog now says “Could not search the mailboxes” with the reason.
 - A thread you stopped following stays stopped when an earlier mail of the thread later becomes a note and turns into the new first mail. The marker on any mail of a thread now counts for the whole thread (*Show follow-up mails* hides it and *Follow threads* no longer copies it), and *Follow this thread again* removes the marker from every mail that carries it, after the preview.
 - *Import .eml folder* no longer runs while a sync is running, for example while *Check waiting mails* has its review window open. Before, an import of the same mail in that moment could create a second note with the same `mail_id`; now the command reports that another operation is running and does nothing.
 
-- A value of exactly `true` or `false` under *Extra fields for new mail notes* is now written to the front matter as a real YAML boolean (`done: true`), not as the text `"true"`, so a Bases filter on the checkbox matches. Other text and numbers stay as they are, and existing notes are not touched.
 ## [0.13.0] — 2026-11-20
 
 ### Added

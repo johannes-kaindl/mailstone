@@ -1,5 +1,6 @@
 import { BLOCK_BEGIN } from "../merge/fences";
 import type { MailAttachmentMeta } from "../mime/types";
+import { sameBytes } from "../mirror/attachments";
 import { fmKeyFor } from "../mirror/profile";
 import { validateInput, type ObjectSchema } from "./schema";
 import { keepZoneHash } from "./zone";
@@ -22,15 +23,6 @@ export function insertAttachmentLink(content: string, link: string): { ok: true;
   const i = content.indexOf(BLOCK_BEGIN);
   if (i < 0) return { ok: false, code: "fences-missing" };
   return { ok: true, content: `${content.slice(0, i)}${link}\n\n${content.slice(i)}` };
-}
-
-/** Byte-Gleichheit zweier Anlagen. Bewusst ein voller Vergleich statt einer Pruefsumme: die
- *  Anlagen liegen ohnehin beide im Speicher, und ein Hash koennte hier nur zusaetzlich
- *  irren. */
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
 }
 
 interface LabeledAttachment {

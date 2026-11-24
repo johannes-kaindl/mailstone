@@ -5,9 +5,12 @@ import { mailFilename, mailFolder, emlFolder } from "../render/filename";
 import { DEFAULT_NOTE_HEADINGS, keepsEml, managedKeys, type FmVal, type MailProfile } from "./profile";
 import type { OriginalFacts } from "../transform/original-facts";
 import { blockHeadingOf, mergeNote, newNote } from "../merge/merge";
+import { applyAttachmentTargets, type AttachmentTargets, type PlannedAttachment } from "./attachments";
 
 export type NotePlan =
-  | { kind: "create"; path: string; /** null = keine .eml schreiben (`profile.saveEml: false`). */ emlPath: string | null; content: string; eml: Uint8Array; mailId: string; zoneHash: string }
+  | { kind: "create"; path: string; /** null = keine .eml schreiben (`profile.saveEml: false`). */ emlPath: string | null; content: string; eml: Uint8Array; mailId: string; zoneHash: string;
+      /** Zusaetzliche Binaerdateien (die Anhaenge der Mail, A6): der Executor schreibt sie VOR der Notiz; fehlt das Feld, gibt es keine. */
+      attachments?: PlannedAttachment[] }
   | {
       kind: "update";
       path: string;
@@ -62,6 +65,8 @@ export interface PlanInput {
   /** Vorberechnet aus der Original-Mail, bevor ein Transformer `from` und `subject` ersetzt (A5, Schritt 1). Vorhanden
    *  hat es Vorrang (`richtung`), fehlt es, wird wie bisher aus `mail` abgeleitet. */
   facts?: OriginalFacts;
+  /** Ziele der Anhaenge (A6), nur fuer eine NEUE Notiz: die Obsidian-Schicht loest sie vorab auf. Ohne dieses Feld bleibt der Plan wie bisher. */
+  attachmentTargets?: AttachmentTargets;
 }
 
 /** Notiz und .eml gehoeren zusammen: beide Pfade werden gegen dieselbe Belegt-Menge geprueft
@@ -116,13 +121,17 @@ export function planMailNote(input: PlanInput): NotePlan {
 
   if (!input.existing) {
     const assigned = input.paths ?? freePaths(mailFolder(profile, mail), emlFolder(profile, mail), mailFilename(profile, mail), input.takenPaths);
-    const { content, zoneHash } = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`, input.createExtra);
+    const made = newNote(derived, profile.onCreate, block, `## ${headings.notes}\n\n`, input.createExtra);
+    const zoneHash = made.zoneHash;
+    // Die Links stehen im freien Bereich vor der Zone: ein Neu-Aufbau ersetzt nur die Zone, die Pruefsumme haengt nicht an ihnen.
+    const withAttachments = input.attachmentTargets ? applyAttachmentTargets(made.content, mail, input.attachmentTargets) : null;
+    const content = withAttachments ? withAttachments.content : made.content;
     // Der .eml-Pfad wird in jedem Fall VERGEBEN (freePaths/assignRunPaths pruefen ihn weiter:
     // eine verwaiste Datei am Konventionspfad bleibt eine Kollision), geschrieben wird er nur,
     // wenn die .eml gebraucht wird. Eine Mail ohne Message-ID ist auf dem Server nicht
     // auffindbar, ihr Original gibt es nur hier.
     const emlPath = keepsEml(profile, mail.id) ? assigned.emlPath : null;
-    return { kind: "create", path: assigned.path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash };
+    return { kind: "create", path: assigned.path, emlPath, content, eml: input.eml, mailId: mail.id, zoneHash, ...(withAttachments && withAttachments.writes.length > 0 ? { attachments: withAttachments.writes } : {}) };
   }
 
   if (!input.allowUpdate) return { kind: "skip", path: input.existing.path, mailId: mail.id, reason: "unchanged" };

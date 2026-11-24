@@ -46,6 +46,9 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
       for (const p of plans) {
         try {
           if (p.kind === "create") {
+            // Die Anhaenge zuerst: scheitert die Notiz danach, liegt hoechstens eine Datei zu viel da, und der naechste Lauf
+            // verlinkt sie (byte-gleich) statt eine zweite zu schreiben.
+            for (const a of p.attachments ?? []) await writeAttachment(app)(a.path, a.data);
             await ensureFolder(app, dirOf(p.path));
             if (p.emlPath !== null) {
               await ensureFolder(app, dirOf(p.emlPath));

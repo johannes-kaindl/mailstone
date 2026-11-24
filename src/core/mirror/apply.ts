@@ -7,6 +7,7 @@ import type { MailProfile } from "./profile";
 import type { OriginalFacts } from "../transform/original-facts";
 import type { KnownThreadNote } from "../thread/create-links";
 import { threadExtrasForRun } from "../thread/for-run";
+import type { AttachmentTargets } from "./attachments";
 
 /** Ein Eintrag des Vault-Index. `state: null` heisst "Notiz ohne Zustandsfeld" — zusammen mit
  *  einer zu diesem Lauf passenden `source` ergibt das einen detach-Plan, sobald die Mail nicht
@@ -36,6 +37,8 @@ export interface ApplyInput {
   /** Mail-ID -> Werte aus der Original-Mail, vor einem Transformer berechnet (A5, Schritt 1). Fehlt eine Mail darin,
    *  gilt fuer sie die Ableitung aus der Mail selbst. */
   facts?: ReadonlyMap<string, OriginalFacts>;
+  /** Mail-ID -> Ziele der Anhaenge (A6), vorab von der Obsidian-Schicht aufgeloest. Fehlt eine Mail darin, bekommt ihre Notiz keine Anhangdateien. */
+  attachmentTargets?: ReadonlyMap<string, AttachmentTargets>;
 }
 
 export function planSync(input: ApplyInput): NotePlan[] {
@@ -82,6 +85,7 @@ export function planSync(input: ApplyInput): NotePlan[] {
       linkFor,
       ...(input.facts?.has(mail.id) ? { facts: input.facts.get(mail.id)! } : {}),
       ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}),
+      ...(input.attachmentTargets?.has(mail.id) ? { attachmentTargets: input.attachmentTargets.get(mail.id)! } : {}),
     }));
   });
 

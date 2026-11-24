@@ -12,6 +12,8 @@ import type { NotePlan } from "../../../src/core/mirror/plan";
 import type { PlanExecutor } from "../../../src/core/mirror/execute";
 import { groupThreads } from "../../../src/core/thread/group";
 import type { FollowContext } from "../../../src/core/thread/follow-run";
+import type { TransformPort } from "../../../src/core/transform/transform-mail";
+import type { AttachmentResolver } from "../../../src/core/mirror/attachments";
 
 const EML = "From: a@example.net\r\nTo: b@example.net\r\nSubject: Testmail\r\nMessage-ID: <neu@example.net>\r\nDate: Sat, 29 Aug 2026 08:00:00 +0000\r\n\r\nHallo\r\n";
 
@@ -724,5 +726,59 @@ describe("createSyncService — Vorgang-Folgen (A1)", () => {
     });
     expect((await svc.syncAccount("acc")).ok).toBe(true);
     expect(n).toBe(1);
+  });
+
+  describe("Anhaenge in den Anhangordner (A6, W37)", () => {
+    const MIXED = [
+      "From: a@example.net", "To: b@example.net", "Subject: Mit Anhang", "Message-ID: <anh@example.net>", "Date: Sat, 29 Aug 2026 08:00:00 +0000",
+      "MIME-Version: 1.0", 'Content-Type: multipart/mixed; boundary="b"', "", "--b", "Content-Type: text/plain; charset=UTF-8", "", "Hallo", "--b",
+      'Content-Type: application/pdf; name="r.pdf"', 'Content-Disposition: attachment; filename="r.pdf"', "Content-Transfer-Encoding: base64", "", "UERG", "--b--", "",
+    ].join("\r\n");
+    function run(profile: MailProfile, resolver: (() => AttachmentResolver) | undefined, pseudonymize?: TransformPort) {
+      const header = new TextEncoder().encode("Message-ID: <anh@example.net>\r\n\r\n");
+      const body = new TextEncoder().encode(MIXED);
+      const exec = recordingExecutor();
+      const fake = new FakeSocketTransport(["* OK ready"], dialog([
+        { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 7", "a004 OK done"] },
+        { expect: /^a005 UID FETCH 7 \(BODY\.PEEK\[HEADER\.FIELDS \(MESSAGE-ID\)\]\)$/, send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(header.byteLength)}}`, header, ")", "a005 OK done"] },
+        { expect: /^a006 UID FETCH 7 \(BODY\.PEEK\[\]\)$/, send: [`* 1 FETCH (UID 7 BODY[] {${String(body.byteLength)}}`, body, ")", "a006 OK done"] },
+        { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
+      ]));
+      const svc = createSyncService({
+        accounts: () => [account()], profile: () => profile, secret: () => "geheim", transport: () => fake, index: () => new Map(),
+        takenPaths: () => new Set<string>(), executor: () => exec.executor, uidCache: createUidCache(undefined), busy: createBusyGuard(),
+        events: createEmitter(), timers: testTimers, now: () => new Date("2026-08-30T09:00:00Z"),
+        ...(resolver ? { attachmentResolver: resolver } : {}),
+        ...(pseudonymize ? { pseudonymize } : {}),
+      });
+      return { svc, exec };
+    }
+    const resolver: () => AttachmentResolver = () => (mail) => Promise.resolve(new Map(mail.attachments.map((a) => [a.key, { path: `Anhaenge/${a.name}`, write: true }])));
+
+    it("eingeschaltet: der create-Plan traegt die Anhangdatei und die Notiz den Link", async () => {
+      const { svc, exec } = run({ ...defaultMailProfile(), saveAttachments: true }, resolver);
+      expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { created: 1, errors: 0 } });
+      const plan = exec.seen[0]!;
+      if (plan.kind !== "create") throw new Error("create erwartet");
+      expect(plan.attachments?.map((a) => a.path)).toEqual(["Anhaenge/r.pdf"]);
+      expect(plan.content).toContain("![[Anhaenge/r.pdf]]");
+    });
+    it("ausgeschaltet (Standard) oder mit Pseudonymisieren: kein Resolver-Aufruf, kein Anhang im Plan", async () => {
+      for (const profile of [defaultMailProfile(), { ...defaultMailProfile(), saveAttachments: true, pseudonymize: "required" as const }]) {
+        let calls = 0;
+        const { svc, exec } = run(profile, () => { calls += 1; return resolver(); }, (req) => Promise.resolve({ kind: "pseudonymized", result: { parts: req.parts.map((p) => ({ id: p.id, value: p.value })), entities: [], applied: 0 } }));
+        await svc.syncAccount("acc");
+        expect(calls).toBe(0);
+        const plan = exec.seen.find((p) => p.kind === "create");
+        expect(plan?.kind).toBe("create");
+        if (plan && plan.kind === "create") expect(plan.attachments).toBeUndefined();
+      }
+    });
+    it("wirft der Resolver, entsteht die Notiz ohne Anhangdatei und der Lauf zaehlt einen Fehler", async () => {
+      const { svc, exec } = run({ ...defaultMailProfile(), saveAttachments: true }, () => () => Promise.reject(new Error("kaputt")));
+      expect(await svc.syncAccount("acc")).toMatchObject({ ok: true, counts: { created: 1, errors: 1 } });
+      const plan = exec.seen[0]!;
+      expect(plan.kind === "create" && plan.attachments).toBeFalsy();
+    });
   });
 });

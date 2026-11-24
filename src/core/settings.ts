@@ -194,6 +194,8 @@ export function loadSettings(raw: unknown): MailstoneSettings {
     fields: { ...defaultMailProfile().fields, ...(isObj(rawProfile.fields) ? rawProfile.fields : {}) },
     // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt die .eml (an).
     saveEml: typeof rawProfile.saveEml === "boolean" ? rawProfile.saveEml : true,
+    // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus (nichts wird ungefragt geschrieben).
+    saveAttachments: typeof rawProfile.saveAttachments === "boolean" ? rawProfile.saveAttachments : false,
     // Nur eine der drei Stellungen gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus.
     pseudonymize: isPseudonymizeMode(rawProfile.pseudonymize) ? rawProfile.pseudonymize : "off",
     // Nur Text gilt; fehlt der Schluessel (alte data.json), bleibt der Vorgang aus.

@@ -19,6 +19,10 @@ export interface MailProfile {
    *  false: Sync und Import legen keine an; Re-render und Anhang-Extraktion holen das Original
    *  dann bei Bedarf vom Server. Mails ohne Message-ID (`noid-…`) behalten die .eml immer. */
   saveEml: boolean;
+  /** Echte (nicht inline) Anhaenge neuer Mails beim Anlegen der Notiz in den Obsidian-Anhangordner legen und in der Notiz
+   *  verlinken (A6). Standard `false`: kein Vault bekommt ungefragt Dateien. Wirksam nur ohne Pseudonymisierung
+   *  (`effectiveSaveAttachments`). Inline-Bilder bleiben der `.eml` vorbehalten und fehlen ohne sie. */
+  saveAttachments: boolean;
   /** Neue Mails vor dem Schreiben pseudonymisieren (A5). Standard `"off"`: mailstone nutzt das Plugin pseudonymizer nicht.
    *  `"if-available"`: pseudonymisiert, solange das Plugin bereit ist, sonst Klartext. `"required"`: ohne bereites Plugin wird
    *  keine neue Mail geschrieben, sie wartet auf dem Server. Mit einer Stellung ungleich `"off"` entsteht keine `.eml`
@@ -69,6 +73,10 @@ export const isPseudonymizing = (p: Pick<MailProfile, "pseudonymize">): boolean 
  *  gilt nur ohne Pseudonymisierung (`keepsEml`). */
 export const effectiveSaveEml = (p: Pick<MailProfile, "saveEml" | "pseudonymize">): boolean => p.saveEml && !isPseudonymizing(p);
 
+/** Ob Sync und Import die Anhaenge einer neuen Mail in den Anhangordner legen: `saveAttachments`, aber nie bei Pseudonymisierung
+ *  (ein Anhang ist Klartext, sein Name traegt Namen). Die EINE Stelle, die `saveAttachments` liest. */
+export const effectiveSaveAttachments = (p: Pick<MailProfile, "saveAttachments" | "pseudonymize">): boolean => p.saveAttachments && !isPseudonymizing(p);
+
 /** Ob zu dieser Mail eine `.eml` geschrieben wird: `effectiveSaveEml`, oder eine Mail ohne Message-ID (auf dem Server nicht
  *  auffindbar, ihr Original gibt es nur hier) — beides nie bei Pseudonymisierung. */
 export const keepsEml = (p: Pick<MailProfile, "saveEml" | "pseudonymize">, mailId: string): boolean =>
@@ -90,6 +98,7 @@ export function defaultMailProfile(): MailProfile {
     yearSubfolder: true,
     emlSubfolder: "_eml",
     saveEml: true,
+    saveAttachments: false,
     pseudonymize: "off",
     threadField: "",
     threadTokenPattern: "\\[Ticket#\\d+\\]",

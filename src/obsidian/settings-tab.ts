@@ -70,6 +70,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return at === null ? t("settings.lastSync.never") : t("settings.lastSync.value", new Date(at).toLocaleString());
   }
 
+  /** Beschreibung der Zeile „Anhänge im Anhangordner speichern“: wie `saveEmlDesc` mit dem Hinweis bei Pseudonymisieren (A5). */
+  private saveAttachmentsDesc(): string {
+    const base = t("settings.saveAttachments.desc");
+    return isPseudonymizing(this.host.settings.profile) ? `${base} ${t("settings.saveAttachments.pseudonymized")}` : base;
+  }
+
   /** Beschreibung der Zeile „Original als .eml speichern“: mit eingeschaltetem Pseudonymisieren kommt der Hinweis dazu, dass der Wert
    *  gespeichert bleibt und nicht wirkt (A5). */
   private saveEmlDesc(): string {
@@ -141,6 +147,11 @@ export class MailstoneSettingTab extends PluginSettingTab {
         name: t("settings.pseudonymize"),
         desc: t("settings.pseudonymize.desc"),
         render: (setting: Setting) => { this.renderPseudonymize(setting); },
+      },
+      {
+        name: t("settings.saveAttachments"),
+        desc: this.saveAttachmentsDesc(),
+        control: { type: "toggle", key: "profile.saveAttachments" },
       },
       {
         name: t("settings.threadField"),
@@ -606,6 +617,10 @@ export class MailstoneSettingTab extends PluginSettingTab {
       "profile.saveEml": {
         get: () => s.profile.saveEml,
         set: (value) => { s.profile.saveEml = Boolean(value); },
+      },
+      "profile.saveAttachments": {
+        get: () => s.profile.saveAttachments,
+        set: (value) => { s.profile.saveAttachments = Boolean(value); },
       },
       "profile.pseudonymize": {
         get: () => s.profile.pseudonymize,

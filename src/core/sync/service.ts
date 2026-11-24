@@ -2,10 +2,11 @@
 // gegen den Vault-Index, Plaene ueber den PlanExecutor. Der Service kennt weder Vault noch
 // Obsidian (siehe scripts/check-pure.mjs) — Index, Pfade und Executor kommen als Deps.
 import type { Account } from "../settings";
-import type { MailProfile } from "../mirror/profile";
+import { effectiveSaveAttachments, type MailProfile } from "../mirror/profile";
 import type { SocketTransport } from "../net/types";
 import { NetError } from "../net/types";
 import type { PlanExecutionResult, PlanExecutor } from "../mirror/execute";
+import { notePathFor, type AttachmentResolver, type AttachmentTargets } from "../mirror/attachments";
 import type { NotePlan } from "../mirror/plan";
 import { planSync, type MailIndex } from "../mirror/apply";
 import type { KnownThreadNote } from "../thread/create-links";
@@ -58,6 +59,10 @@ export interface SyncDeps {
    *  Pruefenster (`interactive: true`); der Index ist vor dem Fenster gelesen, deshalb nehmen auch Befehle, die Notizen anlegen
    *  (Import), den Guard, statt daneben zu laufen. Fehlt er bei eingeschaltetem Schalter, schreibt der Lauf nie Klartext: die Mail wartet. */
   pseudonymize?: TransformPort;
+  /** Anhaenge in den Anhangordner (A6): legt je Lauf einen Resolver an (er merkt sich, was der Lauf vergeben hat). Gerufen wird er nur bei
+   *  `effectiveSaveAttachments` und neuen Mails; fehlt die Dep, bleibt die Einstellung wirkungslos. Scheitert er fuer eine Mail, entsteht
+   *  ihre Notiz ohne Anhangdateien und der Lauf zaehlt einen Fehler. */
+  attachmentResolver?: () => AttachmentResolver;
 }
 
 /** Optionen eines Laufs. */
@@ -272,10 +277,28 @@ export function createSyncService(deps: SyncDeps): SyncService {
       }
     }
 
+    // Anhaenge (A6): die Pfade loest die Obsidian-Schicht jetzt auf, die Planung bleibt rein. Nie bei Pseudonymisierung (`effectiveSaveAttachments`).
+    let attachmentTargets: Map<string, AttachmentTargets> | undefined;
+    let attachmentErrors = 0;
+    if (effectiveSaveAttachments(profile) && deps.attachmentResolver && toPlan.length > 0) {
+      const resolve = deps.attachmentResolver();
+      attachmentTargets = new Map();
+      for (const item of toPlan) {
+        if (!item.mail.attachments.some((a) => !a.inline)) continue;
+        try {
+          attachmentTargets.set(item.mail.id, await resolve(item.mail, notePathFor(profile, item.mail)));
+        } catch (e) {
+          attachmentErrors += 1;
+          deps.log?.(`attachments: failed ${item.mail.id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+
     const rawPlans = planSync({
       profile, source, syncedAt: deps.now(), index,
       takenPaths: deps.takenPaths(), fetched: toPlan, onServer,
       ...(facts ? { facts } : {}),
+      ...(attachmentTargets ? { attachmentTargets } : {}),
       ...(deps.threadNotes ? { threadNotes: deps.threadNotes } : {}),
       linkFor: (id) => index.get(id)?.path.replace(/\.md$/, "") ?? null,
     });
@@ -304,7 +327,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
       skipped: result.skipped.length + relinked.skipped,
       detachSkipped,
       waiting,
-      errors: errors + followErrors + transformErrors + result.errors.length + relinked.errors,
+      errors: errors + followErrors + transformErrors + attachmentErrors + result.errors.length + relinked.errors,
     };
     for (const p of [...executedPlans, ...relinked.executed]) {
       deps.events.emit("changed", { path: p.path, kind: p.kind, mailId: p.mailId });

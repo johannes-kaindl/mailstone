@@ -10,6 +10,51 @@ const common = async () => {
   return { mail: await parseEml(eml), eml, profile: defaultMailProfile(), source: "privat/Vault", syncedAt: new Date(0), takenPaths: new Set<string>(), allowUpdate: true };
 };
 
+describe("planMailNote — Anhaenge (A6, W37)", () => {
+  const mixed = async () => {
+    const eml = loadFixture("multipart-mixed-attachments");
+    return { mail: await parseEml(eml), eml, profile: defaultMailProfile(), source: "privat/Vault", syncedAt: new Date(0), takenPaths: new Set<string>(), allowUpdate: false, existing: null };
+  };
+  it("legt die Anhaenge als zusaetzliche Dateien in den Plan und verlinkt sie im freien Bereich vor der Zone", async () => {
+    const c = await mixed();
+    const targets = new Map(c.mail.attachments.filter((a) => !a.inline).map((a) => [a.key, { path: `Anhaenge/${a.name}`, write: true }]));
+    expect(targets.size).toBe(2);
+    const p = planMailNote({ ...c, attachmentTargets: targets });
+    if (p.kind !== "create") throw new Error("create erwartet");
+    expect(p.attachments?.map((a) => a.path).sort()).toEqual(["Anhaenge/bericht.pdf", "Anhaenge/notiz.txt"]);
+    const bericht = p.attachments!.find((a) => a.path === "Anhaenge/bericht.pdf")!;
+    expect(bericht.data.byteLength).toBeGreaterThan(0);
+    const i = p.content.indexOf("%% mailstone:begin %%");
+    expect(p.content.indexOf("![[Anhaenge/bericht.pdf]]")).toBeGreaterThan(0);
+    expect(p.content.indexOf("![[Anhaenge/bericht.pdf]]")).toBeLessThan(i);
+    expect(p.content.indexOf("[[Anhaenge/notiz.txt]]")).toBeLessThan(i);
+    expect(p.content).not.toContain("![[Anhaenge/notiz.txt]]");
+  });
+  it("eine byte-gleich vorhandene Datei (write: false) wird verlinkt, aber nicht noch einmal geschrieben", async () => {
+    const c = await mixed();
+    const [a, b] = c.mail.attachments.filter((x) => !x.inline);
+    const p = planMailNote({ ...c, attachmentTargets: new Map([[a!.key, { path: "Alt/bericht.pdf", write: false }], [b!.key, { path: "Anhaenge/notiz.txt", write: true }]]) });
+    if (p.kind !== "create") throw new Error("create erwartet");
+    expect(p.attachments?.map((x) => x.path)).toEqual(["Anhaenge/notiz.txt"]);
+    expect(p.content).toContain("![[Alt/bericht.pdf]]");
+  });
+  it("ohne Ziele bleibt der Plan wie bisher: kein attachments-Feld, kein Link", async () => {
+    const c = await mixed();
+    const p = planMailNote({ ...c });
+    if (p.kind !== "create") throw new Error("create erwartet");
+    expect(p.attachments).toBeUndefined();
+    expect(p.content).not.toContain("[[Anhaenge");
+  });
+  it("die Zonen-Pruefsumme haengt nicht an den Links (sie stehen ausserhalb der Zone)", async () => {
+    const c = await mixed();
+    const targets = new Map(c.mail.attachments.filter((a) => !a.inline).map((a) => [a.key, { path: `Anhaenge/${a.name}`, write: true }]));
+    const mit = planMailNote({ ...c, attachmentTargets: targets });
+    const ohne = planMailNote({ ...c });
+    if (mit.kind !== "create" || ohne.kind !== "create") throw new Error("create erwartet");
+    expect(mit.zoneHash).toBe(ohne.zoneHash);
+  });
+});
+
 describe("planMailNote", () => {
   it("create: Pfade, Inhalt mit Fences, eml-Bytes", async () => {
     const c = await common();
