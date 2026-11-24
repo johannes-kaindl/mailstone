@@ -54,7 +54,9 @@ export interface SyncDeps {
   follow?: { context: () => FollowContext };
   /** Pseudonymisieren (A5): der Port zum Plugin pseudonymizer (die obsidian-Schicht bindet ihn an `pseudonymizeFor`). Gerufen wird er nur
    *  bei `profile.pseudonymize !== "off"`, je neuer Mail, NACH der Fetch-Schleife und NACH dem Logout (E17: kein Fenster und kein Warten
-   *  bei offener Verbindung und belegtem Busy-Guard). Fehlt er bei eingeschaltetem Schalter, schreibt der Lauf nie Klartext: die Mail wartet. */
+   *  bei offener Verbindung). Den Busy-Guard haelt `syncAccount` dagegen ueber den GANZEN Lauf, also auch waehrend eines offenen
+   *  Pruefenster (`interactive: true`); der Index ist vor dem Fenster gelesen, deshalb nehmen auch Befehle, die Notizen anlegen
+   *  (Import), den Guard, statt daneben zu laufen. Fehlt er bei eingeschaltetem Schalter, schreibt der Lauf nie Klartext: die Mail wartet. */
   pseudonymize?: TransformPort;
 }
 

@@ -6,6 +6,7 @@ import { loadFixture } from "../helpers/fixtures";
 import { parseEml } from "../../src/core/mime/parse";
 import { mailFilename, mailFolder } from "../../src/core/render/filename";
 import type { PortOutcome, TransformPort } from "../../src/core/transform/transform-mail";
+import { createBusyGuard } from "../../src/vendor/code-kit/busy-guard";
 import type { TransformRequest } from "../../src/vendor/kit/pseudonymizer-source";
 
 const enc = (s: string): ArrayBuffer => new TextEncoder().encode(s.replace(/\n/g, "\r\n")).buffer as ArrayBuffer;
@@ -239,5 +240,32 @@ describe("importEmlFolder — Pseudonymisieren (A5)", () => {
     expect(r.created).toBe(1);
     const pfad = [...app.__files.keys()].find((x: string) => x.endsWith(".md"))!;
     expect(await app.vault.adapter.read(pfad)).toContain("richtung: ausgehend");
+  });
+  // W37 (Task „Prüffenster im Sync hält den Busy-Guard“): der Sync hält den Guard über run samt Prüffenster, der Index ist vor dem
+  // Fenster gelesen. Ein Import derselben Mail währenddessen legte eine zweite Notiz mit gleicher mail_id an.
+  it("läuft nicht, solange ein anderer Lauf den Busy-Guard hält, und legt dann nichts an", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const busy = createBusyGuard();
+    expect(busy.tryAcquire()).toBe(true); // der Sync-Lauf mit offenem Prüffenster
+    const deps = { app, profile: defaultMailProfile(), hashes: { get: () => null, set: () => {} }, now: () => new Date(0), busy };
+    const r = await importEmlFolder(deps, "Import");
+    expect(r.busy).toBe(true);
+    expect(r.created).toBe(0);
+    expect(app.vault.getMarkdownFiles()).toHaveLength(0);
+    busy.release();
+    const r2 = await importEmlFolder(deps, "Import");
+    expect(r2.busy).toBe(false);
+    expect(r2.created).toBe(1);
+    expect(busy.isBusy()).toBe(false); // der Import gibt den Guard wieder frei
+  });
+  it("gibt den Busy-Guard auch frei, wenn der Import wirft", async () => {
+    const app = makeApp();
+    await app.vault.createBinary("Import/a.eml", loadFixture("utf8-plain").buffer);
+    const busy = createBusyGuard();
+    const profile = { ...defaultMailProfile(), pseudonymize: "required" as const };
+    const pseudonymize: TransformPort = () => { throw new Error("boom"); };
+    await importEmlFolder({ app, profile, hashes: { get: () => null, set: () => {} }, now: () => new Date(0), busy, pseudonymize }, "Import").catch(() => undefined);
+    expect(busy.isBusy()).toBe(false);
   });
 });

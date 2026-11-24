@@ -1,5 +1,6 @@
 import { normalizePath, TFile, type App } from "obsidian";
 import { isInFolder } from "../vendor/code-kit/folder-scope";
+import type { BusyGuard } from "../vendor/code-kit/busy-guard";
 import { parseEml } from "../core/mime/parse";
 import type { ParsedMail } from "../core/mime/types";
 import { assignRunPaths, planMailNote, type ExistingNote, type NotePlan } from "../core/mirror/plan";
@@ -17,12 +18,26 @@ export interface ImportDeps {
   /** Pseudonymisieren (A5): der Port zum Plugin pseudonymizer. Gerufen wird er nur bei `profile.pseudonymize !== "off"`, mit `interactive: true`
    *  (der Import ist ein Befehl eines Menschen). Fehlt er bei eingeschaltetem Schalter, wartet jede Mail: es entsteht nie Klartext. */
   pseudonymize?: TransformPort;
+  /** Der Busy-Guard des Plugins (derselbe wie im Sync): der Import laeuft nur, wenn er ihn bekommt. Sonst legte er neben einem Sync-Lauf
+   *  mit offenem Pruefenster (Index vor dem Fenster gelesen) eine zweite Notiz derselben Mail an. Ohne die Dep gibt es keinen Riegel. */
+  busy?: BusyGuard;
 }
 
 /** Eine Mail, die der Import nicht geschrieben hat, weil der Pseudonymizer sie zurueckstellt (Quelldatei bleibt unberuehrt). */
 export interface HeldMail { path: string; kind: "wait"; reason: string; message: string }
 
-export async function importEmlFolder(deps: ImportDeps, folder: string): Promise<{ created: number; updated: number; skipped: NotePlan[]; errors: { path: string; message: string }[]; held: HeldMail[] }> {
+export interface ImportResult { created: number; updated: number; skipped: NotePlan[]; errors: { path: string; message: string }[]; held: HeldMail[]; busy: boolean }
+
+export async function importEmlFolder(deps: ImportDeps, folder: string): Promise<ImportResult> {
+  if (deps.busy && !deps.busy.tryAcquire()) return { created: 0, updated: 0, skipped: [], errors: [], held: [], busy: true };
+  try {
+    return await importLocked(deps, folder);
+  } finally {
+    deps.busy?.release();
+  }
+}
+
+async function importLocked(deps: ImportDeps, folder: string): Promise<ImportResult> {
   const { app, profile } = deps;
   const root = normalizePath(folder);
   const files = app.vault.getFiles().filter((f) => f.extension === "eml" && isInFolder(f.path, root, { self: true }));
@@ -70,5 +85,5 @@ export async function importEmlFolder(deps: ImportDeps, folder: string): Promise
     plans.push(planMailNote({ mail, eml, profile, source: `import/${root}`, syncedAt, existing, takenPaths: taken, allowUpdate: true, linkFor, ...(facts.has(mail.id) ? { facts: facts.get(mail.id)! } : {}), ...(paths ? { paths } : {}), ...(extras.has(mail.id) ? { createExtra: extras.get(mail.id)! } : {}) }));
   }
   const r = await vaultPlanExecutor(app, deps.hashes).execute(plans);
-  return { created: r.created, updated: r.updated, skipped: r.skipped, errors: [...errors, ...r.errors.map((x) => ({ path: x.plan.path, message: x.message }))], held };
+  return { created: r.created, updated: r.updated, skipped: r.skipped, errors: [...errors, ...r.errors.map((x) => ({ path: x.plan.path, message: x.message }))], held, busy: false };
 }

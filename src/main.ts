@@ -514,9 +514,11 @@ export default class MailstonePlugin extends Plugin {
               hashes: { get: (k) => this.zoneHashes[k] ?? null, set: (k, v) => { this.zoneHashes[k] = v; } },
               now: () => new Date(),
               pseudonymize: this.pseudonymizePort(),
+              busy: this.busy,
             },
             folder,
           );
+          if (r.busy) { notify.error("error.command.busy"); return; }
           notify.info("import.done", r.created, r.updated, r.skipped.length, r.errors.length);
           if (r.errors.length > 0) notify.error("import.errors", r.errors.length);
           // Eine Mail, die der Pseudonymizer zurueckstellt, wird nicht importiert (keine halbe Notiz); der Grund der ersten steht in der Meldung.

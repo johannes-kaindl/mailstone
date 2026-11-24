@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- *Import .eml folder* no longer runs while a sync is running, for example while *Check waiting mails* has its review window open. Before, an import of the same mail in that moment could create a second note with the same `mail_id`; now the command reports that another operation is running and does nothing.
+
 ## [0.13.0] — 2026-11-20
 
 ### Added
