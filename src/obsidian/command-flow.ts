@@ -3,7 +3,7 @@ import { parseEml } from "../core/mime/parse";
 import { emlPathFor, verifyEml } from "../core/commands/eml";
 import { executeCommandPlan, type CommandExecuteDeps, type CommandExecuteResult } from "../core/commands/execute";
 import { emptyChoiceField, predeterminedInput } from "../core/commands/schema";
-import { schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type ContextErrorCode, type MailNoteRef, type MailTarget } from "../core/commands/types";
+import { VAULT_TARGET, schemaOf, type CommandContext, type CommandDescriptor, type CommandErrorCode, type CommandProbe, type ContextErrorCode, type MailNoteRef, type MailTarget } from "../core/commands/types";
 import type { FetchOriginalRequest, FetchOriginalResult } from "../core/originals/fetch-original";
 import type { MailProfile } from "../core/mirror/profile";
 import { transformMail, type TransformPort } from "../core/transform/transform-mail";
@@ -64,6 +64,13 @@ export function probeFor(app: App, profile: MailProfile): CommandProbe | null {
   const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
   const target = mailTargetFor(profile, file.path, frontmatter);
   return target ? { profile, target, frontmatter } : null;
+}
+
+/** Die Vorpruefung fuer einen Befehl: die geoeffnete Mail-Notiz, sonst fuer einen vault-weiten Befehl (`scope: "vault"`) das leere
+ *  Ziel. Ein vault-weiter Befehl steht so auch ohne Mail-Notiz in der Palette (vorher fand ihn nach dem Umstellen einer Einstellung
+ *  niemand); ein notizgebundener fehlt weiter. */
+export function commandProbe(app: App, profile: MailProfile, descriptor: CommandDescriptor): CommandProbe | null {
+  return probeFor(app, profile) ?? (descriptor.scope === "vault" ? { profile, target: VAULT_TARGET, frontmatter: {} } : null);
 }
 
 async function loadNotes(app: App, profile: MailProfile, hashes: ZoneHashStore, withEmlProbe: boolean, withThreads: boolean): Promise<MailNoteRef[]> {
@@ -151,10 +158,13 @@ export async function buildContext(
 ): Promise<{ ok: true; ctx: CommandContext } | ContextFailure> {
   const { app } = deps;
   const profile = deps.profile();
-  if (!(file instanceof TFile)) return { ok: false, code: "not-applicable" };
-  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-  const target = mailTargetFor(profile, file.path, frontmatter);
-  if (!target) return { ok: false, code: "not-applicable" };
+  const fileFrontmatter = file instanceof TFile ? app.metadataCache.getFileCache(file)?.frontmatter ?? {} : {};
+  const noteTarget = file instanceof TFile ? mailTargetFor(profile, file.path, fileFrontmatter) : null;
+  // Ein vault-weiter Befehl laeuft auch ohne Mail-Notiz: dann mit leerem Ziel, ohne Inhalt und ohne Frontmatter der aktiven Datei.
+  const vaultOnly = noteTarget === null && descriptor.scope === "vault" && !descriptor.needs?.eml;
+  if (!noteTarget && !vaultOnly) return { ok: false, code: "not-applicable" };
+  const target = noteTarget ?? VAULT_TARGET;
+  const frontmatter = noteTarget ? fileFrontmatter : {};
 
   // findMailNotes() macht denselben Scan (getMarkdownFiles + Metadata-Cache-Frontmatter) wie
   // ein hier eigens geschriebener Index es taete — nur der Wert ist ein anderer (Pfad ohne
@@ -166,7 +176,7 @@ export async function buildContext(
   const vorhandeneAnhaenge = new Map<string, { path: string; data: Uint8Array }>();
   let mail: ParsedMail | undefined;
   let facts: OriginalFacts | undefined;
-  if (descriptor.needs?.eml) {
+  if (descriptor.needs?.eml && file instanceof TFile) {
     const loaded = await loadOriginal(deps, profile, file, target);
     if (!loaded.ok) return loaded;
     const parsed = loaded.mail;
@@ -199,8 +209,8 @@ export async function buildContext(
       profile,
       target,
       frontmatter,
-      content: await app.vault.read(file),
-      zoneHash: deps.hashes.get(target.mailId),
+      content: noteTarget && file instanceof TFile ? await app.vault.read(file) : "",
+      zoneHash: noteTarget ? deps.hashes.get(target.mailId) : null,
       linkFor: (id) => index.get(id) ?? null,
       attachmentPathFor: (name) => {
         anhangzugriffErlaubt(descriptor);

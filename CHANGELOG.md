@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 - **A mail you sent yourself is marked `richtung: ausgehend` even when the account has no identity.** Mailstone now also counts each account's username as your own address when it is a mail address, and every mail in an allowlist folder that is the account's sent folder counts as outgoing. An account with neither shows a hint in the side panel.
 
 ### Changed
+- *Recompute threads*, *Relink mail threads* and *Remove stored .eml files* work on all mail notes, so they are now offered in the command palette without an open mail note. *Recompute threads* is also a button below *Thread field*, and *Remove stored .eml files* a button below *Save original as .eml* (shown while no `.eml` is written). Both still show a preview before they write.
 - The tab bar styles in `styles.css` are the shared library's (obsidian-kit 0.108.0) word for word, and a test now fails if a vendored library stylesheet is missing. No visible change.
 
 ## [0.14.1] — 2026-11-24

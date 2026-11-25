@@ -25,7 +25,11 @@ import { AccountModal } from "./modals/account-modal";
 import { pluginName } from "./plugin-api";
 import { githubHelpUrls, helpSettingDefinition } from "../vendor/kit-obsidian/help-setting";
 import { buildSegmentedControl } from "../vendor/kit-obsidian/segmented-control";
-import { isPseudonymizeMode, isPseudonymizing, type PseudonymizeMode } from "../core/mirror/profile";
+import { effectiveSaveEml, isPseudonymizeMode, isPseudonymizing, type PseudonymizeMode } from "../core/mirror/profile";
+import { VAULT_TARGET, type CommandDescriptor } from "../core/commands/types";
+import { RECOMPUTE_THREADS_COMMAND } from "../core/commands/recompute-threads";
+import { REMOVE_EML_COMMAND } from "../core/commands/remove-eml";
+import { trDescription, trTitle } from "./command-i18n";
 import { statusBarEnabled, statusBarSettingDefinition } from "../vendor/kit-obsidian/status-bar-item";
 
 /** Was der Tab vom Plugin braucht — als Interface, damit Tests eine Attrappe geben können
@@ -40,6 +44,8 @@ export interface SettingsHost {
   runState(): RunState;
   /** Der Schalter „Statusleiste“: legt den Eintrag an oder haengt ihn ab (der Wert steht danach in `settings.showStatusBar`). */
   setStatusBarVisible(on: boolean): void;
+  /** Fuehrt einen vault-weiten Befehl aus (Knopf unter seiner Einstellung): derselbe Weg wie aus der Palette, mit Vorschau. */
+  runVaultCommand(descriptor: CommandDescriptor): void;
 }
 
 /** M1: Ordner, Jahr-Unterordner, Dateiname-Template, Sprache. M2: Konten (Accounts-Liste +
@@ -143,6 +149,8 @@ export class MailstoneSettingTab extends PluginSettingTab {
         desc: this.saveEmlDesc(),
         control: { type: "toggle", key: "profile.saveEml" },
       },
+      // Wie in der Palette nur, solange keine .eml mehr entsteht (`appliesTo` des Befehls).
+      ...(REMOVE_EML_COMMAND.appliesTo({ profile: this.host.settings.profile, target: VAULT_TARGET, frontmatter: {} }) ? [this.vaultCommandRow(REMOVE_EML_COMMAND)] : []),
       {
         name: t("settings.pseudonymize"),
         desc: t("settings.pseudonymize.desc"),
@@ -159,6 +167,7 @@ export class MailstoneSettingTab extends PluginSettingTab {
         control: { type: "text", key: "profile.threadField" },
       },
       ...this.threadHint(this.threadFieldHint()),
+      this.vaultCommandRow(RECOMPUTE_THREADS_COMMAND),
       {
         name: t("settings.threadTokenPattern"),
         desc: t("settings.threadTokenPattern.desc"),
@@ -584,6 +593,18 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return problem === null ? null : t(`settings.followField.problem.${problem}`, profile.followField.trim());
   }
 
+  /** Ein vault-weiter Befehl als Knopf unter seiner Einstellung: Name und Erklaerung sind die des Befehls (kein zweiter Text, §10),
+   *  der Knopf oeffnet dieselbe Vorschau wie die Palette. */
+  private vaultCommandRow(descriptor: CommandDescriptor): SettingDefinitionItem {
+    return {
+      name: trTitle(descriptor),
+      desc: trDescription(descriptor),
+      render: (setting: Setting) => {
+        setting.addButton((b) => b.setButtonText(t("settings.vaultCommand.run")).onClick(() => { this.host.runVaultCommand(descriptor); }));
+      },
+    };
+  }
+
   private threadHint(text: string | null): SettingDefinitionItem[] {
     return text === null ? [] : [{ name: t("settings.threadHint"), desc: text }];
   }
@@ -669,9 +690,12 @@ export class MailstoneSettingTab extends PluginSettingTab {
     const hinweise = (): string => `${String(this.threadFieldHint())}|${String(this.followFieldHint())}|${String(this.threadTokenHint())}|${this.inheritFieldHints().join("|")}`;
     // Der Hinweis an „Original als .eml speichern“ haengt daran, ob ueberhaupt pseudonymisiert wird (Aus gegen die anderen zwei).
     const pseudoVorher = isPseudonymizing(this.host.settings.profile);
+    // Der Knopf „.eml entfernen“ steht nur, solange keine .eml entsteht.
+    const emlVorher = effectiveSaveEml(this.host.settings.profile);
     const hinweisVorher = key === "profile.threadField" || key === "profile.followField" || key === "profile.threadTokenPattern" ? hinweise() : null;
     entry.set(value);
     await this.host.saveSettings();
-    if ((hinweisVorher !== null && hinweisVorher !== hinweise()) || (key === "profile.pseudonymize" && pseudoVorher !== isPseudonymizing(this.host.settings.profile))) this.update();
+    if ((hinweisVorher !== null && hinweisVorher !== hinweise()) || (key === "profile.pseudonymize" && pseudoVorher !== isPseudonymizing(this.host.settings.profile))
+      || emlVorher !== effectiveSaveEml(this.host.settings.profile)) this.update();
   }
 }

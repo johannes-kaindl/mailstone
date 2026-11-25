@@ -25,11 +25,12 @@ export const REMOVE_EML_COMMAND: CommandDescriptor = {
   descriptionKey: "cmd.mail.removeEml.desc",
   schema: EMPTY_SCHEMA,
   needs: { allNotes: true, emlProbe: true },
+  scope: "vault",
 
   /** Nur ohne wirksames `saveEml` (ausgeschaltet oder Pseudonymisierung an): wer die .eml behalten will, soll den Befehl nicht in der
    *  Palette finden. */
   appliesTo(probe: CommandProbe): boolean {
-    return probe.target.mailId !== "" && !effectiveSaveEml(probe.profile);
+    return !effectiveSaveEml(probe.profile);
   },
 
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult {

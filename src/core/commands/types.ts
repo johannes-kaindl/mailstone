@@ -157,10 +157,16 @@ export interface CommandDescriptor {
    *  `attachmentPathFor`/`existingAttachment` als WERFENDE Attrappen statt stiller
    *  Fehlwerte. */
   needs?: { eml?: true; allNotes?: true; attachments?: true; /** Setzt `allNotes` voraus: liest je Notiz nur den Message-ID-Kopf der .eml am Konventionspfad. */ emlProbe?: true; /** Setzt `allNotes` voraus: loest je Notiz Verweise und Vorgangswert zu Mail-IDs auf (`MailNoteRef.thread`). */ threads?: true };
+  /** `vault`: der Befehl wirkt auf alle Mail-Notizen und braucht keine Ziel-Notiz. Er steht dann auch ohne geoeffnete Mail-Notiz
+   *  in der Palette; sein Kontext traegt `VAULT_TARGET` (leere `mailId`). Setzt `needs.allNotes` voraus und schliesst `needs.eml` aus. */
+  scope?: "vault";
   /** Bekommt bewusst nur den `CommandProbe`, nicht den vollen Kontext — s. dort. */
   appliesTo(probe: CommandProbe): boolean;
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult;
 }
+
+/** Das Ziel eines vault-weiten Befehls (`scope: "vault"`), wenn keine Mail-Notiz geoeffnet ist: keine Mail, kein Pfad. */
+export const VAULT_TARGET: MailTarget = { mailId: "", path: "", source: "", state: null };
 
 /** Das wirksame Schema eines Deskriptors in DIESEM Kontext. */
 export function schemaOf(descriptor: CommandDescriptor, ctx: CommandContext): ObjectSchema {

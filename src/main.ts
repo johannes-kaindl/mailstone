@@ -36,7 +36,7 @@ import { CREATE_TASK_COMMAND } from "./core/commands/create-task";
 import type { CommandDescriptor } from "./core/commands/types";
 import type { CommandExecuteDeps, CommandExecuteResult } from "./core/commands/execute";
 import type { NotePlan } from "./core/mirror/plan";
-import { runCommand, probeFor, type CommandFlowDeps, type RunResult } from "./obsidian/command-flow";
+import { runCommand, commandProbe, type CommandFlowDeps, type RunResult } from "./obsidian/command-flow";
 import { fetchOriginal } from "./core/originals/fetch-original";
 import { pseudonymizeFor, restoreFor } from "./vendor/kit-obsidian/pseudonymizer-call";
 import { TRANSFORM_CALLER, type TransformPort } from "./core/transform/transform-mail";
@@ -359,6 +359,8 @@ export default class MailstonePlugin extends Plugin {
         transport: () => nodeSocketTransport(),
         runState: () => this.runState,
         setStatusBarVisible: (on) => { this.status.setVisible(on); },
+        // Ausdruecklich ohne Ziel-Notiz: der Knopf wirkt auf den Vault, nicht auf die zuletzt aktive Datei.
+        runVaultCommand: (descriptor) => { void this.runMailCommand(descriptor, noticeNotifier(), null); },
       }),
     );
     const notify = noticeNotifier();
@@ -463,7 +465,7 @@ export default class MailstonePlugin extends Plugin {
           // davon also nichts. Faellt die Pruefung durch, FEHLT das Kommando in der Palette,
           // statt ausgegraut zu erscheinen.
           if (descriptor.id === CREATE_TASK_COMMAND.id && readTaskNotesApi(this.app) === null) return false;
-          const probe = probeFor(this.app, this.settings.profile);
+          const probe = commandProbe(this.app, this.settings.profile, descriptor);
           if (!probe || !descriptor.appliesTo(probe)) return false;
           if (!checking) void this.runMailCommand(descriptor, notify);
           return true;
@@ -795,13 +797,15 @@ export default class MailstonePlugin extends Plugin {
    *  nichts — er weiss, dass er abgebrochen hat. Die Zone-Hashes werden auch nach einem
    *  Fehlschlag persistiert (dieselbe Begruendung wie beim Import- und beim Sync-Kommando:
    *  sonst gilt eine geschriebene Notiz beim naechsten Lauf als fremd editiert). */
-  private async runMailCommand(descriptor: CommandDescriptor, notify: Notifier): Promise<void> {
+  /** `file`: fehlt er, gilt die aktive Notiz (Palette); `null` heisst „ohne Ziel-Notiz“ (vault-weiter Knopf in den Einstellungen). */
+  private async runMailCommand(descriptor: CommandDescriptor, notify: Notifier, file?: TFile | null): Promise<void> {
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(
         this.commandFlowDeps(),
         this.commandExecuteDeps(),
         descriptor,
+        file, // undefined greift auf den Standard von runCommand zurueck (aktive Notiz)
       ));
     } finally {
       await this.saveSettings();

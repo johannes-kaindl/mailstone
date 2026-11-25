@@ -8,6 +8,7 @@ import type { SocketTransport } from "../../src/core/net/types";
 import type { RunState } from "../../src/core/sync/run-state";
 import { initI18n } from "../../src/i18n/strings";
 import { t } from "../../src/vendor/code-kit/i18n";
+import type { CommandDescriptor } from "../../src/core/commands/types";
 
 initI18n("de");
 
@@ -36,7 +37,7 @@ function fakeSecrets(overrides?: Partial<SecretStore>): SecretStore {
  *  ist fuer Obsidian <1.13 gedacht, das Manifest hier fuehrt aber 1.13.0 als Untergrenze und der
  *  Tab hat kein eigenes `display()` — der gerenderte Pfad waere also nie der reale gewesen.
  */
-function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; runState?: RunState; onStatusBar?: (on: boolean) => void } = {}): MailstoneSettingTab {
+function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; runState?: RunState; onStatusBar?: (on: boolean) => void; onVaultCommand?: (d: CommandDescriptor) => void } = {}): MailstoneSettingTab {
   const settings: MailstoneSettings = { ...loadSettings(undefined), accounts: opts.accounts ?? [] };
   const host: SettingsHost = {
     settings,
@@ -45,6 +46,7 @@ function newTab(opts: { accounts?: Account[]; secrets?: Partial<SecretStore>; ru
     transport: () => ({}) as unknown as SocketTransport,
     runState: () => opts.runState ?? {},
     setStatusBarVisible: opts.onStatusBar ?? (() => {}),
+    runVaultCommand: opts.onVaultCommand ?? (() => {}),
   };
   const manifest = { id: "mailstone", name: "Mailstone", version: "0.1.0", minAppVersion: "1.13.0", description: "", author: "" };
   const app = new App();
@@ -83,6 +85,8 @@ describe("MailstoneSettingTab — Passwort-Hinweis und Debug-Schalter", () => {
 
   it("bietet im Profil-Abschnitt einen Schalter fuer die .eml mit Beschreibung (A6)", async () => {
     const tab = newTab({ accounts: [] });
+    // Abschalten blendet den Knopf „.eml entfernen“ ein und zeichnet neu; der Mock kennt kein update().
+    (tab as unknown as { update: () => void }).update = () => {};
     const defs = tab.getSettingDefinitions() as { name?: string; desc?: string; control?: { key?: string } }[];
     const i = defs.findIndex((d) => d.control?.key === "profile.saveEml");
     expect(i).toBeGreaterThan(defs.findIndex((d) => d.control?.key === "profile.filename"));
@@ -696,5 +700,43 @@ describe("MailstoneSettingTab — weitergegebene Felder (A2, E7)", () => {
     (tab as unknown as { update: () => void }).update = () => { neu++; };
     await tab.setControlValue("profile.threadField", "vorgang");
     expect(neu).toBe(1);
+  });
+});
+
+describe("MailstoneSettingTab — vault-weite Befehle als Knopf", () => {
+  type Hatch = { name?: string; desc?: string; render?: (s: Setting) => void; control?: { key?: string } };
+  const knopfKlick = (row: Hatch): void => {
+    // Der Mock-Setting zeichnet den Knopf nicht; wir greifen den onClick ueber eine Attrappe ab.
+    let klick: (() => void) | undefined;
+    const button = { setButtonText: () => button, onClick: (f: () => void) => { klick = f; return button; } };
+    row.render?.({ addButton: (cb: (b: typeof button) => void) => { cb(button); } } as unknown as Setting);
+    klick?.();
+  };
+
+  it("Vorgaenge neu berechnen steht als Knopf direkt unter dem Vorgangsfeld und ruft den Befehl", () => {
+    const gerufen: string[] = [];
+    const tab = newTab({ onVaultCommand: (d) => gerufen.push(d.id) });
+    const defs = tab.getSettingDefinitions() as unknown as Hatch[];
+    const i = defs.findIndex((d) => d.control?.key === "profile.threadField");
+    expect(defs[i + 1]?.name).toBe("Vorgänge neu berechnen");
+    knopfKlick(defs[i + 1]!);
+    expect(gerufen).toEqual(["mail.recomputeThreads"]);
+  });
+
+  it(".eml entfernen erscheint unter dem .eml-Schalter erst, wenn keine .eml mehr entsteht; der Tab zeichnet beim Wechsel neu", async () => {
+    const gerufen: string[] = [];
+    const tab = newTab({ onVaultCommand: (d) => gerufen.push(d.id) });
+    const update = vi.fn();
+    (tab as unknown as { update: () => void }).update = update;
+    const nachEml = (): Hatch | undefined => {
+      const defs = tab.getSettingDefinitions() as unknown as Hatch[];
+      return defs[defs.findIndex((d) => d.control?.key === "profile.saveEml") + 1];
+    };
+    expect(nachEml()?.name).toBe("Pseudonymisieren");
+    await tab.setControlValue("profile.saveEml", false);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(nachEml()?.name).toBe(t("cmd.mail.removeEml.title"));
+    knopfKlick(nachEml()!);
+    expect(gerufen).toEqual(["mail.removeEml"]);
   });
 });

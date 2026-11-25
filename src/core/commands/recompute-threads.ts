@@ -28,9 +28,10 @@ export const RECOMPUTE_THREADS_COMMAND: CommandDescriptor = {
   descriptionKey: "cmd.mail.recomputeThreads.desc",
   schema: EMPTY_SCHEMA,
   needs: { allNotes: true, threads: true },
+  scope: "vault",
 
-  appliesTo(probe: CommandProbe): boolean {
-    return probe.target.mailId !== "";
+  appliesTo(_probe: CommandProbe): boolean {
+    return true;
   },
 
   plan(input: Record<string, unknown>, ctx: CommandContext): PlanResult {

@@ -25,11 +25,12 @@ describe("mail.removeEml", () => {
     expect(REMOVE_EML_COMMAND.needs).toEqual({ allNotes: true, emlProbe: true });
   });
 
-  it("erscheint nur bei saveEml: false und nur auf einer Mail-Notiz", () => {
+  it("erscheint nur bei saveEml: false, auch ohne Mail-Notiz (vault-weit)", () => {
     const probe = (p: typeof profile, mailId = "a@x") => ({ profile: p, target: { mailId, path: "x.md", source: "", state: null }, frontmatter: {} });
+    expect(REMOVE_EML_COMMAND.scope).toBe("vault");
     expect(REMOVE_EML_COMMAND.appliesTo(probe(profile))).toBe(true);
     expect(REMOVE_EML_COMMAND.appliesTo(probe({ ...profile, saveEml: true }))).toBe(false);
-    expect(REMOVE_EML_COMMAND.appliesTo(probe(profile, ""))).toBe(false);
+    expect(REMOVE_EML_COMMAND.appliesTo(probe(profile, ""))).toBe(true);
   });
 
   it("erscheint auch bei saveEml: true, sobald pseudonymisiert wird (dort entsteht keine .eml mehr)", () => {

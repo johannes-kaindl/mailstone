@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mailTargetFor, buildContext, runCommand } from "../../src/obsidian/command-flow";
+import { mailTargetFor, buildContext, commandProbe, runCommand } from "../../src/obsidian/command-flow";
 
 // Die Modale sind in dieser Datei nur daran interessant, OB sie aufgehen — der Fall unten ist
 // gerade der, in dem keines aufgehen darf.
@@ -416,5 +416,33 @@ describe("buildContext: Pseudonymisieren (A5)", () => {
     let calls = 0;
     await buildContext({ ...deps(app), profile: () => pseudo("required"), pseudonymize: () => { calls += 1; return ersetze()({} as never); } }, RELINK_COMMAND, fileOf(app));
     expect(calls).toBe(0);
+  });
+});
+
+describe("vault-weite Befehle ohne geoeffnete Mail-Notiz", () => {
+  it("baut fuer einen Befehl mit scope vault den Kontext auch ohne Ziel-Notiz, mit allen Mail-Notizen", async () => {
+    const app = await vaultWithNote();
+    for (const file of [null, await app.vault.create("Andere.md", "keine Mail")]) {
+      const r = await buildContext(deps(app), RELINK_COMMAND, file);
+      expect(r.ok).toBe(true);
+      expect(r.ok && r.ctx.target.mailId).toBe("");
+      expect(r.ok && r.ctx.notes?.map((n) => n.mailId)).toEqual(["a@x"]);
+    }
+  });
+
+  it("bleibt fuer einen notizgebundenen Befehl bei not-applicable", async () => {
+    const app = await vaultWithNote();
+    const r = await buildContext(deps(app), RERENDER_COMMAND, null);
+    expect(r).toEqual({ ok: false, code: "not-applicable" });
+  });
+
+  it("commandProbe: ohne Mail-Notiz nur fuer vault-weite Befehle, .eml entfernen weiter nur bei abgeschaltetem saveEml", async () => {
+    const app = makeApp();
+    expect(commandProbe(app as never, profile, RERENDER_COMMAND)).toBeNull();
+    const probe = commandProbe(app as never, profile, RELINK_COMMAND);
+    expect(probe?.target.mailId).toBe("");
+    expect(RELINK_COMMAND.appliesTo(probe!)).toBe(true);
+    expect(REMOVE_EML_COMMAND.appliesTo(commandProbe(app as never, { ...profile, saveEml: false }, REMOVE_EML_COMMAND)!)).toBe(true);
+    expect(REMOVE_EML_COMMAND.appliesTo(commandProbe(app as never, { ...profile, saveEml: true }, REMOVE_EML_COMMAND)!)).toBe(false);
   });
 });

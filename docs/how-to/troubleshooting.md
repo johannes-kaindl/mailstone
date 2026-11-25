@@ -104,7 +104,7 @@
 
 ### A command is missing from the command palette
 
-**Cause:** Commands on a note appear only when they apply to the note you have open. They need a mail note that Mailstone created. *Re-render* and *Extract an attachment* also need the original message: the `.eml` beside the note or, on the desktop, the message on the server. **Mailstone: Remove stored .eml files** appears only while *Save original as .eml* is off. **Mailstone: Create a TaskNotes task** additionally needs the [TaskNotes](https://github.com/callumalpass/tasknotes) plugin, enabled.
+**Cause:** Commands on a note appear only when they apply to the note you have open. They need a mail note that Mailstone created. Three commands work on all mail notes at once and appear without an open mail note: *Relink mail threads*, *Recompute threads* and *Remove stored .eml files*; the last two are also buttons in the settings, below *Thread field* and *Save original as .eml*. *Re-render* and *Extract an attachment* also need the original message: the `.eml` beside the note or, on the desktop, the message on the server. **Mailstone: Remove stored .eml files** appears only while *Save original as .eml* is off. **Mailstone: Create a TaskNotes task** additionally needs the [TaskNotes](https://github.com/callumalpass/tasknotes) plugin, enabled.
 
 **Fix:** Open a mail note. For the task command, install and enable TaskNotes.
 
