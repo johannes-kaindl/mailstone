@@ -243,15 +243,15 @@ describe("MailstoneSettingTab — taskPreset", () => {
     expect(presetList(tab).items).toEqual([]);
   });
 
-  it("zeigt einen bestehenden Preset-Eintrag als Zeile", () => {
+  it("zeigt einen bestehenden Preset-Eintrag als Zeile, ohne den Namen als Ueberschrift zu wiederholen", () => {
     const tab = newTab();
     tab["host"].settings.taskPreset = { status: "open" };
-    expect(presetList(tab).items.map((i) => i.name)).toEqual(["status"]);
+    expect(presetList(tab).items.map((i) => i.name)).toEqual([""]);
   });
 
-  it("addItem haengt einen neuen, kollisionsfreien Schluessel an", async () => {
+  it("addItem haengt eine leere Zeile an, gespeichert wird erst mit einem Namen", async () => {
     const tab = newTab();
-    tab["host"].settings.taskPreset = { field: "x" };
+    tab["host"].settings.taskPreset = { status: "x" };
     // Der Obsidian-Mock kennt kein PluginSettingTab.update() (echtes Obsidian ruft es fuer
     // einen Re-Render) — hier reicht ein No-op, da nur die Settings-Mutation geprueft wird.
     (tab as unknown as { update: () => void }).update = () => {};
@@ -259,7 +259,29 @@ describe("MailstoneSettingTab — taskPreset", () => {
     const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.taskPreset.add"))!;
     list.addItem!.action({} as HTMLElement);
     await Promise.resolve();
-    expect(tab["host"].settings.taskPreset).toEqual({ field: "x", "field-2": "" });
+    // Kein vorbelegter Name (bis 0.14: `field`), die Settings bleiben unveraendert, die Liste zeigt eine Zeile mehr.
+    expect(tab["host"].settings.taskPreset).toEqual({ status: "x" });
+    expect(presetList(tab).items).toHaveLength(2);
+    const tabIntern = tab as unknown as { renameTaskPresetKey: (i: number, k: string) => Promise<void>; setTaskPresetValue: (i: number, v: string) => Promise<void> };
+    await tabIntern.renameTaskPresetKey(1, "  ");
+    expect(tab["host"].settings.taskPreset).toEqual({ status: "x" });
+    await tabIntern.renameTaskPresetKey(1, "prio");
+    await tabIntern.setTaskPresetValue(1, "hoch");
+    expect(tab["host"].settings.taskPreset).toEqual({ status: "x", prio: "hoch" });
+    expect(presetList(tab).items).toHaveLength(2);
+  });
+
+  it("die leere neue Zeile laesst sich loeschen, ohne einen Eintrag anzufassen", async () => {
+    const tab = newTab();
+    tab["host"].settings.taskPreset = { status: "x" };
+    (tab as unknown as { update: () => void }).update = () => {};
+    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string; action: (el: HTMLElement) => void }; onDelete?: (i: number) => void }[];
+    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.taskPreset.add"))!;
+    list.addItem!.action({} as HTMLElement);
+    list.onDelete!(1);
+    await Promise.resolve();
+    expect(tab["host"].settings.taskPreset).toEqual({ status: "x" });
+    expect(presetList(tab).items).toHaveLength(1);
   });
 
   // Fix-Runde 1, Important 2: eine Umbenennung auf einen bestehenden Schluessel darf den

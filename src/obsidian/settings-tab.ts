@@ -9,6 +9,7 @@ import {
   type SettingDefinitionItem,
   type SettingDefinitionList,
   type SettingGroupItem,
+  type TextComponent,
 } from "obsidian";
 import { getLang, t } from "../vendor/code-kit/i18n";
 import { confirmAction, applyDestructive } from "../vendor/kit-obsidian/confirm";
@@ -360,9 +361,16 @@ export class MailstoneSettingTab extends PluginSettingTab {
     return Object.entries(this.host.settings.taskPreset).map(([k, v]) => [k, String(v)]);
   }
 
+  /** Eine neu hinzugefuegte Zeile, die noch keinen Feldnamen hat. Sie lebt nur im Tab, nicht in den Settings: ein Record kennt
+   *  keinen leeren Schluessel, und ein vorbelegter Name (`field`, bis 0.14) landete beim Ausfuellen zweimal im Wertfeld. */
+  private pendingPresetRow = false;
+
   private taskPresetGroup(): SettingDefinitionList {
-    const items: SettingGroupItem[] = this.taskPresetEntries().map(([key], index) => ({
-      name: key,
+    const entries = this.taskPresetEntries();
+    // Kein Zeilenname: der Feldname steht schon im ersten Eingabefeld, eine Ueberschrift mit demselben Text verleitete dazu, ihn
+    // ins Wertfeld zu tippen. Die zwei Felder tragen ihre aria-labels selbst.
+    const items: SettingGroupItem[] = [...entries, ...(this.pendingPresetRow ? [["", ""] as [string, string]] : [])].map((_, index) => ({
+      name: "",
       render: (setting: Setting) => this.renderTaskPresetRow(setting, index),
     }));
     return {
@@ -370,20 +378,25 @@ export class MailstoneSettingTab extends PluginSettingTab {
       items,
       emptyState: t("settings.taskPreset.empty"),
       onDelete: (index) => { void this.removeTaskPresetEntry(index); },
-      addItem: { name: t("settings.taskPreset.add"), action: () => { void this.addTaskPresetEntry(); } },
+      addItem: { name: t("settings.taskPreset.add"), action: () => { this.addTaskPresetEntry(); } },
     };
   }
 
   private renderTaskPresetRow(setting: Setting, index: number): void {
     const [key, value] = this.taskPresetEntries()[index] ?? ["", ""];
+    let valueField: TextComponent | null = null;
     setting.addText((tx) => {
       tx.setPlaceholder(t("settings.taskPreset.key.placeholder")).setValue(key);
       tx.inputEl.setAttribute("aria-label", t("settings.taskPreset.key.aria"));
+      // Das Wertfeld wird erst bedienbar, wenn ein Name dasteht — sonst landet der Wert in einer Zeile ohne Feld.
+      tx.inputEl.addEventListener("input", () => { valueField?.setDisabled(tx.getValue().trim() === ""); });
       tx.inputEl.addEventListener("blur", () => { void this.renameTaskPresetKey(index, tx.getValue()); });
     });
     setting.addText((tx) => {
+      valueField = tx;
       tx.setPlaceholder(t("settings.taskPreset.value.placeholder")).setValue(value);
       tx.inputEl.setAttribute("aria-label", t("settings.taskPreset.value.aria"));
+      tx.setDisabled(key === "");
       tx.inputEl.addEventListener("blur", () => { void this.setTaskPresetValue(index, tx.getValue()); });
     });
   }
@@ -400,9 +413,22 @@ export class MailstoneSettingTab extends PluginSettingTab {
 
   private async renameTaskPresetKey(index: number, newKeyRaw: string): Promise<void> {
     const entries = this.taskPresetEntries();
+    const newKey = newKeyRaw.trim();
+    // Die neue Zeile bekommt ihren ersten Namen: erst jetzt entsteht der Eintrag. Kein update(), die Zeile steht schon mit demselben
+    // Index da, und ein Neuzeichnen risse den Fokus aus dem Wertfeld, in das der Nutzer gerade wechselt.
+    if (this.pendingPresetRow && index === entries.length) {
+      if (newKey === "") return;
+      if (entries.some((e) => e[0] === newKey)) {
+        new Notice(t("settings.taskPreset.key.duplicate", newKey));
+        return;
+      }
+      this.pendingPresetRow = false;
+      this.applyTaskPreset([...entries, [newKey, ""]]);
+      await this.host.saveSettings();
+      return;
+    }
     const current = entries[index];
     if (!current) return;
-    const newKey = newKeyRaw.trim();
     if (newKey === current[0]) return;
     if (!newKey) { await this.removeTaskPresetEntry(index); return; }
     // Dieselbe Kollisionsvermeidung wie beim Hinzufuegen (addTaskPresetEntry): eine Umbenennung
@@ -417,7 +443,7 @@ export class MailstoneSettingTab extends PluginSettingTab {
     }
     this.applyTaskPreset(entries.map((e, i) => (i === index ? [newKey, e[1]] : e)));
     await this.host.saveSettings();
-    this.update(); // Zeilen-Beschriftung (name = key) muss den neuen Namen zeigen
+    // Kein update(): die Zeile traegt keine Beschriftung mit dem Namen (mehr).
   }
 
   private async setTaskPresetValue(index: number, value: string): Promise<void> {
@@ -430,17 +456,20 @@ export class MailstoneSettingTab extends PluginSettingTab {
   }
 
   private async removeTaskPresetEntry(index: number): Promise<void> {
+    if (this.pendingPresetRow && index === this.taskPresetEntries().length) {
+      this.pendingPresetRow = false;
+      this.update();
+      return;
+    }
     this.applyTaskPreset(this.taskPresetEntries().filter((_, i) => i !== index));
     await this.host.saveSettings();
     this.update();
   }
 
-  private async addTaskPresetEntry(): Promise<void> {
-    const existing = this.taskPresetEntries().map(([k]) => k);
-    let key = "field";
-    for (let n = 2; existing.includes(key); n += 1) key = `field-${n}`;
-    this.applyTaskPreset([...this.taskPresetEntries(), [key, ""]]);
-    await this.host.saveSettings();
+  /** Haengt eine leere Zeile an (nur im Tab, s. `pendingPresetRow`); gespeichert wird erst, wenn sie einen Namen bekommt. */
+  private addTaskPresetEntry(): void {
+    if (this.pendingPresetRow) return;
+    this.pendingPresetRow = true;
     this.update();
   }
 

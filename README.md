@@ -113,7 +113,7 @@ Global settings:
 | Fields passed on in a thread | A list of front matter fields (for example `projekt`) that a new note copies unchanged from the previous mail of its thread when it is created. *Align fields in thread* copies the first mail's values into the whole thread. Empty passes nothing on | empty |
 | Filename template | Placeholders `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
 | Extra fields for new mail notes | Fields written once into a note's front matter when it is first created, for example `status: open` | none |
-| Allowed note-creation values | Values accepted for the fields written at creation | `mail` |
+| Allowed note-creation values | Values accepted for the fields Mailstone itself writes at creation (`profile.onCreate` in `data.json`, `type: mail`); does not apply to the extra fields above | `mail` |
 | Plugins allowed to send | Plugins that send through Mailstone without asking; revoke one to be asked again | none |
 | Status bar | Shows the sync state in the status bar (desktop); turn it off if the bar gets too wide | on |
 | Open the panel at startup | Opens the sidebar panel when Obsidian starts | off |

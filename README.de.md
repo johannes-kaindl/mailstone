@@ -78,7 +78,7 @@ cd mailstone && npm install && npm run build
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/mail-note.png" width="600" alt="Eine Mail-Notiz: Frontmatter mit Absender, Empfängern, Datum und Message-ID, in_reply_to und references als Wikilinks auf die frühere Mail, darunter der Nachrichtentext.">
 
 3. **Oder im Posteingangs-Tab arbeiten.** Seitenleiste über das Ribbon-Symbol oder den Befehl *Mailstone: Seitenleiste öffnen* öffnen, zu **Posteingang** wechseln und bei allem Aufhebenswerten *Ins Vault übernehmen* nutzen. Die Nachricht wandert auf dem Server in den Allowlist-Ordner, und der folgende Sync schreibt die Notiz.
-4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus dem Original neu aufbauen*, *Mail-Threads neu verknüpfen*, *Vorgänge neu berechnen*, *Felder im Vorgang angleichen*, *Diesem Vorgang nicht mehr folgen*, *Diesem Vorgang wieder folgen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen. Jedes zeigt vor dem Schreiben, was es ändern würde:
+4. **Auf einer Mail-Notiz** bietet die Befehlspalette *Mail-Notiz aus dem Original neu aufbauen*, *Mail-Threads neu verknüpfen*, *Vorgänge neu berechnen*, *Felder im Vorgang angleichen*, *Diesem Vorgang nicht mehr folgen*, *Diesem Vorgang wieder folgen*, *Anhang aus einer Mail-Notiz herausholen*, *Auf eine Mail im externen Mailprogramm antworten* und *TaskNotes-Aufgabe anlegen*. Es erscheinen nur die, die zur geöffneten Notiz passen; *Mail-Threads neu verknüpfen*, *Vorgänge neu berechnen* und *Gespeicherte .eml-Dateien entfernen* wirken auf alle Mail-Notizen und stehen immer bereit (die letzten zwei auch als Knopf unter ihrer Einstellung). Jedes zeigt vor dem Schreiben, was es ändern würde:
 
 <img src="https://raw.githubusercontent.com/johannes-kaindl/mailstone/main/docs/images/relink-preview.png" width="820" alt="Der Dialog „Review before writing“ des Kommandos Mail-Threads neu verknüpfen: Eine Notiz bekommt einen Wikilink in in_reply_to, dargestellt als Vorher und Nachher, mit Cancel und Apply.">
 
@@ -115,7 +115,7 @@ Globale Einstellungen:
 | Im Vorgang weitergegebene Felder | Liste von Frontmatter-Feldern (etwa `projekt`), die eine neue Notiz beim Anlegen unverändert von der vorigen Mail ihres Vorgangs übernimmt. *Felder im Vorgang angleichen* überträgt die Werte der ersten Mail auf den ganzen Vorgang. Leer gibt nichts weiter | leer |
 | Dateinamen-Vorlage | Platzhalter `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
 | Zusatzfelder für neue Mail-Notizen | Felder, die beim ersten Anlegen einmalig ins Frontmatter geschrieben werden, etwa `status: open` | keine |
-| Erlaubte Werte bei Neuanlage | Werte, die für die beim Anlegen geschriebenen Felder zulässig sind | `mail` |
+| Erlaubte Werte bei Neuanlage | Werte, die für die Felder zulässig sind, die Mailstone selbst beim Anlegen schreibt (`profile.onCreate` in der `data.json`, `type: mail`); gilt nicht für die Zusatzfelder darüber | `mail` |
 | Plugins mit Sendeerlaubnis | Plugins, die ohne Rückfrage über Mailstone senden; Widerruf fragt wieder | keine |
 | Statusleiste | Zeigt den Sync-Stand in der Statusleiste (Desktop); ausschalten, wenn die Leiste zu breit wird | an |
 | Beim Start öffnen | Öffnet das Seitenleisten-Panel beim Start von Obsidian | aus |

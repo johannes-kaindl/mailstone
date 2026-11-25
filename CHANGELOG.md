@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 - *Recompute threads*, *Relink mail threads* and *Remove stored .eml files* work on all mail notes, so they are now offered in the command palette without an open mail note. *Recompute threads* is also a button below *Thread field*, and *Remove stored .eml files* a button below *Save original as .eml* (shown while no `.eml` is written). Both still show a preview before they write.
+- *Add field* under *Extra fields for new mail notes* adds an empty row with placeholders instead of a row named `field`; the value field becomes editable once the row has a name, and the field name is no longer repeated as a row heading. *Allowed note-creation values* now says that it applies only to the fields Mailstone writes itself, not to the extra fields.
 - The tab bar styles in `styles.css` are the shared library's (obsidian-kit 0.108.0) word for word, and a test now fails if a vendored library stylesheet is missing. No visible change.
 
 ## [0.14.1] — 2026-11-24

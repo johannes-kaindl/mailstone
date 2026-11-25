@@ -320,7 +320,7 @@ export const en = {
   // plan of reading an enum from a vault-specific schema file (_types/mail.md) — that would
   // couple the plugin to one vault's schema (decided 2026-09-15, portability).
   "settings.onCreateAllowedValues": "Allowed note-creation values",
-  "settings.onCreateAllowedValues.desc": "Values allowed for the fields written once when a mail note is first created (default: mail). A value stored outside this list is rejected on load and reset to the default — see the notice.",
+  "settings.onCreateAllowedValues.desc": "Applies only to the fields Mailstone itself writes once when a mail note is created (profile.onCreate in data.json, default type: mail), not to the extra fields above: those are written exactly as you enter them. A stored value outside this list is rejected on load and reset to the default, with a notice.",
   "settings.onCreateAllowedValues.empty": "No value allowed — mailstone falls back to the default (mail).",
   "settings.onCreateAllowedValues.add": "Add value",
   "settings.onCreateAllowedValues.placeholder": "Value (e.g. mail)",
@@ -662,7 +662,7 @@ export const de: typeof en = {
   "settings.taskPreset.key.duplicate": "Ein Feld namens \"{0}\" gibt es schon.",
 
   "settings.onCreateAllowedValues": "Erlaubte Werte bei Neuanlage",
-  "settings.onCreateAllowedValues.desc": "Werte, die beim Anlegen einer Mail-Notiz einmalig ins Frontmatter geschrieben werden dürfen (Default: mail). Ein Wert außerhalb dieser Liste wird beim Laden verworfen und auf den Default zurückgesetzt — s. Hinweis.",
+  "settings.onCreateAllowedValues.desc": "Gilt nur für die Felder, die Mailstone selbst beim Anlegen einer Mail-Notiz einmalig schreibt (profile.onCreate in der data.json, Standard type: mail), nicht für die Zusatzfelder darüber: die werden genau so geschrieben, wie du sie einträgst. Ein gespeicherter Wert außerhalb dieser Liste wird beim Laden verworfen und auf den Standard zurückgesetzt, mit Hinweis.",
   "settings.onCreateAllowedValues.empty": "Kein Wert erlaubt — mailstone fällt auf den Default (mail) zurück.",
   "settings.onCreateAllowedValues.add": "Wert hinzufügen",
   "settings.onCreateAllowedValues.placeholder": "Wert (z. B. mail)",
