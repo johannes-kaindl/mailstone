@@ -99,28 +99,38 @@ async function zustandHerstellen(cdp: Cdp): Promise<void> {
     const fertig = await pollUntil(cdp, `return app.vault.getMarkdownFiles().filter(f => f.path.startsWith("Mail/")).length >= 3 ? true : null;`, 15000, 300);
     if (!fertig) throw new Error("Import lieferte keine drei Notizen");
     await pause(800);
-    // Threads verknuepfen ueber das echte Kommando: der Import allein laesst in_reply_to
-    // als Message-ID stehen, ein Relink macht daraus Wikilinks (Notiz muss offen sein).
-    await openExisting(cdp, await notizPfad(cdp, "-1140-"), "preview");
+    // Die Relink-Vorschau ist ein Motiv. Seit B1 (Welle 36) verknuepft schon der Import die Threads desselben Laufs; damit das
+    // Kommando etwas zu planen hat, setzt das Rezept in der Antwort `in_reply_to` und `references` auf die rohe Message-ID der
+    // Vorgaengerin zurueck (der Zustand, den eine Antwort hat, die vor ihrer Vorgaengerin ankam), und fuehrt dann das echte Kommando aus.
+    const antwort = await notizPfad(cdp, "-1140-");
+    await openExisting(cdp, antwort, "preview");
+    const entknuepft = await cdp.evaluate<boolean>(`
+      const f = app.vault.getAbstractFileByPath(${JSON.stringify(antwort)});
+      const fm = app.metadataCache.getFileCache(f)?.frontmatter ?? {};
+      const roh = (v) => {
+        const link = String(v ?? "").replace(/^\\[\\[|\\]\\]$/g, "").split("|")[0];
+        const ziel = link === "" ? null : app.metadataCache.getFirstLinkpathDest(link, f.path);
+        return ziel ? app.metadataCache.getFileCache(ziel)?.frontmatter?.mail_id ?? null : null;
+      };
+      const vorher = roh(fm.in_reply_to);
+      if (!vorher) return false;
+      await app.fileManager.processFrontMatter(f, (m) => {
+        m.in_reply_to = vorher;
+        if (Array.isArray(m.references)) m.references = m.references.map((r) => roh(r) ?? r);
+      });
+      return true;`);
+    if (!entknuepft) throw new Error("Antwort-Notiz traegt keinen aufloesbaren Link in in_reply_to");
+    await pause(800);
     await cdp.evaluate(`app.commands.executeCommandById("${PLUGIN_ID}:mail-relink"); return true;`);
     const vorschau = await pollUntil(cdp, `return /Review before writing/.test(document.querySelector(".modal")?.textContent ?? "") ? true : null;`, 8000, 200);
-    if (!vorschau && ONLY === "relink-preview.png") throw new Error("Relink-Vorschau erschien nicht");
-    if (!vorschau) {
-      // Seit B1 (Welle 36) verknuepft schon der Import die Threads desselben Laufs; das Kommando hat dann nichts zu planen, und es gibt keine
-      // Vorschau. Die uebrigen Bilder brauchen sie nicht; `relink-preview.png` bleibt, wie es ist (Folgearbeit: ein Zustand mit unverknuepften Notizen).
-      console.log("  Hinweis: keine Relink-Vorschau (der Import hat die Threads schon verknuepft); relink-preview.png wird nicht neu aufgenommen.");
-      await cdp.evaluate(`document.querySelector(".modal")?.querySelector("button")?.click(); return true;`);
+    if (!vorschau) throw new Error("Relink-Vorschau erschien nicht, obwohl die Antwort unverknuepft ist");
+    // Die Vorschau gibt es nur im ersten Lauf nach --setup: danach sind die Threads wieder verknuepft.
+    if (wollen("relink-preview.png")) {
       await pause(600);
-    } else {
-      // Die Vorschau ist selbst ein Motiv, und sie gibt es nur im ersten Lauf nach --setup: danach sind
-      // die Threads verknuepft und das Kommando hat nichts mehr zu planen.
-      if (wollen("relink-preview.png")) {
-        await pause(600);
-        await schreibe(cdp, "relink-preview.png", await boxOf(cdp, ".modal", 6));
-      }
-      await cdp.evaluate(`document.querySelector(".modal .mod-cta").click(); return true;`);
-      await pause(1200);
+      await schreibe(cdp, "relink-preview.png", await boxOf(cdp, ".modal", 6));
     }
+    await cdp.evaluate(`document.querySelector(".modal .mod-cta").click(); return true;`);
+    await pause(1200);
   } else if (ONLY === "relink-preview.png") {
     throw new Error("relink-preview.png braucht den ersten Lauf nach --setup (Threads sind schon verknuepft)");
   }
