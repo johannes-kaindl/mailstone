@@ -115,7 +115,6 @@ Globale Einstellungen:
 | Im Vorgang weitergegebene Felder | Liste von Frontmatter-Feldern (etwa `projekt`), die eine neue Notiz beim Anlegen unverändert von der vorigen Mail ihres Vorgangs übernimmt. *Felder im Vorgang angleichen* überträgt die Werte der ersten Mail auf den ganzen Vorgang. Leer gibt nichts weiter | leer |
 | Dateinamen-Vorlage | Platzhalter `{date}`, `{time}`, `{slug}`, `{year}` | `{date}-{time}-{slug}` |
 | Zusatzfelder für neue Mail-Notizen | Felder, die beim ersten Anlegen einmalig ins Frontmatter geschrieben werden, etwa `status: open` | keine |
-| Erlaubte Werte bei Neuanlage | Werte, die für die Felder zulässig sind, die Mailstone selbst beim Anlegen schreibt (`profile.onCreate` in der `data.json`, `type: mail`); gilt nicht für die Zusatzfelder darüber | `mail` |
 | Plugins mit Sendeerlaubnis | Plugins, die ohne Rückfrage über Mailstone senden; Widerruf fragt wieder | keine |
 | Statusleiste | Zeigt den Sync-Stand in der Statusleiste (Desktop); ausschalten, wenn die Leiste zu breit wird | an |
 | Beim Start öffnen | Öffnet das Seitenleisten-Panel beim Start von Obsidian | aus |

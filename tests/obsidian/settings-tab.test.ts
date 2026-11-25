@@ -232,7 +232,7 @@ describe("MailstoneSettingTab — taskPreset", () => {
     // Vertrauensliste), seit A2 (Welle 36) eine fuenfte (weitergegebene Felder). Beide neuen/bestehenden Ohne-Heading-Listen (taskPreset,
     // onCreateAllowedValues) tragen einen addItem-Knopf — unterschieden ueber dessen Beschriftung.
     const lists = defs.filter((d): d is { type: string; addItem?: { name?: string }; items: unknown[] } => d.type === "list");
-    expect(lists.length).toBe(5);
+    expect(lists.length).toBe(4);
     const preset = lists.find((d) => d.addItem?.name === t("settings.taskPreset.add"));
     expect(preset).toBeDefined();
     return preset as { items: { name: string }[] };
@@ -301,60 +301,11 @@ describe("MailstoneSettingTab — taskPreset", () => {
   });
 });
 
-// Punkt 3 der Welle-2-Aufgabe: plugin-eigene, in den Settings konfigurierbare Liste erlaubter
-// onCreate-Werte (Default ["mail"]). Struktur wie taskPresetGroup, aber eine Zeile pro Wert
-// (kein Schluessel/Wert-Paar).
+// Die Liste der erlaubten onCreate-Werte hat seit 2026-11-25 (W38) keine Zeile im Tab mehr; die Pruefung beim Laden bleibt (tests/core/settings.test.ts).
 describe("MailstoneSettingTab — onCreateAllowedValues", () => {
-  function valuesList(tab: MailstoneSettingTab) {
-    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; items?: { name: string }[] }[];
-    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.onCreateAllowedValues.add"));
-    expect(list).toBeDefined();
-    return list as { items: { name: string }[] };
-  }
-
-  it("zeigt den Default-Wert 'mail' als Zeile", () => {
-    const tab = newTab();
-    expect(valuesList(tab).items.map((i) => i.name)).toEqual(["mail"]);
-  });
-
-  it("addItem haengt eine neue, leere Zeile an", async () => {
-    const tab = newTab();
-    (tab as unknown as { update: () => void }).update = () => {};
-    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string; action: () => void } }[];
-    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.onCreateAllowedValues.add"))!;
-    list.addItem!.action();
-    await Promise.resolve();
-    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail", ""]);
-  });
-
-  it("onDelete entfernt die Zeile am Index", async () => {
-    const tab = newTab();
-    tab["host"].settings.onCreateAllowedValues = ["mail", "task"];
-    (tab as unknown as { update: () => void }).update = () => {};
-    const defs = tab.getSettingDefinitions() as { type?: string; addItem?: { name?: string }; onDelete?: (i: number) => void }[];
-    const list = defs.find((d) => d.type === "list" && d.addItem?.name === t("settings.onCreateAllowedValues.add"))!;
-    list.onDelete!(0);
-    await Promise.resolve();
-    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["task"]);
-  });
-
-  it("rename auf einen bestehenden Wert wird abgelehnt, kein Wert geht verloren", async () => {
-    const tab = newTab();
-    tab["host"].settings.onCreateAllowedValues = ["mail", "task"];
-    (tab as unknown as { update: () => void }).update = () => {};
-    const NoticeSpy = (await import("obsidian")).Notice as unknown as { instances: unknown[] };
-    NoticeSpy.instances.length = 0;
-    await (tab as unknown as { renameOnCreateAllowedValue: (i: number, v: string) => Promise<void> }).renameOnCreateAllowedValue(0, "task");
-    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail", "task"]);
-    expect(NoticeSpy.instances.length).toBe(1);
-  });
-
-  it("rename auf einen leeren Wert entfernt die Zeile", async () => {
-    const tab = newTab();
-    tab["host"].settings.onCreateAllowedValues = ["mail", "task"];
-    (tab as unknown as { update: () => void }).update = () => {};
-    await (tab as unknown as { renameOnCreateAllowedValue: (i: number, v: string) => Promise<void> }).renameOnCreateAllowedValue(1, "  ");
-    expect(tab["host"].settings.onCreateAllowedValues).toEqual(["mail"]);
+  it("zeigt keine Zeile und keine Liste fuer die erlaubten Werte", () => {
+    const defs = newTab().getSettingDefinitions() as { name?: string; addItem?: { name?: string } }[];
+    expect(defs.some((d) => d.name === "Erlaubte Werte bei Neuanlage" || d.addItem?.name === "Wert hinzufügen")).toBe(false);
   });
 });
 
