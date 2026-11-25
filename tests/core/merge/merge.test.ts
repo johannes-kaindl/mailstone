@@ -127,6 +127,10 @@ describe("mergeNote", () => {
     const r = mergeNote({ existing: "---\nmail_id: a@x\n---\n\nfrei", derived, managed, block: "x", expectedZoneHash: null });
     expect(r).toEqual({ ok: false, code: "fences-missing" });
   });
+  it("BEGIN ohne END (defekte Zone) → fences-missing, nichts wird geschrieben (W38, Task Defekte Zone)", () => {
+    const r = mergeNote({ existing: "---\nmail_id: a@x\n---\n\nfrei\n%% mailstone:begin %%\n## Nachricht\nalt, END fehlt\n", derived, managed, block: "x", expectedZoneHash: null });
+    expect(r).toEqual({ ok: false, code: "fences-missing" });
+  });
   it("editierte Zone (Hash weicht ab) → zone-edited", () => {
     const existing = base.content.replace("## Nachricht\n\nalt", "## Nachricht\n\nalt (von Hand geaendert)");
     const r = mergeNote({ existing, derived, managed, block: "## Nachricht\n\nneu", expectedZoneHash: base.zoneHash });

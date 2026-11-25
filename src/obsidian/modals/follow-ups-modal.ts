@@ -4,6 +4,7 @@ import type { FollowRunProblem, FollowRunResult } from "../../core/thread/follow
 import { FOLLOW_WINDOW_DAYS } from "../../core/thread/follow";
 import { groupFollowUps, type FollowGroup } from "../../core/view/follow-vm";
 import type { VaultFollowContext } from "../follow-context";
+import { errorMessage } from "../../vendor/kit/error-message";
 
 export type FollowUpsState =
   | { kind: "loading" }
@@ -132,7 +133,7 @@ export class FollowUpsModal extends Modal {
       ctx = this.deps.context();
       result = await this.deps.run(ctx);
     } catch (e) {
-      renderFollowUps(this.contentEl, { kind: "error", message: e instanceof Error ? e.message : String(e) });
+      renderFollowUps(this.contentEl, { kind: "error", message: errorMessage(e) });
       return;
     }
     if (!result.ok) { renderFollowUps(this.contentEl, { kind: "busy" }); return; }

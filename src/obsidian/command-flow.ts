@@ -17,6 +17,7 @@ import { trTitle } from "./command-i18n";
 import { probeEml } from "./eml-probe";
 import { threadRefsFor } from "./thread-index";
 import { findMailNotes, type ZoneHashStore } from "./vault-notes";
+import { joinVaultPath, vaultDirname } from "../vendor/kit/vault-path";
 
 export interface CommandFlowDeps {
   app: App;
@@ -105,8 +106,8 @@ async function loadOriginal(
 ): Promise<{ ok: true; mail: ParsedMail; facts?: OriginalFacts } | ContextFailure> {
   const { app } = deps;
   let local: CommandErrorCode | null = null;
-  const emlFile = app.vault.getAbstractFileByPath(normalizePath(emlPathFor(profile, file.path)));
-  if (emlFile instanceof TFile) {
+  const emlFile = app.vault.getFileByPath(normalizePath(emlPathFor(profile, file.path)));
+  if (emlFile) {
     let usable: ParsedMail | null = null;
     try {
       const parsed = await parseEml(new Uint8Array(await app.vault.readBinary(emlFile)));
@@ -192,10 +193,10 @@ export async function buildContext(
         // Weicht Obsidian auf "<stamm> 1" aus, liegt am blanken Namen bereits eine Datei. Deren
         // Bytes braucht `plan()`, um zu entscheiden, ob es DIESELBE Anlage ist (dann wird sie
         // verlinkt) oder eine gleichnamige andere (dann entsteht die zweite Datei).
-        const blank = `${frei.slice(0, frei.lastIndexOf("/") + 1)}${a.name}`;
+        const blank = joinVaultPath(vaultDirname(frei), a.name);
         if (blank === frei) continue;
-        const da = app.vault.getAbstractFileByPath(normalizePath(blank));
-        if (da instanceof TFile) vorhandeneAnhaenge.set(a.name, { path: blank, data: new Uint8Array(await app.vault.readBinary(da)) });
+        const da = app.vault.getFileByPath(normalizePath(blank));
+        if (da) vorhandeneAnhaenge.set(a.name, { path: blank, data: new Uint8Array(await app.vault.readBinary(da)) });
       }
     }
   }

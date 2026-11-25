@@ -25,6 +25,7 @@ import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
 import type { SyncCounts, SyncEmitter } from "./events";
 import type { SyncErrorCode } from "./errors";
 import type { TimeoutTimers } from "../../vendor/code-kit/timeout";
+import { errorMessage } from "../../vendor/kit/error-message";
 
 export type SyncRunResult =
   | { ok: true; accountId: string; counts: SyncCounts }
@@ -155,7 +156,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
         // Jede Ausnahme des Schritts (nicht nur ein Verbindungsfehler, den copyFollowUps selbst als Wert zaehlt) haelt den
         // Lese-Sync nicht an: sie zaehlt als ein Fehler. Ins Log kommt nur die Meldung, kein Passwort, kein Mail-Inhalt.
         followErrors = 1;
-        deps.log?.(`follow-copy: failed for ${account.id}: ${e instanceof Error ? e.message : String(e)}`);
+        deps.log?.(`follow-copy: failed for ${account.id}: ${errorMessage(e)}`);
       }
     }
 
@@ -327,7 +328,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
           attachmentTargets.set(item.mail.id, await resolve(item.mail, notePathFor(profile, item.mail)));
         } catch (e) {
           attachmentErrors += 1;
-          deps.log?.(`attachments: failed ${item.mail.id}: ${e instanceof Error ? e.message : String(e)}`);
+          deps.log?.(`attachments: failed ${item.mail.id}: ${errorMessage(e)}`);
         }
       }
     }
@@ -431,7 +432,7 @@ export function createSyncService(deps: SyncDeps): SyncService {
       // ("nicht rechtzeitig geantwortet", "Verbindung geschlossen") — pauschal "protocol" waere
       // eine Falschaussage und liesse vier i18n-Schluessel auf diesem Pfad unerreichbar.
       const code: SyncErrorCode = e instanceof NetError ? e.code : "protocol";
-      return { ok: false, accountId, code, detail: e instanceof Error ? e.message : String(e) };
+      return { ok: false, accountId, code, detail: errorMessage(e) };
     } finally {
       deps.busy.release();
     }

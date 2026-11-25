@@ -1,6 +1,8 @@
 import type { ParsedMail } from "../mime/types";
 import type { MailProfile } from "../mirror/profile";
 import type { CommandErrorCode } from "./types";
+import { vaultDirname } from "../../vendor/kit/vault-path";
+import { baseName } from "../../vendor/code-kit/rel-path";
 
 /**
  * Konventionspfad der .eml zu einer Mail-Notiz: der `_eml`-Unterordner NEBEN der Notiz
@@ -9,9 +11,8 @@ import type { CommandErrorCode } from "./types";
  * Ordnerumbenennung, solange Notiz und .eml zusammen umgezogen sind.
  */
 export function emlPathFor(profile: MailProfile, notePath: string): string {
-  const cut = notePath.lastIndexOf("/");
-  const dir = cut < 0 ? "" : notePath.slice(0, cut);
-  const base = (cut < 0 ? notePath : notePath.slice(cut + 1)).replace(/\.md$/, "");
+  const dir = vaultDirname(notePath);
+  const base = baseName(notePath).replace(/\.md$/, "");
   const folder = dir ? `${dir}/${profile.emlSubfolder}` : profile.emlSubfolder;
   return `${folder}/${base}.eml`;
 }

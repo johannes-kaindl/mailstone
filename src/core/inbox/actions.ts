@@ -1,6 +1,7 @@
 import type { ImapConnectWritableResult } from "../imap/client";
 import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
 import { NetError } from "../net/types";
+import { errorMessage } from "../../vendor/kit/error-message";
 
 /**
  * Die beiden Posteingangs-Aktionen. Sie stehen bewusst NEBEN dem Deskriptor-Rahmen aus
@@ -54,7 +55,7 @@ async function moveMessage(deps: InboxActionDeps, req: InboxActionRequest): Prom
       // nach einem Klick auf "Uebernehmen" schlicht nichts. Dasselbe Muster wie
       // sync/service.ts:249-256.
       const code: InboxActionCode = e instanceof NetError ? e.code : "protocol";
-      return { ok: false, code, detail: e instanceof Error ? e.message : String(e) };
+      return { ok: false, code, detail: errorMessage(e) };
     } finally {
       // Der Logout gehoert in den finally-Zweig: eine offene Verbindung nach einem
       // Fehlschlag haelt die Sitzung am Server, bis er sie von sich aus abraeumt.

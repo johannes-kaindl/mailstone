@@ -1,6 +1,7 @@
-import { normalizePath, TFile, type App } from "obsidian";
+import { normalizePath, type App } from "obsidian";
 import type { AttachmentResolver, AttachmentTarget } from "../core/mirror/attachments";
 import { bytesEqual } from "../vendor/code-kit/bytes-equal";
+import { joinVaultPath, vaultDirname } from "../vendor/kit/vault-path";
 
 /** Bei Kollision haengt Obsidian " 1", " 2" an den Stamm; dasselbe Muster fuer Pfade, die erst dieser Lauf belegt. */
 function numbered(path: string, n: number): string {
@@ -24,13 +25,13 @@ export function createAttachmentResolver(app: App): AttachmentResolver {
       const data = mail.attachmentData.get(meta.key);
       if (!data) continue;
       const free = await app.fileManager.getAvailablePathForAttachment(meta.name, notePath);
-      const blank = `${free.slice(0, free.lastIndexOf("/") + 1)}${meta.name}`;
+      const blank = joinVaultPath(vaultDirname(free), meta.name);
       // Wiederverwenden: der blanke Name gehoert schon dieser Datei (im Vault oder von diesem Lauf).
       const pending = reserved.get(blank);
       if (pending && bytesEqual(pending, data)) { out.set(meta.key, { path: blank, write: false }); continue; }
       if (!pending && blank !== free) {
-        const there = app.vault.getAbstractFileByPath(normalizePath(blank));
-        if (there instanceof TFile && bytesEqual(new Uint8Array(await app.vault.readBinary(there)), data)) {
+        const there = app.vault.getFileByPath(normalizePath(blank));
+        if (there && bytesEqual(new Uint8Array(await app.vault.readBinary(there)), data)) {
           out.set(meta.key, { path: blank, write: false });
           continue;
         }

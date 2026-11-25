@@ -9,6 +9,7 @@ import { NetError } from "../net/types";
 import { verifyEml } from "../commands/eml";
 import { parseEml } from "../mime/parse";
 import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
+import { errorMessage } from "../../vendor/kit/error-message";
 
 /** Wie viele Treffer je Ordner hoechstens geholt werden. Die Suche ist ein Teilstring-Treffer
  *  (`a@x` trifft auch `aa@x`); fuenf reichen fuer jede echte Mehrdeutigkeit und begrenzen, was
@@ -103,7 +104,7 @@ export async function fetchOriginal(deps: FetchOriginalDeps, req: FetchOriginalR
           }
         }
       } catch (e) {
-        errors.push({ code: e instanceof NetError ? e.code : "protocol", detail: e instanceof Error ? e.message : String(e) });
+        errors.push({ code: e instanceof NetError ? e.code : "protocol", detail: errorMessage(e) });
       } finally {
         await session.logout().catch(() => undefined);
       }

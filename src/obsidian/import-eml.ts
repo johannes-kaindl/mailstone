@@ -12,6 +12,7 @@ import { transformMail, type TransformPort } from "../core/transform/transform-m
 import { notePathFor, type AttachmentResolver, type AttachmentTargets } from "../core/mirror/attachments";
 import { effectiveSaveAttachments } from "../core/mirror/profile";
 import { findMailNotes, vaultPlanExecutor, type ZoneHashStore } from "./vault-notes";
+import { errorMessage } from "../vendor/kit/error-message";
 
 export interface ImportDeps {
   app: App; profile: MailProfile; hashes: ZoneHashStore; now: () => Date;
@@ -73,7 +74,7 @@ async function importLocked(deps: ImportDeps, folder: string): Promise<ImportRes
       const ex = index.get(mail.id);
       const existing = ex instanceof TFile ? { path: ex.path, content: await app.vault.read(ex), zoneHash: deps.hashes.get(mail.id) } : null;
       items.push({ mail, eml, existing });
-    } catch (e) { errors.push({ path: f.path, message: e instanceof Error ? e.message : String(e) }); }
+    } catch (e) { errors.push({ path: f.path, message: errorMessage(e) }); }
   }
   const fresh = items.filter((i) => !i.existing);
   const run = assignRunPaths(profile, fresh.map((i) => i.mail), taken);
@@ -87,7 +88,7 @@ async function importLocked(deps: ImportDeps, folder: string): Promise<ImportRes
     for (const item of fresh) {
       if (!item.mail.attachments.some((a) => !a.inline)) continue;
       try { attachmentTargets.set(item.mail.id, await resolve(item.mail, notePathFor(profile, item.mail))); }
-      catch (e) { errors.push({ path: item.mail.id, message: `attachments: ${e instanceof Error ? e.message : String(e)}` }); }
+      catch (e) { errors.push({ path: item.mail.id, message: `attachments: ${errorMessage(e)}` }); }
     }
   }
   const plans: NotePlan[] = [];

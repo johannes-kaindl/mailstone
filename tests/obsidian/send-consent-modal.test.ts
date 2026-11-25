@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { App, Modal } from "obsidian";
-import { askSendConsent, closeOpenSendConsent, consentTimeout,
+import { askSendConsent, closeOpenSendConsent,
          type ConsentOutcome, type SendConsentOptions } from "../../src/obsidian/send-consent-modal";
 import { initI18n } from "../../src/i18n/strings";
 
@@ -37,30 +37,24 @@ function knoepfe(): { textValue: string; ctaSet: boolean; destructiveSet: boolea
   return container.children.map((c) => c.__component);
 }
 
-describe("consentTimeout", () => {
-  it("loest nach der Frist mit timeout auf", async () => {
+describe("askSendConsent — Frist (withTimeout aus code-kit)", () => {
+  it("loest nach der Frist mit timeout auf und schliesst das Modal, nicht vorher", async () => {
     vi.useFakeTimers();
-    const p = consentTimeout(60_000, window);
-    vi.advanceTimersByTime(60_000);
-    await expect(p).resolves.toEqual({ kind: "timeout" });
+    let ergebnis: unknown = null;
+    void askSendConsent(new App(), optionen({ timeoutMs: 60_000 }), window).then((r) => { ergebnis = r; });
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(ergebnis).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(ergebnis).toEqual({ kind: "timeout" });
     vi.useRealTimers();
   });
 
-  it("loest nicht vor der Frist auf", async () => {
-    vi.useFakeTimers();
-    let fertig = false;
-    void consentTimeout(60_000, window).then(() => { fertig = true; });
-    vi.advanceTimersByTime(59_000);
-    await Promise.resolve();
-    expect(fertig).toBe(false);
-    vi.useRealTimers();
-  });
-
-  it("raeumt seinen Timer auf, wenn abgebrochen wird", () => {
+  it("raeumt den Timer auf, wenn der Dialog vor der Frist schliesst", async () => {
     vi.useFakeTimers();
     const clear = vi.spyOn(window, "clearTimeout");
-    const p = consentTimeout(60_000, window);
-    p.cancel();
+    const p = askSendConsent(new App(), optionen({ timeoutMs: 60_000 }), window);
+    closeOpenSendConsent();
+    await expect(p).resolves.toEqual({ kind: "declined" });
     expect(clear).toHaveBeenCalled();
     vi.useRealTimers();
   });

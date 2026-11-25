@@ -31,7 +31,10 @@
         "user-regex",
         "string-list",
         "bytes-equal",
-        "frontmatter-field"
+        "frontmatter-field",
+        "settings_schema",
+        "num",
+        "ensure-dir"
       ]
     },
     {

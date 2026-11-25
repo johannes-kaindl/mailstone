@@ -7,6 +7,7 @@ import type { SyncCounts } from "./events";
 import { SYNC_ERROR_CODES, type SyncErrorCode } from "./errors";
 import type { SyncRunResult } from "./service";
 import { intervalMs } from "./schedule";
+import { isPlainObject } from "../../vendor/code-kit/settings_schema";
 
 /** Der letzte Lauf eines Kontos — das, was die Statusleiste heute nur fluechtig zeigt. */
 export interface RunInfo {
@@ -25,12 +26,8 @@ const COUNT_KEYS_OPTIONAL: ReadonlySet<string> = new Set(["waiting"]);
 /** Aus der Code-Liste gebaut, nicht danebengeschrieben — s. SYNC_ERROR_CODES. */
 const GUELTIGE_CODES: ReadonlySet<string> = new Set<string>(SYNC_ERROR_CODES);
 
-function isObj(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
-}
-
 function parseCounts(v: unknown): SyncCounts | null {
-  if (!isObj(v)) return null;
+  if (!isPlainObject(v)) return null;
   const out = {} as Record<string, number>;
   for (const k of COUNT_KEYS) {
     const n = v[k] ?? (COUNT_KEYS_OPTIONAL.has(k) ? 0 : undefined);
@@ -64,10 +61,10 @@ function emptyCounts(): SyncCounts {
 /** Liest das Register aus `data.json`. Defensiv wie `parseState` in calendar-notes: ein
  *  unbrauchbarer Einzeleintrag faellt weg, er nimmt nicht das ganze Register mit. */
 export function parseRunState(raw: unknown): RunState {
-  if (!isObj(raw)) return {};
+  if (!isPlainObject(raw)) return {};
   const out: RunState = {};
   for (const [id, v] of Object.entries(raw)) {
-    if (!isObj(v)) continue;
+    if (!isPlainObject(v)) continue;
     const at = v["at"];
     const ok = v["ok"];
     const counts = parseCounts(v["counts"]);

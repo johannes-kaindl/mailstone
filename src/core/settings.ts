@@ -5,6 +5,7 @@ import { defaultMailProfile, isPseudonymizeMode, type FmVal, type MailProfile } 
 import type { TlsMode } from "./net/types";
 import type { TrustedSender } from "./api/types";
 import { isAddress } from "./send/outgoing";
+import { isPlainObject } from "../vendor/code-kit/settings_schema";
 
 export interface Identity { id: string; address: string; name: string }
 export interface Account {
@@ -30,10 +31,6 @@ export interface Account {
 export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" | "de"; accounts: Account[]; profile: MailProfile; taskPreset: Record<string, string | number>; onCreateAllowedValues: string[]; debugLog: boolean; openViewOnStartup: boolean; trustedSenders: TrustedSender[];
   /** Eintrag in der Statusleiste (Standard an; UI-STANDARD § 8). */
   showStatusBar: boolean }
-
-function isObj(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
-}
 
 /** Der Benutzername eines Kontos, wenn er eine Mailadresse ist (bei den meisten Anbietern ist er es), sonst `null`. */
 function usernameAddress(a: Account): string | null {
@@ -112,23 +109,23 @@ function repairHostPortTls<T extends string>(
 }
 
 function repairAccount(raw: unknown): Account {
-  const r = isObj(raw) ? raw : {};
+  const r = isPlainObject(raw) ? raw : {};
   const id = typeof r.id === "string" ? r.id : "account";
   const base = newAccount(id);
   return {
     ...base,
     label: typeof r.label === "string" ? r.label : base.label,
-    imap: repairHostPortTls(base.imap, isObj(r.imap) ? r.imap : {}, IMAP_TLS_VALUES),
-    smtp: repairHostPortTls(base.smtp, isObj(r.smtp) ? r.smtp : {}, SMTP_TLS_VALUES),
+    imap: repairHostPortTls(base.imap, isPlainObject(r.imap) ? r.imap : {}, IMAP_TLS_VALUES),
+    smtp: repairHostPortTls(base.smtp, isPlainObject(r.smtp) ? r.smtp : {}, SMTP_TLS_VALUES),
     username: typeof r.username === "string" ? r.username : base.username,
     secretId: typeof r.secretId === "string" ? r.secretId : base.secretId,
-    identities: Array.isArray(r.identities) ? r.identities.filter((i): i is Identity => isObj(i) && typeof i.id === "string" && typeof i.address === "string" && typeof i.name === "string") : base.identities,
+    identities: Array.isArray(r.identities) ? r.identities.filter((i): i is Identity => isPlainObject(i) && typeof i.id === "string" && typeof i.address === "string" && typeof i.name === "string") : base.identities,
     defaultIdentityId: typeof r.defaultIdentityId === "string" ? r.defaultIdentityId : base.defaultIdentityId,
-    folders: { ...base.folders, ...(isObj(r.folders) ? r.folders : {}) },
+    folders: { ...base.folders, ...(isPlainObject(r.folders) ? r.folders : {}) },
     sync: {
-      ...base.sync, ...(isObj(r.sync) ? r.sync : {}),
+      ...base.sync, ...(isPlainObject(r.sync) ? r.sync : {}),
       // Nur ein Boolean true gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus.
-      followThreads: isObj(r.sync) && r.sync.followThreads === true,
+      followThreads: isPlainObject(r.sync) && r.sync.followThreads === true,
     },
   };
 }
@@ -153,7 +150,7 @@ export function onCreateInvalidValues(onCreate: Record<string, unknown> | undefi
  *  braucht dieselbe Extraktion fuer die Notice-Entscheidung, ohne core-interne `isObj`-Logik zu
  *  duplizieren. */
 export function rawOnCreate(raw: unknown): Record<string, unknown> | undefined {
-  if (!isObj(raw) || !isObj(raw.profile) || !isObj(raw.profile.onCreate)) return undefined;
+  if (!isPlainObject(raw) || !isPlainObject(raw.profile) || !isPlainObject(raw.profile.onCreate)) return undefined;
   return raw.profile.onCreate;
 }
 
@@ -181,7 +178,7 @@ function repairInheritFields(raw: unknown): string[] {
  *  Laden stillschweigend fallengelassen statt den Ladevorgang zu brechen: er war ohnehin nie
  *  funktional (der Boolean-Fall) bzw. nie gueltig. */
 function repairTaskPreset(raw: unknown): Record<string, string | number> {
-  if (!isObj(raw)) return {};
+  if (!isPlainObject(raw)) return {};
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (typeof v === "string" || typeof v === "number") out[k] = v;
@@ -198,7 +195,7 @@ function repairTrustedSenders(raw: unknown): TrustedSender[] {
   const out: TrustedSender[] = [];
   const gesehen = new Set<string>();
   for (const e of raw) {
-    if (!isObj(e)) continue;
+    if (!isPlainObject(e)) continue;
     const { pluginId, transportId } = e;
     if (typeof pluginId !== "string" || !pluginId) continue;
     if (typeof transportId !== "string" || !transportId) continue;
@@ -212,18 +209,18 @@ function repairTrustedSenders(raw: unknown): TrustedSender[] {
 export function loadSettings(raw: unknown): MailstoneSettings {
   const s = mergeSettings(DEFAULT_SETTINGS, raw && typeof raw === "object" ? raw : {});
   s.accounts = (Array.isArray(s.accounts) ? s.accounts : []).map((a) => repairAccount(a));
-  s.taskPreset = repairTaskPreset(isObj(raw) ? raw.taskPreset : undefined);
-  s.onCreateAllowedValues = repairOnCreateAllowedValues(isObj(raw) ? raw.onCreateAllowedValues : undefined);
-  s.trustedSenders = repairTrustedSenders(isObj(raw) ? raw.trustedSenders : undefined);
+  s.taskPreset = repairTaskPreset(isPlainObject(raw) ? raw.taskPreset : undefined);
+  s.onCreateAllowedValues = repairOnCreateAllowedValues(isPlainObject(raw) ? raw.onCreateAllowedValues : undefined);
+  s.trustedSenders = repairTrustedSenders(isPlainObject(raw) ? raw.trustedSenders : undefined);
   // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json), startet das Plugin mit an — ein gespeichertes `false` bleibt aus.
-  s.showStatusBar = isObj(raw) && typeof raw.showStatusBar === "boolean" ? raw.showStatusBar : DEFAULT_SETTINGS.showStatusBar;
-  const rawProfile = isObj(raw) && isObj(raw.profile) ? raw.profile : {};
+  s.showStatusBar = isPlainObject(raw) && typeof raw.showStatusBar === "boolean" ? raw.showStatusBar : DEFAULT_SETTINGS.showStatusBar;
+  const rawProfile = isPlainObject(raw) && isPlainObject(raw.profile) ? raw.profile : {};
   const onCreateRoh = rawOnCreate(raw);
   const onCreateUngueltig = onCreateInvalidValues(onCreateRoh, s.onCreateAllowedValues);
   s.profile = {
     ...defaultMailProfile(),
     ...s.profile,
-    fields: { ...defaultMailProfile().fields, ...(isObj(rawProfile.fields) ? rawProfile.fields : {}) },
+    fields: { ...defaultMailProfile().fields, ...(isPlainObject(rawProfile.fields) ? rawProfile.fields : {}) },
     // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt die .eml (an).
     saveEml: typeof rawProfile.saveEml === "boolean" ? rawProfile.saveEml : true,
     // Nur ein Boolean gilt; fehlt der Schluessel (alte data.json) oder ist er etwas anderes, bleibt es aus (nichts wird ungefragt geschrieben).

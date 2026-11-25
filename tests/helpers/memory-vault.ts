@@ -66,6 +66,7 @@ export function makeApp(seed?: { path: string; frontmatter: Record<string, FmVal
   app.vault.getMarkdownFiles = (): TFile[] =>
     [...files.values()].map((e) => e.file).filter((f) => f.extension === "md");
   app.vault.getAbstractFileByPath = (path: string): TFile | null => files.get(path)?.file ?? null;
+  app.vault.getFileByPath = (path: string): TFile | null => files.get(path)?.file ?? null;
 
   app.vault.adapter.exists = async (path: string): Promise<boolean> => files.has(path) || folders.has(path);
   app.vault.adapter.read = async (path: string): Promise<string> => {

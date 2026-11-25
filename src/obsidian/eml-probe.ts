@@ -57,8 +57,8 @@ async function readHead(app: App, file: TFile, io: HeadIo | null): Promise<Uint8
  */
 export async function probeEml(app: App, profile: MailProfile, notePath: string, mailId: string, io: HeadIo | null = desktopIo(app)): Promise<MailNoteRef["eml"]> {
   const path = emlPathFor(profile, notePath);
-  const file = app.vault.getAbstractFileByPath(normalizePath(path));
-  if (!(file instanceof TFile)) return undefined;
+  const file = app.vault.getFileByPath(normalizePath(path));
+  if (!file) return undefined;
   let head: Uint8Array;
   try {
     head = await readHead(app, file, io);

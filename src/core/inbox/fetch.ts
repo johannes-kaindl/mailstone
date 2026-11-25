@@ -3,6 +3,7 @@ import type { BusyGuard } from "../../vendor/code-kit/busy-guard";
 import { NetError } from "../net/types";
 import { normalizeKnownIds, toInboxRow, type InboxRow } from "../view/inbox-vm";
 import type { InboxActionCode } from "./actions";
+import { errorMessage } from "../../vendor/kit/error-message";
 
 /** Wie viele Nachrichten die Liste hoechstens zeigt. Die neuesten, nicht die ersten —
  *  ein Posteingang waechst hinten. „Mehr laden" ist V1.1 (Spec § 1). */
@@ -70,7 +71,7 @@ export async function fetchInbox(deps: InboxFetchDeps, req: InboxFetchRequest): 
     // wurde pauschal zu "protocol" mit einem generischen Text. Das Muster steht wortgleich in
     // sync/service.ts:249-256.
     const code: InboxActionCode = e instanceof NetError ? e.code : "protocol";
-    return { ok: false, code, detail: e instanceof Error ? e.message : String(e) };
+    return { ok: false, code, detail: errorMessage(e) };
   } finally {
     deps.busy.release();
   }

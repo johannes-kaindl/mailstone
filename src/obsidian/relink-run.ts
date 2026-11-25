@@ -1,4 +1,4 @@
-import { normalizePath, TFile, type App } from "obsidian";
+import { normalizePath, type App } from "obsidian";
 import type { RelinkHead, RelinkRunDeps } from "../core/mirror/relink-run";
 import type { MailProfile } from "../core/mirror/profile";
 import type { ZoneHashStore } from "./vault-notes";
@@ -20,8 +20,8 @@ export function vaultRelinkDeps(app: App, profile: () => MailProfile, hashes: Zo
       return out;
     },
     read: async (path) => {
-      const f = app.vault.getAbstractFileByPath(normalizePath(path));
-      if (!(f instanceof TFile)) return null;
+      const f = app.vault.getFileByPath(normalizePath(path));
+      if (!f) return null;
       const id: unknown = app.metadataCache.getFileCache(f)?.frontmatter?.[profile().idField];
       return { content: await app.vault.read(f), zoneHash: typeof id === "string" ? hashes.get(id) : null };
     },

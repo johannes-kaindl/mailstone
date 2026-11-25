@@ -10,6 +10,7 @@ import { imapConnect } from "../imap/client";
 import type { TimeoutTimers } from "../../vendor/code-kit/timeout";
 import { isLoopbackHost } from "../../vendor/code-kit/loopback";
 import { restoreMessage, unrestorablePlaceholders, type RestorePort } from "../transform/restore";
+import { errorMessage } from "../../vendor/kit/error-message";
 
 /** `pseudonym-unresolved` (A5): ein Platzhalter des Pseudonymizers liess sich nicht zurueckwandeln; nichts wurde gesendet. `detail` nennt die Art
  *  (`held`, `forgotten-address`, `address-unresolved`), nie einen Wert. */
@@ -175,7 +176,7 @@ async function ablegenImSent(
       await verbunden.session.logout();
     }
   } catch (e) {
-    deps.log?.(`Sent-Kopie: ${e instanceof Error ? e.message : String(e)}`);
+    deps.log?.(`Sent-Kopie: ${errorMessage(e)}`);
     return "failed";
   }
 }

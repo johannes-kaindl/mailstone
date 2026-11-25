@@ -836,8 +836,8 @@ export default class MailstonePlugin extends Plugin {
    *  eine Aufgabe mit `noteLink` auf die falsche Mail, ohne Fehlermeldung (appliesTo() ist fuer
    *  jede Mail-Notiz true). */
   private async runCreateTaskForNote(notePath: string, notify: Notifier): Promise<CreateTaskOutcome> {
-    const file = this.app.vault.getAbstractFileByPath(notePath);
-    if (!(file instanceof TFile)) return { kind: "error", code: "error.command.not-applicable", adopted: true };
+    const file = this.app.vault.getFileByPath(notePath);
+    if (!file) return { kind: "error", code: "error.command.not-applicable", adopted: true };
     let outcome: RunResult;
     try {
       outcome = await safeRunCommand(() => runCommand(

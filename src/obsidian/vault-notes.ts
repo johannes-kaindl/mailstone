@@ -5,28 +5,20 @@ import type { MailIndex } from "../core/mirror/apply";
 import type { MailProfile } from "../core/mirror/profile";
 import { setFrontmatterField } from "../core/merge/merge";
 import { normalizeMessageId } from "../core/mime/headers";
+import { ensureDir } from "../vendor/code-kit/ensure-dir";
+import { vaultDirname } from "../vendor/kit/vault-path";
+import { errorMessage } from "../vendor/kit/error-message";
 
 export type { PlanExecutionResult, PlanExecutor, ZoneHashStore };
 
+/** Der Ordner und seine fehlenden Eltern: `ensureDir` aus code-kit (prueft nach einem Wurf die Wirkung, nicht den Fehlertext — Sync und
+ *  Kommandos laufen nebeneinander und legen denselben Ordner an). Angelegt wird ueber `vault.createFolder`, nicht `adapter.mkdir`: so kennt der
+ *  Vault den Ordner sofort, die Notiz danach landet nicht in einem Ordner, den erst der Watcher meldet. */
 async function ensureFolder(app: App, path: string): Promise<void> {
-  const parts = normalizePath(path).split("/");
-  let cur = "";
-  for (const p of parts) {
-    cur = cur ? `${cur}/${p}` : p;
-    if (await app.vault.adapter.exists(cur)) continue;
-    try {
-      await app.vault.createFolder(cur);
-    } catch (e) {
-      // Zwischen `exists` und `createFolder` kann ein anderer Vorgang denselben Ordner angelegt
-      // haben — Sync und Kommandos laufen nebeneinander. Der Wurf des Nachbarn ist dann kein
-      // Fehler, sein Ergebnis ist genau das gewuenschte. Geprueft wird die Wirkung, nicht der
-      // Fehlertext: der ist nicht Teil der API und je nach Obsidian-Version anders formuliert.
-      if (!(await app.vault.adapter.exists(cur))) throw e;
-    }
-  }
+  await ensureDir({ exists: (p) => app.vault.adapter.exists(p), mkdir: async (p) => { await app.vault.createFolder(p); } }, normalizePath(path));
 }
 
-const dirOf = (p: string): string => p.slice(0, p.lastIndexOf("/"));
+const dirOf = vaultDirname;
 
 /** Ein Plan, dessen Ziel nicht (mehr) als Datei aufzufinden ist — z. B. weil die Notiz
  *  zwischen Planung und Ausfuehrung umbenannt oder geloescht wurde. */
@@ -58,8 +50,8 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
             hashes.set(p.mailId, p.zoneHash);
             created++;
           } else if (p.kind === "update") {
-            const f = app.vault.getAbstractFileByPath(normalizePath(p.path));
-            if (!(f instanceof TFile)) { skipped.push(missingTarget(p)); continue; }
+            const f = app.vault.getFileByPath(normalizePath(p.path));
+            if (!f) { skipped.push(missingTarget(p)); continue; }
             // Der Plan kann aelter sein als der Schreibvorgang — zwischen Lesen (buildContext)
             // und hier lag ein unbeschraenktes Formular-/Vorschau-Modal. Wenn der Aufrufer den
             // Inhalt mitgegeben hat, den der Plan voraussetzt, wird nur geschrieben, wenn die
@@ -75,8 +67,8 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
             hashes.set(p.mailId, p.zoneHash);
             updated++;
           } else if (p.kind === "setState") {
-            const f = app.vault.getAbstractFileByPath(normalizePath(p.path));
-            if (!(f instanceof TFile)) { skipped.push(missingTarget(p)); continue; }
+            const f = app.vault.getFileByPath(normalizePath(p.path));
+            if (!f) { skipped.push(missingTarget(p)); continue; }
             // Zeilenweise statt ueber `fileManager.processFrontMatter`: die API liest den Block
             // als YAML und schreibt ihn komplett neu — Kommentare gehen dabei verloren und die
             // Formatierung fremder Felder wird umgeschrieben (an einem echten Postfach gemessen,
@@ -101,7 +93,7 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
             skipped.push(p);
           }
         } catch (e) {
-          errors.push({ plan: p, message: e instanceof Error ? e.message : String(e) });
+          errors.push({ plan: p, message: errorMessage(e) });
         }
       }
       return { created, updated, skipped, stateChanged, errors };
@@ -115,8 +107,8 @@ export function vaultPlanExecutor(app: App, hashes: ZoneHashStore): PlanExecutor
 export function writeAttachment(app: App): (path: string, data: Uint8Array) => Promise<void> {
   return async (path, data) => {
     const p = normalizePath(path);
-    const cut = p.lastIndexOf("/");
-    if (cut > 0) await ensureFolder(app, p.slice(0, cut));
+    const dir = vaultDirname(p);
+    if (dir !== "") await ensureFolder(app, dir);
     await app.vault.createBinary(p, new Uint8Array(data).buffer);
   };
 }
@@ -128,8 +120,8 @@ export function writeAttachment(app: App): (path: string, data: Uint8Array) => P
 export function trashEml(app: App): (path: string) => Promise<void> {
   return async (path) => {
     if (!path.toLowerCase().endsWith(".eml")) throw new Error(`trashEml: nur .eml-Dateien, nicht ${path}`);
-    const f = app.vault.getAbstractFileByPath(normalizePath(path));
-    if (f instanceof TFile) await app.fileManager.trashFile(f);
+    const f = app.vault.getFileByPath(normalizePath(path));
+    if (f) await app.fileManager.trashFile(f);
   };
 }
 

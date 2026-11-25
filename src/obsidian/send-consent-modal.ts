@@ -2,6 +2,7 @@ import { App, ButtonComponent, DropdownComponent, Modal } from "obsidian";
 import { applyDestructive } from "../vendor/kit-obsidian/confirm";
 import type { ApiSendRequest } from "../core/api/types";
 import { t } from "../vendor/code-kit/i18n";
+import { withTimeout } from "../vendor/code-kit/timeout";
 
 export type ConsentOutcome =
   | { kind: "send"; transportId: string; remember: boolean }
@@ -25,18 +26,6 @@ export interface SendConsentOptions {
 }
 
 interface Timers { setTimeout: (fn: () => void, ms: number) => number; clearTimeout: (id: number) => void }
-
-/** Eigenes Promise mit `cancel`, damit der Timer nicht weiterlaeuft, wenn der Nutzer
- *  vorher klickt. Ein nie geloeschter Timer haelt den Prozess und feuert spaeter ins Leere —
- *  derselbe Defekt, der in `Cdp.send` als Dach-Task liegt. */
-export function consentTimeout(ms: number, timers: Timers): Promise<ConsentOutcome> & { cancel: () => void } {
-  let id = 0;
-  const p = new Promise<ConsentOutcome>((resolve) => {
-    id = timers.setTimeout(() => resolve({ kind: "timeout" }), ms);
-  }) as Promise<ConsentOutcome> & { cancel: () => void };
-  p.cancel = () => timers.clearTimeout(id);
-  return p;
-}
 
 /** Offene Zustimmungs-Modals. Ein Modal haengt an keinem Plugin-Lifecycle: wird mailstone
  *  waehrend der bis zu 60 s deaktiviert, stuende der Dialog weiter da und ein Klick auf
@@ -126,16 +115,15 @@ class SendConsentModal extends Modal {
 
 export async function askSendConsent(app: App, opts: SendConsentOptions, timers: Timers): Promise<ConsentOutcome> {
   const modal = new SendConsentModal(app, opts);
-  const frist = consentTimeout(opts.timeoutMs, timers);
   offeneModals.add(modal);
   try {
-    const ergebnis = await Promise.race([modal.warten(), frist]);
-    if (ergebnis.kind === "timeout") modal.close();
-    return ergebnis;
+    // `withTimeout` (code-kit) raeumt seinen Timer im `finally`, auch wenn der Nutzer vorher klickt: ein nie geloeschter Timer haelt den Prozess.
+    const r = await withTimeout(modal.warten(), opts.timeoutMs, timers);
+    if (!r.timedOut) return r.value;
+    modal.close();
+    return { kind: "timeout" };
   } finally {
-    // Beides unbedingt: ein nie geloeschter Timer haelt den Prozess, ein nie entfernter
-    // Eintrag laesst `closeOpenSendConsent` auf einer Leiche arbeiten.
-    frist.cancel();
+    // Ein nie entfernter Eintrag liesse `closeOpenSendConsent` auf einer Leiche arbeiten.
     offeneModals.delete(modal);
   }
 }
