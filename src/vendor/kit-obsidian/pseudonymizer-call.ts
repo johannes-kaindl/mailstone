@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.108.0, src/obsidian/pseudonymizer-call.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.111.0, src/obsidian/pseudonymizer-call.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Der Verbraucher-Aufruf der Pseudonymisierungs-API (Welle 36, kp1b, Teil B; Bestellung 14 der Design-Linie pseudonymizer, Spec 2026-11-18 § 8.7).
 //
 // Wer Text hinausgibt oder schreibt (mailstone, koda-agent, ein Export), ruft `pseudonymizeFor` vor dem Schreiben und `restoreFor` vor dem Anzeigen oder Senden. Beide kapseln den Schalter

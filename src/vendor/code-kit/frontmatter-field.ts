@@ -1,4 +1,4 @@
-// vendored from code-kit@0.88.0, src/ts/pure/frontmatter-field.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from code-kit@0.91.1, src/ts/pure/frontmatter-field.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 // Origin: obsidian-letterhead@e500827 src/core/frontmatter.ts:63-84 (`norm`, `buildFmIndex`, `getField`), lifted and extended (Welle 36, h1, order 3 of the
 // hypertext-exporter design, spec sections 7.2, 7.3, 10, 14). Second carrier: epub-exporter src/core/frontmatter.ts (`ALIASES`, `pick`), which reads
 // the exact key only and therefore does not find `Titel` or `chapter title`; it stays as it is until the breadth moves it.

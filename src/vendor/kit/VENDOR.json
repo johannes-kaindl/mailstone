@@ -1,7 +1,7 @@
 {
   "source": "obsidian-kit",
-  "version": "0.108.0",
-  "sha": "0fa2b5a",
+  "version": "0.111.0",
+  "sha": "3ba6442",
   "vendored": "frontmatter.ts, frontmatter-patch.ts, vault-path.ts, pseudonymizer-source.ts, image-gen-provider.ts, ocr-provider.ts, describe-provider.ts",
   "license": "AGPL-3.0-or-later"
 }

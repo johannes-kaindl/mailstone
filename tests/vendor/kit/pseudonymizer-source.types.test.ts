@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.108.0, tests/pseudonymizer-source.types.test.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.111.0, tests/pseudonymizer-source.types.test.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 import { describe, it, expect } from "vitest";
 import type {
   ApiError, PseudonymizerApi, RestoreOptions, RestoreResult, TransformEntity, TransformPart, TransformRequest, TransformResult,

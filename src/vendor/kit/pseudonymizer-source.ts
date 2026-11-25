@@ -1,4 +1,4 @@
-// vendored from obsidian-kit@0.108.0, src/pure/pseudonymizer-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
+// vendored from obsidian-kit@0.111.0, src/pure/pseudonymizer-source.ts — do not hand-edit; re-vendor via tools/sync-kit.sh
 /* VERTRAG v1, EINGEFROREN von Anfang an (Spec pseudonymizer 2026-11-18, Abschnitt 8.7, von Johannes um 22:44 freigegeben; mit mailstone abgestimmt): `ApiError` (im Index
  * `PseudonymizerApiError`), `TransformPart`, `TransformEntity`, `TransformRequest`, `TransformResult`, `RestoreResult` und `PseudonymizerApi` gelten wie gebaut als Vertrag der Plugin-API v1; geändert
  * werden sie nur ADDITIV oder als v2 mit Übergang (`version: 2`, `isPseudonymizerApi` nimmt beide, das Kit bedient beide, bis das Plugin v1 abkündigt). Additiv heißt je Typ (dieselbe Tabelle

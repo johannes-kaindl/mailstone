@@ -153,7 +153,7 @@ dieser Server `SASL-IR` kann (s. M3-Live-Probe).
 Gefahren gegen ein laufendes Obsidian **1.13.7** per CDP, Staging-Vault `mailstone`, Build vom
 Branch `feat/m3b-mail-commands` (`66d599d`, deployt 16:42). Obsidian lief zu dem Zeitpunkt nicht;
 gestartet mit `--remote-debugging-port=9222`, CDP-Lock gehalten (`--exclusive all`), zwei fremde
-Vault-Fenster (`10_Pallas`, `80_Arbeit`) blieben unberührt. Der Treiber war einmalig
+Vault-Fenster (zwei Arbeits-Vaults) blieben unberührt. Der Treiber war einmalig
 (Scratchpad, nicht getrackt) — ein getrackter GUI-Smoke ist M4.
 
 | # | Prüfpunkt | Ergebnis |
@@ -236,7 +236,7 @@ Pixel hat, wo es sitzt, ob eine Animation läuft. Für diese Punkte ist die Tabe
 `main.js` gleich) — der Punkt aus der Dach-Lesson „ein Smoke gegen den Produktiv-Vault misst den
 installierten Stand". Kein Neustart der App: der Debug-Port hörte bereits, das mailstone-Fenster
 wurde per `obsidian://open?vault=` als zusätzliches Fenster geöffnet, die **fünf fremden
-Vault-Fenster** (`10_Pallas`, `80_Arbeit`, `anysource-sideloader`, `koda-agent` und ein
+Vault-Fenster** (zwei Arbeits-Vaults, `anysource-sideloader`, `koda-agent` und ein
 Einstellungen-Fenster) blieben unberührt. CDP-Lock durchgehend gehalten (`--exclusive focus`).
 Der Treiber war einmalig (Scratchpad, nicht getrackt) — der getrackte GUI-Smoke ist M4.
 
@@ -674,7 +674,7 @@ sich nur, weil `smoke:e2e` bewusst ohne einen solchen Zwangsausgang endet.
 Gefahren gegen ein laufendes Obsidian **1.14.0** per CDP, Staging-Vault `mailstone`, Build vom
 Branch `fix/m3b-nachlese-minors` (`4528441`, deployt 20:17). Obsidian lief bereits mit
 `--remote-debugging-port=9222`; **kein Neustart, kein Quit** — drei fremde Vault-Fenster
-(`koda-agent`, `10_Pallas`, `80_Arbeit`) blieben unberührt. CDP-Lock `--exclusive focus`
+(`koda-agent` und zwei Arbeits-Vaults) blieben unberührt. CDP-Lock `--exclusive focus`
 gehalten, unmittelbar nach dem Lauf freigegeben.
 
 **Ergebnis: 20/20 grün**, `data.json` byte-gleich zurückgeschrieben, TaskNotes-Slot
