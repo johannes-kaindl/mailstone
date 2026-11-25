@@ -150,5 +150,6 @@ export class CockpitPanel {
       const teile = row.countsKey.split(" ").map((k, i) => t(k, row.countsArgs[i] ?? 0));
       meta.createDiv({ cls: "mailstone-cockpit-counts", text: teile.join(" · ") });
     }
+    if (row.hintKey) meta.createDiv({ cls: "mailstone-cockpit-account-hint", text: t(row.hintKey) });
   }
 }

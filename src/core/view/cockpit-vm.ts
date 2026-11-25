@@ -1,4 +1,4 @@
-import type { Account } from "../settings";
+import { hasOwnAddress, type Account } from "../settings";
 import type { SyncCounts } from "../sync/events";
 import type { RunState } from "../sync/run-state";
 
@@ -24,6 +24,8 @@ export interface CockpitRow {
   countsArgs: readonly (string | number)[];
   errorKey: string | null;
   disabled: boolean;
+  /** i18n-Schluessel eines Hinweises zum Konto selbst (nicht zum Lauf), sonst `null`: ohne eigene Adresse ist jede Mail `eingehend`. */
+  hintKey: string | null;
 }
 
 export interface CockpitViewModel {
@@ -79,23 +81,24 @@ export function buildCockpitViewModel(input: CockpitInput): CockpitViewModel {
     const run = input.runState[a.id];
     const disabled = !a.sync.enabled;
     const label = anzeigename(a);
+    const hintKey = hasOwnAddress(a) ? null : "cockpit.hint.noOwnAddress";
 
     // KEIN busy-Zweig: waehrend eines Laufs behaelt die Zeile ihren Zustand samt Zaehlern und
     // Fehler (Spec, Bekannte Grenze). Der Lauf-Indikator sitzt in der Kopfzeile, weil der
     // Guard global ist und nicht sagt, welches Konto gerade dran ist.
     if (!run) {
       return { accountId: a.id, label, state: "never", lastRunAt: null,
-        nextRunAt: input.nextDue(a.id), countsKey: null, countsArgs: [], errorKey: null, disabled };
+        nextRunAt: input.nextDue(a.id), countsKey: null, countsArgs: [], errorKey: null, disabled, hintKey };
     }
     if (!run.ok) {
       return { accountId: a.id, label, state: "error", lastRunAt: run.at,
         nextRunAt: input.nextDue(a.id), countsKey: null, countsArgs: [],
-        errorKey: `error.sync.${run.code ?? "protocol"}`, disabled };
+        errorKey: `error.sync.${run.code ?? "protocol"}`, disabled, hintKey };
     }
     const auffaellig = run.counts.errors > 0 || run.counts.detachSkipped > 0;
     const { key, args } = condenseCounts(run.counts);
     return { accountId: a.id, label, state: auffaellig ? "warning" : "ok", lastRunAt: run.at,
-      nextRunAt: input.nextDue(a.id), countsKey: key, countsArgs: args, errorKey: null, disabled };
+      nextRunAt: input.nextDue(a.id), countsKey: key, countsArgs: args, errorKey: null, disabled, hintKey };
   });
 
   return { rows, empty: rows.length === 0, busy: input.busy };

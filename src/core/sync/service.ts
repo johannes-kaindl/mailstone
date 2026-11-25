@@ -14,7 +14,7 @@ import { planRunRelinks, type RelinkRunDeps } from "../mirror/relink-run";
 import { parseEml } from "../mime/parse";
 import type { ParsedMail } from "../mime/types";
 import { transformMail, type TransformPort } from "../transform/transform-mail";
-import type { OriginalFacts } from "../transform/original-facts";
+import { originalFactsOf, type OriginalFacts } from "../transform/original-facts";
 import { imapConnect, type ImapConnectOptions, type ImapReadSession } from "../imap/client";
 import { copyFollowUps, followCopyConnections } from "../thread/follow-copy";
 import type { FollowContext } from "../thread/follow-run";
@@ -300,6 +300,16 @@ export function createSyncService(deps: SyncDeps): SyncService {
           deps.log?.(`transform: failed ${item.mail.id}: ${r.reason}: ${r.message}`);
         }
       }
+    }
+
+    // Liegt der Allowlist-Ordner im Gesendet-Ordner des Kontos, hat der Nutzer jede Mail darin selbst geschickt: `richtung` ist
+    // ausgehend, auch wenn der Absender keine bekannte eigene Adresse ist (Konto ohne Identitaet, Alias). Die Kennung bleibt die des
+    // Originals; bei „Aus“ ist `originalFactsOf` dieselbe Ableitung, die die Planung sonst selbst trifft.
+    const sent = account.folders.sent?.trim() ?? "";
+    if (sent !== "" && sent === folder.trim() && toPlan.length > 0) {
+      const outgoing = facts ?? new Map<string, OriginalFacts>();
+      for (const item of toPlan) outgoing.set(item.mail.id, { ...(outgoing.get(item.mail.id) ?? originalFactsOf(item.mail, profile)), direction: "ausgehend" });
+      facts = outgoing;
     }
 
     // Was nicht mehr im Ordner liegt, muss nicht weiter gemerkt werden.

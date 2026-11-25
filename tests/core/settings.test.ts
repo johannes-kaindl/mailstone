@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_SETTINGS, loadSettings, newAccount, onCreateInvalidValues, rawOnCreate, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
+import { DEFAULT_SETTINGS, hasOwnAddress, loadSettings, newAccount, onCreateInvalidValues, ownAddressesOf, rawOnCreate, secretIdFor, slugifyAccountId, uniqueAccountId } from "../../src/core/settings";
 import { defaultMailProfile } from "../../src/core/mirror/profile";
 import type { TrustedSender } from "../../src/core/api/types";
 
@@ -341,5 +341,38 @@ describe("inheritFields (A2)", () => {
     const a = loadSettings(undefined).profile.inheritFields;
     a.push("x");
     expect(loadSettings(undefined).profile.inheritFields).toEqual([]);
+  });
+});
+
+describe("ownAddressesOf (richtung ohne Identitaet)", () => {
+  it("zaehlt alle Identitaeten aller Konten", () => {
+    const a = newAccount("a");
+    a.identities = [{ id: "i1", address: "a@example.org", name: "A" }];
+    const b = newAccount("b");
+    b.identities = [{ id: "i2", address: "b@example.org", name: "B" }];
+    expect(ownAddressesOf([a, b])).toEqual(["a@example.org", "b@example.org"]);
+  });
+
+  it("zaehlt den Benutzernamen mit, wenn er eine Mailadresse ist — auch ohne Identitaet", () => {
+    const a = newAccount("a");
+    a.username = "ich@example.org";
+    expect(ownAddressesOf([a])).toEqual(["ich@example.org"]);
+  });
+
+  it("zaehlt einen Benutzernamen ohne Adressform nicht und doppelt keine Identitaet", () => {
+    const a = newAccount("a");
+    a.username = "jkaindl";
+    const b = newAccount("b");
+    b.username = "B@Example.org";
+    b.identities = [{ id: "i", address: "b@example.org", name: "B" }];
+    expect(ownAddressesOf([a, b])).toEqual(["b@example.org"]);
+  });
+
+  it("hasOwnAddress: false nur ohne Identitaet und ohne Adress-Benutzernamen", () => {
+    const a = newAccount("a");
+    a.username = "jkaindl";
+    expect(hasOwnAddress(a)).toBe(false);
+    a.username = "ich@example.org";
+    expect(hasOwnAddress(a)).toBe(true);
   });
 });

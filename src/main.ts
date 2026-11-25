@@ -1,5 +1,5 @@
 import { Notice, Platform, Plugin, SuggestModal, TFile, getLanguage, type App } from "obsidian";
-import { loadSettings, onCreateInvalidValues, rawOnCreate, type Account, type MailstoneSettings } from "./core/settings";
+import { loadSettings, onCreateInvalidValues, ownAddressesOf, rawOnCreate, type Account, type MailstoneSettings } from "./core/settings";
 import { initI18n } from "./i18n/strings";
 import { getLang, t } from "./vendor/code-kit/i18n";
 import { MailstoneSettingTab } from "./obsidian/settings-tab";
@@ -305,9 +305,9 @@ export default class MailstonePlugin extends Plugin {
    *  („darf ich jetzt schreiben?") richtig ist. */
   private cockpitRuns = 0;
 
-  /** Alle eigenen Adressen (Identitaeten aller Konten): daraus leitet der Render `richtung` ab. */
+  /** Alle eigenen Adressen (Identitaeten aller Konten, dazu Adress-Benutzernamen): daraus leitet der Render `richtung` ab. */
   private ownAddresses(): string[] {
-    return this.settings.accounts.flatMap((a) => a.identities.map((i) => i.address));
+    return ownAddressesOf(this.settings.accounts);
   }
   /** Das Profil fuer Kommandos (Neu-Rendern): wie `settings.profile`, aber mit den eigenen Adressen, sonst schriebe es `richtung` immer als eingehend. */
   private commandProfile(): MailProfile {

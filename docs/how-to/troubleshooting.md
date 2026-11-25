@@ -68,6 +68,12 @@
 
 **Fix:** Nothing — the next clean run catches up. If it repeats every time, some messages in the folder have no Message-ID; that is a property of those messages, not of your setup.
 
+### "No own address: this account has no identity and its username is not a mail address, so every mail is marked as incoming. Add an identity in the account settings."
+
+**Cause:** Mailstone writes `richtung: ausgehend` for a mail whose sender is one of your own addresses: the identities of all accounts, and each account's username when it is a mail address. This account has neither, so a mail you sent yourself and moved into the allowlist folder is marked as incoming. Mails in an allowlist folder that is the account's sent folder always count as outgoing.
+
+**Fix:** Settings → Mailstone → *Edit* → Identities → *Add identity* with the address you send from. Notes written before keep their value until *Re-render mail note from its original* writes them again.
+
 ## The inbox tab
 
 ### "This server cannot move messages safely (no MOVE support)."

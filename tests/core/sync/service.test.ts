@@ -56,11 +56,11 @@ function dialog(extra: DialogStep[], exists = 1): DialogStep[] {
   ];
 }
 
-function service(steps: DialogStep[], index: MailIndex, exec = recordingExecutor(), uidCache = createUidCache(undefined)) {
+function service(steps: DialogStep[], index: MailIndex, exec = recordingExecutor(), uidCache = createUidCache(undefined), acc: Account = account(), profile: MailProfile = defaultMailProfile()) {
   const fake = new FakeSocketTransport(["* OK ready"], steps);
   const svc = createSyncService({
-    accounts: () => [account()],
-    profile: () => defaultMailProfile(),
+    accounts: () => [acc],
+    profile: () => profile,
     secret: () => "geheim",
     transport: () => fake,
     index: () => index,
@@ -90,6 +90,29 @@ describe("createSyncService", () => {
     const r = await svc.syncAccount("acc");
     expect(r).toMatchObject({ ok: true, counts: { created: 1 } });
     expect(exec.seen[0]).toMatchObject({ kind: "create", mailId: "neu@example.net" });
+  });
+
+  it("wertet eine Mail im Gesendet-Ordner als ausgehend, auch ohne passende eigene Adresse", async () => {
+    // Allowlist-Ordner = Gesendet-Ordner: was dort liegt, hat der Nutzer geschickt, egal ob das Konto eine Identitaet traegt.
+    const header = new TextEncoder().encode("Message-ID: <neu@example.net>\r\n\r\n");
+    const body = new TextEncoder().encode(EML);
+    const steps = (): DialogStep[] => dialog([
+      { expect: /^a004 UID SEARCH ALL$/, send: ["* SEARCH 7", "a004 OK done"] },
+      { expect: /^a005 UID FETCH 7 \(BODY\.PEEK\[HEADER\.FIELDS \(MESSAGE-ID\)\]\)$/, send: [`* 1 FETCH (UID 7 BODY[HEADER.FIELDS (MESSAGE-ID)] {${String(header.byteLength)}}`, header, ")", "a005 OK done"] },
+      { expect: /^a006 UID FETCH 7 \(BODY\.PEEK\[\]\)$/, send: [`* 1 FETCH (UID 7 BODY[] {${String(body.byteLength)}}`, body, ")", "a006 OK done"] },
+      { expect: /^a007 LOGOUT$/, send: ["* BYE", "a007 OK done"] },
+    ]);
+    const content = async (sent: string): Promise<string> => {
+      const acc = account();
+      acc.folders.sent = sent;
+      const { svc, exec } = service(steps(), new Map(), recordingExecutor(), createUidCache(undefined), acc);
+      await svc.syncAccount("acc");
+      const plan = exec.seen[0];
+      return plan?.kind === "create" ? plan.content : "";
+    };
+    expect(await content("Vault")).toContain("richtung: ausgehend");
+    // Gegenprobe: liegt der Allowlist-Ordner nicht im Gesendet-Ordner, bleibt die Mail eingehend.
+    expect(await content("Sent")).toContain("richtung: eingehend");
   });
 
   it("holt keinen Body fuer eine Mail, deren Notiz es schon gibt", async () => {

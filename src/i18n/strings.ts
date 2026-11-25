@@ -250,6 +250,7 @@ export const en = {
   "cockpit.aria.warning": "Last run succeeded, but left something out",
   "cockpit.aria.error": "Last run failed",
   "cockpit.aria.checking": "Synchronisation running",
+  "cockpit.hint.noOwnAddress": "No own address: this account has no identity and its username is not a mail address, so every mail is marked as incoming. Add an identity in the account settings.",
   "cockpit.mobile.hint": "Synchronisation only works on the desktop. Already synchronised notes stay readable here; open Mailstone on the desktop to fetch new mail.",
 
   "followUps.title": "Follow-up mails",
@@ -593,6 +594,7 @@ export const de: typeof en = {
   "cockpit.counts.detachSkipped": "{0} Ablösungen ausgelassen",
   "cockpit.counts.waiting": "{0} warten",
   "cockpit.counts.errors": "{0} Fehler",
+  "cockpit.hint.noOwnAddress": "Keine eigene Adresse: Das Konto hat keine Identität und der Benutzername ist keine Mailadresse, darum gilt jede Mail als eingehend. Lege in den Kontoeinstellungen eine Identität an.",
   "cockpit.aria.ok": "Letzter Lauf erfolgreich",
   "cockpit.aria.warning": "Letzter Lauf erfolgreich, hat aber etwas ausgelassen",
   "cockpit.aria.error": "Letzter Lauf gescheitert",

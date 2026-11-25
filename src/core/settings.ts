@@ -4,6 +4,7 @@ import { secretIdFor as kitSecretIdFor } from "../vendor/kit/secrets";
 import { defaultMailProfile, isPseudonymizeMode, type FmVal, type MailProfile } from "./mirror/profile";
 import type { TlsMode } from "./net/types";
 import type { TrustedSender } from "./api/types";
+import { isAddress } from "./send/outgoing";
 
 export interface Identity { id: string; address: string; name: string }
 export interface Account {
@@ -32,6 +33,37 @@ export interface MailstoneSettings { schemaVersion: 1; language: "auto" | "en" |
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Der Benutzername eines Kontos, wenn er eine Mailadresse ist (bei den meisten Anbietern ist er es), sonst `null`. */
+function usernameAddress(a: Account): string | null {
+  const u = a.username.trim();
+  return isAddress(u) ? u : null;
+}
+
+/** Alle eigenen Adressen, aus denen `richtung` abgeleitet wird: die Identitaeten aller Konten und, wenn er eine Mailadresse ist,
+ *  der Benutzername jedes Kontos. Ohne ihn kam eine selbst gesendete Mail eines Kontos ohne Identitaet als `eingehend` an
+ *  (0.11.1). Keine Dubletten (Gross-/Kleinschreibung zaehlt nicht), Identitaeten zuerst. */
+export function ownAddressesOf(accounts: readonly Account[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (addr: string): void => {
+    const key = addr.trim().toLowerCase();
+    if (key === "" || seen.has(key)) return;
+    seen.add(key);
+    out.push(addr);
+  };
+  for (const a of accounts) for (const i of a.identities) add(i.address);
+  for (const a of accounts) {
+    const u = usernameAddress(a);
+    if (u !== null) add(u);
+  }
+  return out;
+}
+
+/** Ob ein Konto eine eigene Adresse kennt (Identitaet oder Adress-Benutzername). Ohne sie ist jede Mail `eingehend`; das Panel warnt. */
+export function hasOwnAddress(a: Account): boolean {
+  return a.identities.some((i) => i.address.trim() !== "") || usernameAddress(a) !== null;
 }
 
 export function secretIdFor(accountId: string): string { return kitSecretIdFor("mailstone", accountId); }

@@ -163,3 +163,16 @@ describe("buildCockpitViewModel — Zeilen und Empty-State", () => {
     expect(vm.rows[1]?.label).toBe("Zweitkonto");
   });
 });
+
+describe("buildCockpitViewModel — Hinweis ohne eigene Adresse", () => {
+  it("meldet ein Konto ohne Identitaet und ohne Adress-Benutzernamen, sonst nicht", () => {
+    const ohne = acc("ohne");
+    ohne.username = "jkaindl";
+    const mitName = acc("name");
+    mitName.username = "ich@example.org";
+    const mitIdentitaet = acc("id");
+    mitIdentitaet.identities = [{ id: "i", address: "ich@example.org", name: "Ich" }];
+    const vm = buildCockpitViewModel({ accounts: [ohne, mitName, mitIdentitaet], runState: {}, nextDue: keineFaelligkeit, busy: false });
+    expect(vm.rows.map((r) => r.hintKey)).toEqual(["cockpit.hint.noOwnAddress", null, null]);
+  });
+});

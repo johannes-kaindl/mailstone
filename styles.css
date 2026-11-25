@@ -18,6 +18,7 @@
 .mailstone-cockpit-meta { color: var(--text-muted); font-size: var(--font-ui-smaller); display: flex; flex-direction: column; gap: 2px; }
 .mailstone-cockpit-error { color: var(--text-error); }
 .mailstone-cockpit-counts { color: var(--text-muted); }
+.mailstone-cockpit-account-hint { color: var(--text-warning); }
 .mailstone-cockpit-empty { color: var(--text-muted); font-size: var(--font-ui-small); display: flex; flex-direction: column; gap: var(--size-4-2); align-items: flex-start; }
 .mailstone-cockpit-empty p { margin: 0; }
 /* Mobile: ersetzt die Sync-Knoepfe, die dort keine Socket-Schicht haben (Welle 7). */
