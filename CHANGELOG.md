@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-11-25
+
 ### Fixed
 - **A mail you sent yourself is marked `richtung: ausgehend` even when the account has no identity.** Mailstone now also counts each account's username as your own address when it is a mail address, and every mail in an allowlist folder that is the account's sent folder counts as outgoing. An account with neither shows a hint in the side panel.
 
